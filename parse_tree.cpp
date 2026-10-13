@@ -116,6 +116,14 @@ class FunbObj{
 	// tambien `b_end` (la misma evaluacion en x=1) y nunca se usaba; se
 	// elimino (REVIEW C4, plan de correccion item 16).
 	vector<ldouble> a_start = parsv(_vecval,_xrange[0]);
+	// Cualquier componente NaN invalida el individuo completo. En Python seria
+	// `any(math.isnan(componente) for componente in a_start)`; no hay una
+	// conversion automatica de NaN a una excepcion en este codigo C++.
+	if (isnan(a_start[0]) || isnan(a_start[1]) || isnan(a_start[2])){
+		_fresult = INFINITY;
+		_cache_valido = true;
+		return _fresult;
+	}
 
 	for (	int i = 0 ; i < (int)_xrange.size(); i++){
 		vector<ldouble> fitnessval(parsv(_vecval,_xrange[i]));
@@ -129,30 +137,27 @@ class FunbObj{
 		// imprime(a_start);
 		// cin.get();
 
-		if ( 	!isnan(fitnessval[1]) || !isnan(fitnessval[0]) || !isnan(fitnessval[2] )  ){
-				//  imprime(fitnessval) ; cout << endl;
-				//  cout << "res :: " ;
-				// Residuo de la ODE en el punto de la rejilla, elevado a la
-				// cuarta, segun el caso (ver _caso). En Python seria algo
-				// como `res += r**4` con `r` calculado por ramas.
-				if (_caso == 1){
-					// Caso 1 del paper. Se minimiza la forma (18)
-					//     x*y'' + y' - cos(x) = 0
-					// (equivalente a la (16) y'' + y'/x - cos(x)/x = 0), que
-					// es la que el paper usa "para la minimizacion" porque no
-					// divide por x=0, el primer punto de la rejilla.
-					ldouble x = _xrange[i][0];
-					res +=pow(x*fitnessval[2] + fitnessval[1] - cos(x),4) ;
-				} else {
-					// Caso 0 (juguete del prototipo): y'' + y = 0.
-					res +=pow(fitnessval[2] + fitnessval[0],4) ;
-				}
-				//  cout << res<< endl;
-			}
-			else
-{
-			res +=1000000;
-			}
+		// Cualquier componente NaN hace que todo el individuo sea no evaluable.
+		// En Python equivale a `if any(math.isnan(c) for c in fitnessval):`
+		// seguido de `return math.inf`; asi no existe una penalizacion finita
+		// distinta para un punto sin informacion util.
+		if (isnan(fitnessval[0]) || isnan(fitnessval[1]) || isnan(fitnessval[2])){
+			_fresult = INFINITY;
+			_cache_valido = true;
+			return _fresult;
+		}
+
+		// Residuo de la ODE en el punto de la rejilla, elevado a la cuarta,
+		// segun el caso (ver _caso). En Python seria `res += r**4`.
+		if (_caso == 1){
+			// Caso 1 del paper: x*y'' + y' - cos(x) = 0. Se evita
+			// dividir por x=0, que es el primer punto de la rejilla.
+			ldouble x = _xrange[i][0];
+			res +=pow(x*fitnessval[2] + fitnessval[1] - cos(x),4) ;
+		} else {
+			// Caso 0 (juguete del prototipo): y'' + y = 0.
+			res +=pow(fitnessval[2] + fitnessval[0],4) ;
+		}
 		}
 			// Condiciones iniciales del caso. Caso 0: y(0)=1, y'(0)=1 (la
 			// solucion esperada es cos(x)+sin(x)); Caso 1 del paper: y(0)=0,

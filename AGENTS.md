@@ -29,12 +29,14 @@ and do not re-open those files to "verify" it.
 - `Makefile` builds with `g++` by default (`CXX ?= g++`, so `make CXX=icpc`
   still works where Intel's `icpc` exists). `make` only builds `main.exe`;
   `make run` compiles if needed and executes it; `make test` compiles and runs
-  the four test binaries: `test_dual.cpp` (dual-number tests; links
+  the five test binaries: `test_dual.cpp` (dual-number tests; links
   `dualfunctions.cpp`), `test_semilla.cpp` (seed resolution; links
-  `semilla.cpp`), `test_mutation.cpp` (DE/rand/1/bin mutation tests) and
-  `test_crossover.cpp` (binomial crossover tests); the last two link
-  `parse_tree.cpp` too, with `-DODE_NO_MAIN` so the test's `main()` wins;
-  `make clean` removes the objects and binaries. Flags: `-std=c++17 -Wall -O3`.
+  `semilla.cpp`), `test_mutation.cpp` (DE/rand/1/bin mutation tests),
+  `test_crossover.cpp` (binomial crossover tests) and `test_grid.cpp`
+  (evaluation-grid tests); the last three need `parse_tree.cpp` and are built
+  with `-DODE_NO_MAIN` so the test's `main()` wins (`test_grid.cpp` includes
+  `parse_tree.cpp` itself, since `FunbObj` has no header); `make clean` removes
+  the objects and binaries. Flags: `-std=c++17 -Wall -O3`.
 - Never add `parse_tree_bckp.cpp` to a build: it is a reference backup that
   also defines `main()` (duplicate symbol). The Makefile does not compile it.
 - `.vscode/tasks.json` builds only the active file, which cannot link — the two
@@ -80,8 +82,9 @@ and do not re-open those files to "verify" it.
 - Token codes are duplicated in `parse_tree`, `narg`, `OperF`, `OperF2`, and
   `vector_population` (`rand()%21+1`); keep them in sync when changing the
   alphabet.
-- `FunbObj::fitness()` sums `(y'' + y)^4` over the grid from `x_rango(0, 1, 0.1)`
-  plus penalties for `y(0) != 1` and `y'(0) != 1`; trees that do not fully parse
+- `FunbObj::fitness()` sums `(y'' + y)^4` over `x_rango(0, 1, 100)` — 100
+  equally spaced points in `[0,1]`, step `1/99 ≈ 0.0101` (paper §5) — plus
+  penalties for `y(0) != 1` and `y'(0) != 1`; trees that do not fully parse
   or contain no `x` get `INFINITY`. Fitness < 1e-5 stops the run; the expected
   winner renders like `(cos(x))+(sin(x))` (solution of `y'' + y = 0` with
   `y(0) = y'(0) = 1`).

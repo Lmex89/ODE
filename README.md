@@ -33,7 +33,7 @@ Expressions are evaluated using **second-order dual-number arithmetic** ("2dual"
 
 ### Fitness function
 
-The default fitness sums `(y'' + y)⁴` over a grid (testing how close the candidate is to satisfying `y'' + y = 0`), plus penalties for violating initial conditions `y(0) ≠ 1` and `y'(0) ≠ 1`. Trees that fail to parse or contain no `x` variable receive infinite fitness.
+The default fitness sums `(y'' + y)⁴` over a grid of 100 equally spaced points in `[0,1]` (step `1/99 ≈ 0.0101`, per the paper; testing how close the candidate is to satisfying `y'' + y = 0`), plus penalties for violating initial conditions `y(0) ≠ 1` and `y'(0) ≠ 1`. Trees that fail to parse or contain no `x` variable receive infinite fitness.
 
 ### Evolutionary loop
 
@@ -65,7 +65,7 @@ g++ -std=c++17 -Wall -O3 dualfunctions.cpp semilla.cpp parse_tree.cpp -o main.ex
 ```bash
 make        # build ./main.exe (incremental)
 make run    # build if needed, then execute
-make test   # build and run the unit tests (dual numbers, seed, mutation, crossover)
+make test   # build and run the unit tests (dual numbers, seed, mutation, crossover, grid)
 make clean  # remove object files and binaries
 ```
 
@@ -94,7 +94,7 @@ The program prints the best-fitting expression and its fitness each generation. 
 make test
 ```
 
-`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). They link only the modules under test and do not run the evolutionary loop; `test_mutation.cpp` and `test_crossover.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs.
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included, and `FunbObj::fitness()` sums the paper's 100 points). They link only the modules under test and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp` and `test_grid.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp` includes `parse_tree.cpp` directly to reach the header-less `FunbObj`).
 
 ### A/B experiment
 
@@ -121,6 +121,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `test_mutation.cpp` | DE/rand/1/bin mutation tests, run with `make test` |
 | `test_crossover.cpp` | Binomial crossover tests, run with `make test` |
 | `test_semilla.cpp` | `ODE_SEED` resolution tests, run with `make test` |
+| `test_grid.cpp` | Evaluation-grid tests, run with `make test` |
 | `scripts/ab_experiment.sh` | Reproducible A/B experiment (pre-fix vs post-fix, same seed) |
 | `docs/ab-experiment.md` | A/B comparison report and conclusions |
 | `Untitled.ipynb` | SageMath scratchpad for reference ODE/solution (not part of the build) |
@@ -128,7 +129,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 ## Caveats
 
 - Search is stochastic by default (`srand(time(NULL))`); set `ODE_SEED=N` for reproducible runs
-- No CI; dual-number, seed, mutation and crossover tests run with `make test`
+- No CI; dual-number, seed, mutation, crossover and grid tests run with `make test`
 - Code comments are in Spanish
 - `dualfunctions.h` requires STL headers (`vector`, `string`) to be included before it
 - The SageMath notebook's fitness formula is stale; the C++ code is the source of truth

@@ -17,13 +17,23 @@ typedef long long int llint;
 typedef  long double ldouble;
 typedef string  str;
 
-vector<vector<long double>> x_rango(long double start,long double stop,long double step){
+// x_rango: construye la rejilla de evaluacion como `npoints` puntos igualmente
+// espaciados en [start, stop], ambos extremos incluidos. Antes el tercer
+// parametro era un paso y el conteo salia de una division truncada
+// (`int final = stop/step`): con paso 0.1 ese truncamiento daba 11 puntos en
+// vez de los 100 que pide el paper (REVIEW C1). Ahora el conteo es explicito y
+// cada punto se calcula con x_i = start + (stop-start)*i/(npoints-1), que en
+// Python seria:
+//     [start + (stop - start) * i / (npoints - 1) for i in range(npoints)]
+// Cada punto se empaqueta como el 2dual [x, 1, 0] (eq. (14) del paper): x con
+// dx/dx = 1 y d2x/dx2 = 0, la convencion que espera parsv().
+vector<vector<long double>> x_rango(long double start,long double stop,int npoints){
 
 	vector<vector<long double>> ans;
-	int final = stop /step;
 
-	for(int i  = (int) start; i < final+2; i++){
-		vector<long double> temp = {i*step,1.0,0.0};
+	for(int i = 0; i < npoints; i++){
+		long double pos = start + (stop - start) * i / (npoints - 1);
+		vector<long double> temp = {pos,1.0,0.0};
 		ans.push_back(temp);
 	}
 	return ans;
@@ -40,7 +50,10 @@ class FunbObj{
 
 	public:
 	FunbObj(vector<ldouble> vecval,ldouble start,ldouble stop){
-		_xrange = x_rango(start,stop,0.1);
+		// Rejilla de evaluacion: los 100 puntos igualmente espaciados de [0,1]
+		// que pide el paper (§5). En Python seria
+		// `self._xrange = x_rango(start, stop, 100)`.
+		_xrange = x_rango(start,stop,100);
 		_repre = parse_tree(vecval);
 		_xrange[0] = _xinitials;
 		_vecval = vecval;

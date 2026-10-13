@@ -208,6 +208,131 @@ static void test_parse_tree_token12() {
     check_str("parse_tree([18,14,11,13,11])", parse_tree(suma), "(cos(x))+(sin(x))");
 }
 
+// -------------------------------------------------------------------------
+// Slice 5 (issue #10): OperF2 consume sus operandos en el sitio.
+// El parser de referencia (paper, Apendice A, Algorithm 1) evalua de derecha
+// a izquierda y borra (componente real = NaN) cada operando que consume, para
+// que la operacion siguiente solo vea los resultados de sus dos subarboles.
+// OperF2 recibe la matriz completa y la posicion desde la que buscar
+// (`inicio`), como el Fortran que pasa `auxv(:,k+1:length)` por referencia:
+// en Python no vale una copia de la lista, hay que mutar la original.
+// -------------------------------------------------------------------------
+
+static void test_operf2_consumo_en_sitio() {
+    // x*x en x=2 -> [4, 4, 2]; los dos operandos [2,1,0] quedan borrados
+    // (NaN en su componente real) despues de la operacion.
+    std::vector<std::vector<long double>> mat = {{2, 2}, {1, 1}, {0, 0}};
+    check_vec("OperF2(19) calcula x*x", OperF2(19, mat), {4.0L, 4.0L, 2.0L});
+    check_vec("OperF2(19) borra los operandos consumidos", mat[0], {NAN, NAN});
+}
+
+static void test_operf2_salta_huecos_nan() {
+    // [5, NaN, 3, 7]: los dos primeros operandos no-NaN son 5 y 3; el 7
+    // queda fuera (una operacion binaria solo come dos) y el hueco NaN no
+    // se toca. Antes se borraba el vecino (j+1) y el escaneo paraba en
+    // dim-1, asi que este caso ni se alcanzaba.
+    std::vector<std::vector<long double>> mat = {{5, NAN, 3, 7}, {0, 0, 0, 0}, {0, 0, 0, 0}};
+    check_vec("OperF2(18) toma los dos primeros no-NaN", OperF2(18, mat),
+              {8.0L, 0.0L, 0.0L});
+    check_vec("OperF2(18) borra exactamente los consumidos", mat[0],
+              {NAN, NAN, NAN, 7.0L});
+}
+
+static void test_operf2_inicio() {
+    // `inicio` emula la seccion `auxv(:,k+1:length)` del Fortran: se busca
+    // desde esa columna hacia la derecha y lo anterior no se toca. En Python
+    // seria el equivalente a `for j in range(inicio, len(row))`.
+    std::vector<std::vector<long double>> mat = {{9, 9, 5, 3}, {9, 9, 0, 0}, {9, 9, 0, 0}};
+    check_vec("OperF2(18, inicio=2) opera desde la columna 2", OperF2(18, mat, 2),
+              {8.0L, 0.0L, 0.0L});
+    check_vec("OperF2(18, inicio=2) no toca lo anterior", mat[0],
+              {9.0L, 9.0L, NAN, NAN});
+}
+
+// -------------------------------------------------------------------------
+// Slice 6 (issue #10): parsv borra el operando que consume un unario.
+// El operando de `sin`, `cos`, ... vive en la columna k+1; tras evaluarlo hay
+// que escribir NaN en auxv[0][k+1] para que la operacion de la izquierda no
+// lo vuelva a ver (Algorithm 1). Sin ese borrado, `-x+2` suma la hoja x dos
+// veces y `sin(cos(x))+2` engancha cos(x) en vez del 2.
+// -------------------------------------------------------------------------
+
+static void test_parsv_consumo_unario() {
+    // -x+2 en x=1 -> [1, -1, 0] (hoja x consumida por la negacion).
+    std::vector<long double> x1 = {1.0L, 1.0L, 0.0L};
+    check_vec("parsv(-x+2) en x=1", parsv({18, 12, 11, 2}, x1), {1.0L, -1.0L, 0.0L});
+}
+
+static void test_parsv_cadena_unaria() {
+    // sin(cos(x))+2 en x=0.3. Valores esperados por regla de la cadena:
+    //   f   = sin(cos(x)) + 2
+    //   f'  = cos(cos(x)) * (-sin(x))
+    //   f'' = -sin(cos(x))*sin(x)^2 - cos(cos(x))*cos(x)
+    // (formulas cerradas de libm, independientes de la implementacion).
+    long double x = 0.3L;
+    std::vector<long double> esperado = {
+        std::sin(std::cos(x)) + 2.0L,
+        std::cos(std::cos(x)) * (-std::sin(x)),
+        -std::sin(std::cos(x)) * std::sin(x) * std::sin(x) - std::cos(std::cos(x)) * std::cos(x)
+    };
+    check_vec("parsv(sin(cos(x))+2) en x=0.3", parsv({18, 13, 14, 11, 2}, {x, 1.0L, 0.0L}),
+              esperado);
+}
+
+// -------------------------------------------------------------------------
+// Slice 7 (issue #10): parsv ejecuta los binarios sobre la matriz completa.
+// parsv ya no copia la sub-matriz a `auxv321`: le pasa auxv y k+1 para que
+// el borrado de OperF2 caiga en el arbol real. La diferencia se ve cuando el
+// operando consumido por un binario esta en medio del subarbol de otro:
+// (x*x)+1 debe sumar 9+1, no 9+3 (la hoja x que el producto ya se comio).
+// -------------------------------------------------------------------------
+
+static void test_parsv_bateria_binaria() {
+    std::vector<long double> x2 = {2.0L, 1.0L, 0.0L};
+    // Bateria de aceptacion del issue #10; cada esperado es la formula
+    // cerrada (libm), no una copia de la implementacion.
+    check_vec("parsv(x*x) en x=2", parsv({19, 11, 11}, x2), {4.0L, 4.0L, 2.0L});
+    check_vec("parsv(sin(x)+x) en x=2", parsv({18, 13, 11, 11}, x2),
+              {std::sin(2.0L) + 2.0L, std::cos(2.0L) + 1.0L, -std::sin(2.0L)});
+    check_vec("parsv(x/2) en x=2", parsv({20, 11, 2}, x2), {1.0L, 0.5L, 0.0L});
+    check_vec("parsv(2/x) en x=2", parsv({20, 2, 11}, x2), {1.0L, -0.5L, 0.5L});
+    check_vec("parsv(x^2) en x=2", parsv({21, 11, 2}, x2), {4.0L, 4.0L, 2.0L});
+    check_vec("parsv(2^x) en x=2", parsv({21, 2, 11}, x2),
+              {4.0L, 4.0L * std::log(2.0L),
+               4.0L * std::log(2.0L) * std::log(2.0L)});
+    check_vec("parsv(x+(x+x)) en x=2", parsv({18, 11, 18, 11, 11}, x2),
+              {6.0L, 3.0L, 0.0L});
+    // Expresion binaria incompleta: sin segundo operando -> NaN.
+    check_vec("parsv(x*x sin segundo operando) es NaN", parsv({19, 11}, x2),
+              {NAN, NAN, NAN});
+}
+
+static void test_parsv_binario_no_reutiliza_hoja() {
+    // (x*x)+1 en x=3: el 9 consume las dos hojas x; la suma debe usar 9 y 1.
+    // Con la copia de la sub-matriz, la segunda hoja x seguia viva y la suma
+    // daba 12 (silenciosamente incorrecto).
+    check_vec("parsv((x*x)+1) en x=3", parsv({18, 19, 11, 11, 1}, {3.0L, 1.0L, 0.0L}),
+              {10.0L, 6.0L, 2.0L});
+    // (2/x)+1 en x=2: 2/x = 1, +1 = 2 (con la hoja viva daria 3).
+    check_vec("parsv((2/x)+1) en x=2", parsv({18, 20, 2, 11, 1}, {2.0L, 1.0L, 0.0L}),
+              {2.0L, -0.5L, 0.5L});
+}
+
+// -------------------------------------------------------------------------
+// Slice 8 (issue #10): parada temprana cuando una operacion da NaN.
+// Algorithm 1 devuelve NaN en cuanto una operacion produce NaN, en vez de
+// seguir evaluando. Con una cola de tokens de mas se nota: [18,16,11,14,11,2]
+// es log(x)+cos(x) con un "2" de cola; log(-1) da NaN y, sin cortar, la suma
+// salta ese NaN y engancha cos(-1) y la cola 2 (2.5403 en vez de NaN).
+// -------------------------------------------------------------------------
+
+static void test_parsv_parada_temprana_nan() {
+    std::vector<long double> tokens = {18, 16, 11, 14, 11, 2};
+    std::vector<long double> xval   = {-1.0L, 1.0L, 0.0L};  // log(-1) = NaN
+    check_vec("parsv(operacion NaN) corta con NaN", parsv(tokens, xval),
+              {NAN, NAN, NAN});
+}
+
 int main() {
     std::cout << "== test_dual: issue #2 ==\n";
     test_narg_token12();
@@ -217,6 +342,14 @@ int main() {
     test_narg_tabla();
     test_parsv_funciones_conocidas();
     test_parse_tree_token12();
+    test_operf2_consumo_en_sitio();
+    test_operf2_salta_huecos_nan();
+    test_operf2_inicio();
+    test_parsv_consumo_unario();
+    test_parsv_cadena_unaria();
+    test_parsv_bateria_binaria();
+    test_parsv_binario_no_reutiliza_hoja();
+    test_parsv_parada_temprana_nan();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
               << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;  // codigo de salida como el de pytest

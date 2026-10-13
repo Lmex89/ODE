@@ -253,13 +253,21 @@ int narg(ldouble x){
 	return f_result;
 }
 
-vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval) {
+vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval, int inicio) {
 /*
  * Esta funcion opera cuando +*-/ cuando son 2 argumentos y despues aplica
  * NAN a todo lo demás
+ *
+ * `vecval` es la matriz completa [valor, d1, d2] de todo el arbol y `inicio`
+ * es la columna desde la que hay que buscar los operandos (parsv le pasa
+ * k+1). Es el equivalente C++ de la seccion `auxv(:,k+1:length)` que el
+ * Fortran del paper (Ap. A) pasa POR REFERENCIA: como `vecval` tambien es
+ * una referencia (`&`), borrar una columna aqui borra la auxv original de
+ * parsv. En Python no existe ese paso por referencia implicito: una copia
+ * de la lista no propagaria el borrado; habria que mutar la lista original.
 */
 
-	int j,cont = 0,dim;
+	int cont = 0,dim;
 	const long double NANf = sqrt(-1);
 	vector<ldouble> temp;
 	temp.assign(3,NANf);
@@ -271,14 +279,14 @@ vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval) {
 		auxiliar.push_back(temp);
 	}
 
-	//cout << dim << "Estou en dim " <<endl;
-	//cout  << "Estou en dim " <<endl;
-	//cout << "estoy en Operf2" << endl;
-	//imprime(vecval[0]);
-	//imprime(vecval[1]);
-
-
-	for ( j = 0; j < dim -1; j++){
+	// Consumo de operandos (Algorithm 1 del paper): se recorre la sub-matriz
+	// desde `inicio` y se toman las DOS primeras columnas cuya componente
+	// real no sea NaN (las hojas las inicializa parsv; los operandos ya
+	// consumidos quedan en NaN). El escaneo llega hasta el final
+	// (`j < dim`; antes paraba en `dim - 1` y nunca miraba la ultima
+	// columna) y borra la columna que consume (`j`; antes borraba la
+	// siguiente, `j + 1`).
+	for (int j = inicio; j < dim && cont < 2; j++){
 	if(isnan(vecval[0][j])){
 		continue;
 		}
@@ -286,18 +294,20 @@ vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval) {
 		auxiliar[0][cont]=vecval[0][j];
 		auxiliar[1][cont]=vecval[1][j];
 		auxiliar[2][cont]=vecval[2][j];
-		vecval[0][j+1]=NANf;
+		// Borrado EN EL SITIO: NaN en la componente real de la columna
+		// consumida, dentro de la matriz compartida con parsv. Asi la
+		// operacion de la izquierda ya no ve este operando.
+		vecval[0][j]=NANf;
 
 		cont++;
 	}
-	if(cont == 2) break;
 	}
 
 
+	// Solo se opera si se encontraron dos operandos; si no, f_result queda
+	// todo NaN (expresion incompleta, sin dos subarboles que comer).
+	if (cont == 2){
 	if (x == 18){
-
-		/*	imprime( auxiliar[0]);
-			imprime( auxiliar[1]);*/
 
 		f_result[0]    = auxiliar[0][0] + auxiliar[0][1];
 		f_result[1]    = auxiliar[1][0] + auxiliar[1][1];
@@ -332,6 +342,7 @@ vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval) {
 		}
 
 		f_result = pow2dual(x1,y);
+	}
 	}
 
 	return f_result;
@@ -416,60 +427,59 @@ vector<ldouble> parsv(vector<ldouble> x, vector<ldouble> xval){
 
 	for (k = dim - 2; k>= 0; k--){
 	if( narg(x[k]) == 1  && isnan(auxv[0][k+1]) == false   ){
-		//cout << "dentro del fi" << endl;
-
-		//imprime(auxv[2]); cout << endl;
-		//cout <<" narg1" << endl;
-
+		// `xuax` es la copia del operando [valor, d1, d2] que se pasa a
+		// OperF (que no modifica su entrada). En Python seria
+		// `xuax = auxv[:, k+1].copy()`.
 		vector<long double> xuax(3) ;
 		xuax[0] = auxv[0][k+1];
 		xuax[1] = auxv[1][k+1];
 		xuax[2] = auxv[2][k+1];
-		//cout <<"dasd"<< xuax[2] << endl;
 
 		vector<long double > temp(OperF(x[k],xuax));
+
+		// Consumo EN EL SITIO del operando: la columna k+1 ya se uso, asi
+		// que se borra (NaN en la componente real) para que las operaciones
+		// de la izquierda no la vuelvan a ver, igual que el Fortran del
+		// paper que pasa `auxv(:,k+1)` por referencia (Algorithm 1). Antes el
+		// original quedaba vivo y el siguiente binario volvia a "comer" esta
+		// misma hoja en lugar de su otro subarbol.
+		auxv[0][k+1] = NANf;
+
+		// Parada temprana (Algorithm 1): si la operacion produjo NaN, el
+		// arbol entero ya no puede dar un valor finito, asi que se corta
+		// aqui en vez de seguir evaluando operaciones a la izquierda (que
+		// podrian "saltarse" el NaN y enganchar otros operandos). En Python:
+		// `if math.isnan(temp[0]): return [float("nan")]*3`.
+		if (isnan(temp[0])){
+			return {NANf, NANf, NANf};
+		}
+
 		auxv[0][k] = temp[0];
 		auxv[1][k] = temp[1];
 		auxv[2][k] = temp[2];
 
-
-	//	imprime(temp);
-		//cout << endl;
-
-
-
 	}
 		else if( narg(x[k]) == 2  ){
 
+		// OperF2 recibe la matriz completa `auxv` y desde que columna hay
+		// que buscar (k+1), igual que el Fortran del paper que pasa
+		// `auxv(:,k+1:length)` POR REFERENCIA (Algorithm 1). Antes se
+		// copiaba la sub-matriz a `auxv321` y el borrado de los operandos
+		// consumidos se quedaba en la copia: el arbol original seguia
+		// viendo esas hojas y otro binario las volvia a "comer" (p. ej.
+		// (x*x)+1 daba 12 en vez de 10). En Python seria pasar la lista
+		// original y el indice, sin rebanarla con `auxv[:, k+1:]`.
+		vector<ldouble> temp(OperF2(x[k],auxv,k+1));
 
-		vector<ldouble> auxvtemp1(auxv[0].begin()+k+1,auxv[0].end());
-		vector<ldouble> auxvtemp2(auxv[1].begin()+k+1,auxv[1].end());
-		vector<ldouble> auxvtemp3(auxv[2].begin()+k+1,auxv[2].end());
-
-		vector< vector<ldouble>> auxv321;
-
-			auxv321.push_back(auxvtemp1);
-			auxv321.push_back(auxvtemp2);
-			auxv321.push_back(auxvtemp3);
-
-
-
-		//vector<ldouble> auxv23(auxv[2].begin()+k+1,auxv[2].end());
-		//cout << auxv2.size() << " los "<< auxv2[0] << endl;
-		//imprime(auxv321[0]);
-		//cout << "///////" << endl;
-		//imprime(auxvtemp1) ;
-		//cout << ":::" << endl;
-		vector<ldouble> temp(OperF2(x[k],auxv321));
+		// Misma parada temprana que en el camino unario: un NaN devuelto
+		// por la operacion corta la evaluacion (Algorithm 1).
+		if (isnan(temp[0])){
+			return {NANf, NANf, NANf};
+		}
 
 		auxv[0][k]=temp[0];
 		auxv[1][k]=temp[1];
 		auxv[2][k]=	temp[2];
-		/*auxv[0][k+1]=NAN;
-		auxv[1][k+1]=NAN;
-		auxv[2][k+1]=NAN;
-		*/
-		//cout << "auxv[k] = "<<auxv[0][k]  << endl;
 
 			}
 		}

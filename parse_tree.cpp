@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <utility>
 #include "dualfunctions.h"
+#include "semilla.h"
 
 using namespace std;
 using namespace std::complex_literals;
@@ -258,7 +259,13 @@ int main() {
 
 	unsigned t0, t1;
  	t0=clock();
- 	srand (time(NULL));
+ 	// Semilla controlada por ODE_SEED (issue #4): con ODE_SEED=42 todas las
+ 	// corridas salen identicas (mismo fitness, mismo vector), que es lo que
+ 	// exige el experimento A/B. Sin la variable se usa el reloj, como antes.
+ 	// En Python seria: random.seed(os.environ.get("ODE_SEED")).
+ 	long semilla = resolver_semilla(getenv("ODE_SEED"), (long) time(NULL));
+ 	cout << "Seed: " << semilla << endl;
+ 	srand ((unsigned) semilla);
  	int tam =275;
  	vector<FunbObj> Population1 ,Population2;
 	createPopulation(Population1,tam);

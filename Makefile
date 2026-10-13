@@ -11,7 +11,7 @@ CXXFLAGS := -std=c++17 -Wall -O3
 LDFLAGS  :=
 
 TARGET := main.exe
-SRCS   := dualfunctions.cpp parse_tree.cpp
+SRCS   := dualfunctions.cpp semilla.cpp parse_tree.cpp
 # $(SRCS:.cpp=.o) renombra cada fuente a un objeto: seria como
 # [s[:-4] + ".o" for s in SRCS] en Python.
 OBJS   := $(SRCS:.cpp=.o)
@@ -35,10 +35,12 @@ $(TARGET): $(OBJS)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# parse_tree.cpp incluye dualfunctions.h: si el header cambia, hay que
-# recompilar ese .o. (dualfunctions.cpp no incluye el header, por eso no
+# parse_tree.cpp incluye dualfunctions.h y semilla.h: si algun header cambia,
+# hay que recompilar ese .o. (dualfunctions.cpp no incluye headers, por eso no
 # aparece aqui.)
-parse_tree.o: parse_tree.cpp dualfunctions.h
+parse_tree.o: parse_tree.cpp dualfunctions.h semilla.h
+
+semilla.o: semilla.cpp semilla.h
 
 # `make run` compila si hace falta y ejecuta el binario. Esta separado de
 # `all` porque el programa es estocastico (srand(time(NULL))) y puede tardar
@@ -46,17 +48,22 @@ parse_tree.o: parse_tree.cpp dualfunctions.h
 run: $(TARGET)
 	./$(TARGET)
 
-# `make test`: compila y corre test_dual.cpp (tests de dual numbers del
-# issue #2). Enlaza dualfunctions.cpp + test_dual.cpp nada mas: parse_tree.cpp
-# define su propio main() y no puede entrar (error de simbolo duplicado).
-# En Python seria como correr `pytest`: exit code != 0 si algun assert falla.
-TESTBIN := test_dual.exe
+# `make test`: compila y corre los tests (dual numbers del issue #2 y control
+# de semilla del issue #4). Cada binario enlaza solo lo que necesita:
+# parse_tree.cpp define su propio main() y no puede entrar en ninguno (error
+# de simbolo duplicado). En Python seria como correr `pytest`: exit code != 0
+# si algun assert falla.
+TESTBINS := test_dual.exe test_semilla.exe
 
-test: $(TESTBIN)
-	./$(TESTBIN)
+test: $(TESTBINS)
+	./test_dual.exe
+	./test_semilla.exe
 
-$(TESTBIN): dualfunctions.cpp test_dual.cpp dualfunctions.h
+test_dual.exe: dualfunctions.cpp test_dual.cpp dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) dualfunctions.cpp test_dual.cpp -o $@
 
+test_semilla.exe: semilla.cpp test_semilla.cpp semilla.h
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) semilla.cpp test_semilla.cpp -o $@
+
 clean:
-	rm -f $(OBJS) $(TARGET) $(TESTBIN)
+	rm -f $(OBJS) $(TARGET) $(TESTBINS)

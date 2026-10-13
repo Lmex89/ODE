@@ -74,9 +74,29 @@ static void test_createPopulation_tamano_uniforme() {
     check_bool("todos los individuos tienen 20 tokens (semillero uniforme)", todos_20);
 }
 
+// -------------------------------------------------------------------------
+// Slice 2 (issue #28): createPopulation crea EXACTAMENTE los individuos que
+// pide su parametro `tam`. Antes el bucle aleatorio era `i < tam - 4` con 5
+// semillas fijas, asi que una poblacion de 10 salia de 11 individuos (el
+// off-by-one que reporta REVIEW C5: 5 + tam - 4 = tam + 1).
+// -------------------------------------------------------------------------
+
+static void test_createPopulation_cantidad_exacta() {
+    srand(20261013);
+
+    vector<FunbObj> poblacion;
+    createPopulation(poblacion, 10, 0);
+
+    // 10 es un literal independiente de la implementacion: el contrato es
+    // "tantos individuos como pidas", no "los que salgan de la formula".
+    check_bool("createPopulation(10) crea exactamente 10 individuos",
+               poblacion.size() == 10);
+}
+
 int main() {
     std::cout << "== test_population: issue #11 (uniformidad del semillero) ==\n";
     test_createPopulation_tamano_uniforme();
+    test_createPopulation_cantidad_exacta();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
               << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;  // como el exit code de pytest

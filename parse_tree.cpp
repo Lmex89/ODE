@@ -242,7 +242,10 @@ void createPopulation(vector<FunbObj>&Population,int tam,int caso){
 	FunbObj temp4(c5,0,1,caso);
 	Population.push_back(temp4);
 
-	for (int  i = 0 ; i < tam - 4 ; i++){
+	// Se descuentan las cinco semillas fijas: 5 + (tam - 5) = tam individuos
+	// exactos. Antes era `tam - 4` y la poblacion terminaba con un individuo de
+	// mas (off-by-one de REVIEW C5: se pedia tam y se creaba tam + 1).
+	for (int  i = 0 ; i < tam - 5 ; i++){
 
 		vector<ldouble> temporal(vector_population(20));
 		FunbObj temp(temporal,0,1,caso);

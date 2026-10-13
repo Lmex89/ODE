@@ -64,7 +64,8 @@ g++ -std=c++17 -Wall -O3 dualfunctions.cpp parse_tree.cpp -o main.exe
 ```bash
 make        # build ./main.exe (incremental)
 make run    # build if needed, then execute
-make clean  # remove object files and binary
+make test   # build and run the dual-number test suite
+make clean  # remove object files and binaries
 ```
 
 The Makefile builds with `g++` by default; use `make CXX=icpc` where Intel's
@@ -82,6 +83,14 @@ The program prints the best-fitting expression and its fitness each generation. 
 ./main.exe | tail -30
 ```
 
+### Testing
+
+```bash
+make test
+```
+
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). It links only `dualfunctions.cpp` and does not run the evolutionary loop.
+
 ## Files
 
 | File | Description |
@@ -90,13 +99,14 @@ The program prints the best-fitting expression and its fitness each generation. 
 | `dualfunctions.h` | Header for token interpreter and 2nd-order dual-number arithmetic |
 | `dualfunctions.cpp` | Implementation of 2dual operations (sin, cos, exp, log, pow, etc.) and tree evaluation |
 | `parse_tree_bckp.cpp` | Reference backup — **do not compile** (also defines `main()`) |
-| `Makefile` | Build targets: `make`, `make run`, `make clean` (`g++` by default) |
+| `Makefile` | Build targets: `make`, `make run`, `make test`, `make clean` (`g++` by default) |
+| `test_dual.cpp` | Dual-number evaluation tests, run with `make test` |
 | `Untitled.ipynb` | SageMath scratchpad for reference ODE/solution (not part of the build) |
 
 ## Caveats
 
 - Search is stochastic (`srand(time(NULL))`) — runs are not reproducible
-- No test suite or CI
+- No CI; dual-number tests run with `make test`
 - Code comments are in Spanish
 - `dualfunctions.h` requires STL headers (`vector`, `string`) to be included before it
 - The SageMath notebook's fitness formula is stale; the C++ code is the source of truth

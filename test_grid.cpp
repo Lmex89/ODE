@@ -148,6 +148,52 @@ static void test_fitness_usa_la_rejilla_de_100_puntos() {
     check_ld("fitness(x) suma la rejilla de 100 puntos", f.fitness(), esperado, 1e-6L);
 }
 
+// -------------------------------------------------------------------------
+// Slice 3: el Caso 1 del paper (ODE_CASE=1). La fitness usa el residuo de la
+// ecuacion (18), x*y'' + y' - cos(x) = 0 (la forma multiplicada de (16) que
+// el paper minimiza) y las condiciones iniciales y(0)=0, y'(0)=1.
+// -------------------------------------------------------------------------
+
+static void test_fitness_caso1_residuo_del_paper() {
+    // Ejemplo trabajado con `x` (token 11): parsv([11], [x,1,0]) = [x,1,0] =>
+    //     residuo = x*0 + 1 - cos(x) = 1 - cos(x)
+    //     penalizaciones = 300*(0-0)^4 + 700*(1-1)^4 = 0
+    // El valor esperado se calcula aqui por su cuenta (la suma), sin usar la
+    // implementacion.
+    FunbObj f({11}, 0.0L, 1.0L, 1);
+    long double esperado = 0.0L;
+    for (int i = 0; i < 100; i++) {
+        long double x = (long double) i / 99.0L;
+        esperado += std::pow(1.0L - std::cos(x), 4);
+    }
+    check_ld("fitness_caso1(x) usa x*y''+y'-cos(x)", f.fitness(), esperado, 1e-6L);
+}
+
+static void test_fitness_caso1_funcion_unaria() {
+    // Segunda comprobacion con una funcion unaria, `sin(x)` (tokens 13,11):
+    //     parsv(sin(x)) = [sin(x), cos(x), -sin(x)]
+    //     residuo = x*(-sin(x)) + cos(x) - cos(x) = -x*sin(x)
+    //     penalizaciones = 300*(sin 0 - 0)^4 + 700*(cos 0 - 1)^4 = 0
+    // Pedir y(0)=0 hace que `sin(x)` sea una semilla natural del caso 1.
+    FunbObj f({13, 11}, 0.0L, 1.0L, 1);
+    long double esperado = 0.0L;
+    for (int i = 0; i < 100; i++) {
+        long double x = (long double) i / 99.0L;
+        esperado += std::pow(-x * std::sin(x), 4);
+    }
+    check_ld("fitness_caso1(sin(x)) usa los pesos del caso 1", f.fitness(), esperado, 1e-6L);
+}
+
+// NOTA (#10, REVIEW B1): la solucion aproximada del paper para el Caso 1,
+//     y_s(x) = x*cos(x/(5*cos(cos 9)))   (ec. (20))
+// en prefijo es {19,11,14,20,11,19,5,14,14,9}, y su fitness con este residuo
+// es ~1.5e-8 (< 1e-5), asi que el caso es alcanzable CON ESTE ALFABETO. Hoy
+// no se puede comprobar en un test: parsv() todavia no consume operandos
+// (issue #10), y esa expresion se evalua mal (p. ej. `x/2` da NaN y
+// `x*cos(x/5)` da el valor de `x*x`). Cuando #10 se cierre, el test natural
+// es `check_bool("ec. (20) converge (<1e-5)", f.fitness() < 1e-5L)` sobre
+// esos 10 tokens.
+
 int main() {
     std::cout << "== test_grid: issue #7 (rejilla de evaluacion) ==\n";
     test_x_rango_cantidad_de_puntos();
@@ -155,6 +201,8 @@ int main() {
     test_x_rango_espaciado_uniforme();
     test_x_rango_triple_dual();
     test_fitness_usa_la_rejilla_de_100_puntos();
+    test_fitness_caso1_residuo_del_paper();
+    test_fitness_caso1_funcion_unaria();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
               << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;  // como el exit code de pytest

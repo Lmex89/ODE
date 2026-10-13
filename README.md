@@ -35,6 +35,8 @@ Expressions are evaluated using **second-order dual-number arithmetic** ("2dual"
 
 The default fitness sums `(y'' + y)⁴` over a grid of 100 equally spaced points in `[0,1]` (step `1/99 ≈ 0.0101`, per the paper; testing how close the candidate is to satisfying `y'' + y = 0`), plus penalties for violating initial conditions `y(0) ≠ 1` and `y'(0) ≠ 1`. Trees that fail to parse or contain no `x` variable receive infinite fitness.
 
+`ODE_CASE=1` switches to **Case 1 of the paper** (eq. (18)): residual `x·y'' + y' − cos(x)` and initial conditions `y(0) = 0`, `y'(0) = 1` over the same 100-point grid `[0,1]`, with the same weights and stop threshold. Its exact solution is `Si(x) = ∫₀ˣ (sin t)/t dt` (not elementary); the paper reports the approximation `y_s(x) = x·cos(x/(5·cos(cos 9)))`, which scores ≈ `1.5e-8` under this quartic fitness. Note: evaluating expressions like this one needs the operand-consumption semantics of issue #10 (`REVIEW.md`, B1); until that lands, the Case 1 search cannot reach the threshold.
+
 ### Evolutionary loop
 
 Single-population DE/rand/1/bin:
@@ -75,14 +77,22 @@ compiler is available.
 ### Running
 
 ```bash
-./main.exe                # stochastic: seed from the clock
-ODE_SEED=42 ./main.exe    # reproducible: fixed seed, identical run
+./main.exe                  # stochastic: seed from the clock
+ODE_SEED=42 ./main.exe      # reproducible: fixed seed, identical run
+ODE_CASE=1 ODE_SEED=42 ./main.exe   # paper's Case 1 instead of the default ODE
 ```
 
-`ODE_SEED` fixes the `srand()` seed and the chosen value is printed as
-`Seed: N` at startup. Without the variable the clock is used, as before.
+`ODE_SEED` fixes the `srand()` seed and the chosen value is printed in the
+startup log line (`[INFO ] de_run_start | seed=N ...`). Without the variable
+the clock is used, as before. `ODE_CASE` selects the problem (`0` or unset:
+default toy ODE; `1`: paper's Case 1, `x·y'' + y' − cos(x) = 0` with `y(0)=0`,
+`y'(0)=1`); the same line carries `case=N`.
 
-The program prints the best-fitting expression and its fitness each generation. It typically converges in seconds but may run up to 100,000 generations. Output can be very verbose — consider piping through `tail`:
+The program logs one structured line per event (`[  0.12s] [INFO ] gen=1
+best=... best_ever=... expr=...`), plus `new_best` records, a final `solution`
+line and a `de_run_end` summary. It typically converges in seconds but may run
+up to 100,000 generations. Output can be very verbose — consider piping through
+`tail`:
 
 ```bash
 ./main.exe | tail -30
@@ -94,7 +104,7 @@ The program prints the best-fitting expression and its fitness each generation. 
 make test
 ```
 
-`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included, and `FunbObj::fitness()` sums the paper's 100 points). They link only the modules under test and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp` and `test_grid.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp` includes `parse_tree.cpp` directly to reach the header-less `FunbObj`).
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included, `FunbObj::fitness()` sums the paper's 100 points, and the Case 1 (`ODE_CASE=1`) residual/weights). They link only the modules under test and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp` and `test_grid.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp` includes `parse_tree.cpp` directly to reach the header-less `FunbObj`).
 
 ### A/B experiment
 
@@ -128,7 +138,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 
 ## Caveats
 
-- Search is stochastic by default (`srand(time(NULL))`); set `ODE_SEED=N` for reproducible runs
+- Search is stochastic by default (`srand(time(NULL))`); set `ODE_SEED=N` for reproducible runs and `ODE_CASE=1` for the paper's Case 1
 - No CI; dual-number, seed, mutation, crossover and grid tests run with `make test`
 - Code comments are in Spanish
 - `dualfunctions.h` requires STL headers (`vector`, `string`) to be included before it

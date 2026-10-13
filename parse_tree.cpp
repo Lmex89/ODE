@@ -8,6 +8,8 @@
 #include <time.h>
 #include <algorithm>
 #include <utility>
+#include <sstream>
+#include <iomanip>
 #include "dualfunctions.h"
 #include "semilla.h"
 
@@ -47,9 +49,20 @@ class FunbObj{
 	ldouble _fresult;
 	vector<vector<ldouble>> _xrange;
 	vector<long double> _xinitials = {0.0,1.0,0.0};
+	// Caso del problema que mide esta fitness (lo elige ODE_CASE en main()):
+	//   0 = juguete historico del prototipo: y'' + y = 0, y(0)=1, y'(0)=1
+	//   1 = Caso 1 del paper, ecuacion (18): x*y'' + y' - cos(x) = 0,
+	//       y(0)=0, y'(0)=1, con solucion exacta la integral del seno Si(x)
+	// Es el mismo patron que ODE_SEED: un numero de caso en vez de una bandera
+	// por problema. En Python seria `self._caso = caso`.
+	int _caso;
 
 	public:
-	FunbObj(vector<ldouble> vecval,ldouble start,ldouble stop){
+	// caso: selecciona la ODE que evalua fitness() (ver _caso). Tiene valor por
+	// defecto 0 para que el resto del programa y los tests que ya construian
+	// FunbObj con 3 argumentos sigan comportandose igual. En Python seria
+	// `def __init__(self, vecval, start, stop, caso=0)`.
+	FunbObj(vector<ldouble> vecval,ldouble start,ldouble stop, int caso = 0){
 		// Rejilla de evaluacion: los 100 puntos igualmente espaciados de [0,1]
 		// que pide el paper (§5). En Python seria
 		// `self._xrange = x_rango(start, stop, 100)`.
@@ -57,6 +70,7 @@ class FunbObj{
 		_repre = parse_tree(vecval);
 		_xrange[0] = _xinitials;
 		_vecval = vecval;
+		_caso = caso;
 	}
 	string represant(){
 		return _repre;
@@ -106,7 +120,21 @@ class FunbObj{
 		if ( 	!isnan(fitnessval[1]) || !isnan(fitnessval[0]) || !isnan(fitnessval[2] )  ){
 				//  imprime(fitnessval) ; cout << endl;
 				//  cout << "res :: " ;
+				// Residuo de la ODE en el punto de la rejilla, elevado a la
+				// cuarta, segun el caso (ver _caso). En Python seria algo
+				// como `res += r**4` con `r` calculado por ramas.
+				if (_caso == 1){
+					// Caso 1 del paper. Se minimiza la forma (18)
+					//     x*y'' + y' - cos(x) = 0
+					// (equivalente a la (16) y'' + y'/x - cos(x)/x = 0), que
+					// es la que el paper usa "para la minimizacion" porque no
+					// divide por x=0, el primer punto de la rejilla.
+					ldouble x = _xrange[i][0];
+					res +=pow(x*fitnessval[2] + fitnessval[1] - cos(x),4) ;
+				} else {
+					// Caso 0 (juguete del prototipo): y'' + y = 0.
 					res +=pow(fitnessval[2] + fitnessval[0],4) ;
+				}
 				//  cout << res<< endl;
 			}
 			else
@@ -114,7 +142,12 @@ class FunbObj{
 			res +=1000000;
 			}
 		}
-			res +=300*pow((a_start[0] - 1),4) + 700*pow((a_start[1] - 1),4);
+			// Condiciones iniciales del caso. Caso 0: y(0)=1, y'(0)=1 (la
+			// solucion esperada es cos(x)+sin(x)); Caso 1 del paper: y(0)=0,
+			// y'(0)=1. Mismos pesos y exponente que el caso 0 para que la
+			// magnitud de la fitness siga siendo comparable.
+			ldouble y0_objetivo = (_caso == 1) ? 0.0L : 1.0L;
+			res +=300*pow((a_start[0] - y0_objetivo),4) + 700*pow((a_start[1] - 1),4);
 		// cout << "imprimimos res " << endl;
 		// cout << res << endl;
 		// cin.get();
@@ -159,7 +192,7 @@ vector<long double> vector_population(int tam){
 }
 
 
-void createPopulation(vector<FunbObj>&Population,int tam){
+void createPopulation(vector<FunbObj>&Population,int tam,int caso){
 
 	//vector<ldouble> uno =   {21,11,2,1,1,1,2,11,11,11,11,11,1,1,1,1,1,1,1,1};
 	vector<ldouble> uno =   {18,13,17,11,14,14,11,14,14,14,13,14,14,14,14,14,14,14,14,11};
@@ -168,23 +201,26 @@ void createPopulation(vector<FunbObj>&Population,int tam){
 	vector<ldouble> cuatro ={18,14,11,13,13,11,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 	vector<ldouble> c5 =    {18,13,13,13,11,13,11,11,1,1,1,1,1,1,1,1,1,1,1,1};
 
-	FunbObj temp(uno,0,1);
+	// `caso` se propaga a cada FunbObj: la representacion (los tokens) no
+	// cambia entre casos, solo la ODE que mide fitness(). En Python seria
+	// `FunbObj(uno, 0, 1, caso)` y asi para las demas semillas.
+	FunbObj temp(uno,0,1,caso);
 	Population.push_back(temp);
-	FunbObj temp1(dos,0,1);
+	FunbObj temp1(dos,0,1,caso);
 	Population.push_back(temp1);
-	FunbObj temp2(tres,0,1);
+	FunbObj temp2(tres,0,1,caso);
 	Population.push_back(temp2);
 
-	FunbObj temp3(cuatro,0,1);
+	FunbObj temp3(cuatro,0,1,caso);
 	Population.push_back(temp3);
 
-	FunbObj temp4(c5,0,1);
+	FunbObj temp4(c5,0,1,caso);
 	Population.push_back(temp4);
 
 	for (int  i = 0 ; i < tam - 4 ; i++){
 
 		vector<ldouble> temporal(vector_population(20));
-		FunbObj temp(temporal,0,1);
+		FunbObj temp(temporal,0,1,caso);
 		Population.push_back(temp);
 	}
 }
@@ -359,109 +395,283 @@ vector<ldouble> Recombination(const vector<ldouble>& objetivo, const vector<ldou
 // existe nada parecido: un modulo no "contiene" el entry point, asi que no hay
 // que apagarlo; importarlo simplemente no ejecuta la busqueda.
 #ifndef ODE_NO_MAIN
+
+// ===========================================================================
+// Log de main(): impresion con formato profesional.
+//
+// Cada linea sigue el patron por defecto de spdlog, la libreria de logging mas
+// usada en C++ (timestamp + nivel + mensaje), pero implementado con iostreams
+// de la STL: el repo no tiene gestor de paquetes, asi que no se agrega ninguna
+// dependencia externa. Forma de cada linea:
+//
+//     [  0.12s] [INFO ] de_run_start | seed=42 case=0 population=276 ...
+//
+// - "[  0.12s]": tiempo de CPU desde el arranque, ancho fijo 6 y 2 decimales.
+//   En Python seria f"{t:6.2f}s" con t = time.process_time() - t0.
+// - "[INFO ]"/"[WARN ]": nivel del mensaje, siempre 5 caracteres (con relleno)
+//   para que los mensajes empiecen en la misma columna; spdlog usa etiquetas
+//   como "[info]" y "[warning]".
+// - Mensaje: "evento | clave=valor ..." (logging estructurado): legible por
+//   una persona y parseable con split() desde un script; en Python seria
+//   f"gen={gen} best={fit:.6e}" (una f-string).
+//
+// Contrato con scripts/ab_experiment.sh: ese script extrae las claves seed,
+// gen, generations, best, expr, vector, status y elapsed_cpu_s de estas
+// lineas; renombrar una clave obliga a actualizar el awk del script.
+//
+// C++ Core Guidelines (F.3): se imprime '\n' y un flush explicito
+// (cout.flush(), el sys.stdout.flush() de Python) en vez de std::endl. Aqui el
+// flush es deliberado, no incidental: la salida se consume en vivo (`tail`) y
+// un `timeout` puede matar el proceso en cualquier momento, asi que cada linea
+// de main se vacia al emitirse (igual que el sink de consola de spdlog); endl
+// queda evitado en el resto del programa, donde nadie lo necesita. '\n' +
+// flush() es exactamente lo que endl hace por dentro.
+// ===========================================================================
+
+// Instante de arranque para el timestamp de cada linea. `static` a nivel de
+// archivo significa visibilidad solo dentro de este .cpp (en Python no hay un
+// equivalente exacto: es como un nombre con guion bajo a nivel de modulo, pero
+// impuesto por el compilador).
+static clock_t g_log_t0 = 0;
+
+// fmt_fijo: numero con `decimales` decimales fijos, como f"{v:.2f}" en Python.
+// ostringstream es el buffer de texto de la STL (la f-string de C++): se arma
+// el string con el formato pedido por <iomanip> y .str() lo devuelve, sin
+// tocar el estado global de cout.
+string fmt_fijo(ldouble v, int decimales){
+	ostringstream os;
+	os << fixed << setprecision(decimales) << v;
+	return os.str();
+}
+
+// fmt_ciencia: notacion cientifica con 6 decimales (f"{v:.6e}" en Python), el
+// formato de la fitness: valores muy chicos o INFINITY, que sale "inf" igual
+// que en Python.
+string fmt_ciencia(ldouble v){
+	ostringstream os;
+	os << scientific << setprecision(6) << v;
+	return os.str();
+}
+
+// fmt_segundos: segundos con 2 decimales y ancho 6 (f"{v:6.2f}" en Python).
+// Solo para el timestamp que abre cada linea.
+string fmt_segundos(ldouble v){
+	ostringstream os;
+	os << fixed << setprecision(2) << setw(6) << v;
+	return os.str();
+}
+
+// fmt_vector: el individuo como "[21,11,14,20]"
+// ("[" + ",".join(str(int(t)) for t in v) + "]" en Python). Sin espacios a
+// proposito: asi el vector es UN solo campo clave=valor y la linea se puede
+// partir con split(). El parametro entra por referencia constante (const&),
+// que en C++ evita copiar el vector entero, como pasar una lista en Python
+// sin copiarla.
+string fmt_vector(const vector<ldouble>& v){
+	ostringstream os;
+	os << "[";
+	for (size_t i = 0; i < v.size(); i++){
+		if (i > 0) os << ",";
+		os << (long long) v[i];  // los tokens son enteros 1..21
+	}
+	os << "]";
+	return os.str();
+}
+
+// segundos_cpu: CPU transcurrida desde g_log_t0 (time.process_time() - t0 en
+// Python). clock() mide tiempo de CPU del proceso, no tiempo de pared.
+ldouble segundos_cpu(){
+	return (ldouble)(clock() - g_log_t0) / CLOCKS_PER_SEC;
+}
+
+// log_linea: imprime "[<t>s] [<NIVEL>] " y devuelve cout para que el llamador
+// complete el mensaje y cierre con '\n'; en Python seria logging.info(f"...").
+// Devolver el stream (ostream&) es el idioma de C++ para encadenar `<<`: el
+// llamador sigue escribiendo campos sobre el mismo renglon. El nivel llega con
+// el relleno ya puesto ("INFO ").
+ostream& log_linea(const char* nivel){
+	cout << '[' << fmt_segundos(segundos_cpu()) << "s] [" << nivel << "] ";
+	return cout;
+}
+
+// Atajos por nivel, como logging.info y logging.warning de Python.
+ostream& log_info(){
+	return log_linea("INFO ");
+}
+
+ostream& log_warn(){
+	return log_linea("WARN ");
+}
+
 int main() {
 
-	unsigned t0, t1;
- 	t0=clock();
- 	// Semilla controlada por ODE_SEED (issue #4): con ODE_SEED=42 todas las
- 	// corridas salen identicas (mismo fitness, mismo vector), que es lo que
- 	// exige el experimento A/B. Sin la variable se usa el reloj, como antes.
- 	// En Python seria: random.seed(os.environ.get("ODE_SEED")).
- 	long semilla = resolver_semilla(getenv("ODE_SEED"), (long) time(NULL));
- 	cout << "Seed: " << semilla << endl;
- 	srand ((unsigned) semilla);
+	// Arranque del reloj de CPU: alimenta el timestamp de cada linea y el
+	// tiempo total del resumen (en Python: t0 = time.process_time()).
+	g_log_t0 = clock();
 
- 	int tam = 275;
- 	// Una sola poblacion (issue #6): antes habia dos (Population1/Population2)
- 	// que se cruzaban entre si; DE/rand/1/bin (paper) evoluciona una unica
- 	// poblacion generacion a generacion.
- 	vector<FunbObj> Population;
- 	createPopulation(Population, tam);
+	// Semilla controlada por ODE_SEED (issue #4): con ODE_SEED=42 todas las
+	// corridas salen identicas (mismo fitness, mismo vector), que es lo que
+	// exige el experimento A/B. Sin la variable se usa el reloj, como antes.
+	// En Python seria: random.seed(os.environ.get("ODE_SEED")).
+	long semilla = resolver_semilla(getenv("ODE_SEED"), (long) time(NULL));
+	srand ((unsigned) semilla);
 
- 	// Cr: probabilidad de heredar el gen del mutante en el cruce binomial
- 	// (eq. (8)). Antes era `int Cr = 85`, un umbral comparado contra el tamano
- 	// de poblacion; el paper (§5, REVIEW D9) usa 0.2.
- 	ldouble Cr = 0.2;
- 	long double eps = 0.00001;
- 	long double Bestfit = INFINITY;
- 	vector<ldouble> Bestvect;
- 	int gen = 0;
- 	bool flag = true;
+	// Caso del problema, controlado por ODE_CASE (mismo patron que ODE_SEED):
+	//   0 (o ausente) -> juguete historico y'' + y = 0,  y(0)=y'(0)=1
+	//   1            -> Caso 1 del paper: x*y'' + y' - cos(x) = 0 (ec. (18)),
+	//                   y(0)=0, y'(0)=1, solucion exacta Si(x)
+	// En Python seria `caso = int(os.environ.get("ODE_CASE", "0"))` (aqui
+	// atoi() convierte el string del entorno a entero, como int()).
+	int caso = 0;
+	const char* caso_env = getenv("ODE_CASE");
+	if (caso_env != NULL){
+		caso = (atoi(caso_env) == 1) ? 1 : 0;
+	}
 
- 	cout <<"_______:::::_____________:::::____________::::_____" << endl;
- 	cout <<"_______:::::_____________:::::____________::::_____" << endl;
- 	cout <<"                                                   " << endl;
+	int tam = 275;
+	// Una sola poblacion (issue #6): antes habia dos (Population1/Population2)
+	// que se cruzaban entre si; DE/rand/1/bin (paper) evoluciona una unica
+	// poblacion generacion a generacion.
+	vector<FunbObj> Population;
+	createPopulation(Population, tam, caso);
 
- 	while(flag){
+	// Cr: probabilidad de heredar el gen del mutante en el cruce binomial
+	// (eq. (8)). Antes era `int Cr = 85`, un umbral comparado contra el tamano
+	// de poblacion; el paper (§5, REVIEW D9) usa 0.2.
+	ldouble Cr = 0.2;
+	long double eps = 0.00001;
+	long double Bestfit = INFINITY;
+	vector<ldouble> Bestvect;
+	int gen = 0;
+	bool flag = true;
+	const int max_gen = 100000;         // tope de generaciones del bucle
+	string estado = "max_generations";  // pasa a "converged" si llega a eps
 
- 		// Una generacion de DE/rand/1/bin: por cada individuo objetivo se
- 		// sortean los tres individuos base (distintos entre si, eq. (7)), se
- 		// muta, se cruza (eq. (8)) y se selecciona el mejor de los dos.
- 		for (int j = 0; j < (int) Population.size(); j++){
+	// Cabecera de la corrida (reemplaza el banner de ASCII art): una sola
+	// linea con toda la configuracion en clave=valor. `population=` informa el
+	// tamano real de la poblacion ya creada (createPopulation siembra 5
+	// individuos fijos ademas de los aleatorios).
+	log_info() << "de_run_start | seed=" << semilla
+	           << " case=" << caso
+	           << " population=" << Population.size()
+	           << " cr=" << fmt_fijo(Cr, 2)
+	           << " fitness_target=" << fmt_ciencia(eps)
+	           << " max_generations=" << max_gen << '\n';
 
- 			int r1, r2, r3;
- 			indices_distintos((int) Population.size(), j, r1, r2, r3);
- 			vector<ldouble> mutante(Mutation(Population[r1].vecvalue(), Population[r2].vecvalue(), Population[r3].vecvalue()));
- 			vector<ldouble> trial(Recombination(Population[j].vecvalue(), mutante, Cr));
+	// Descripcion legible del caso: el dato maquina es el campo `case=` de
+	// arriba; este renglon es la explicacion y va como texto libre (sin
+	// clave=valor) para no confundir al parser del script A/B.
+	log_info() << "ode_case | " << caso << ": ";
+	if (caso == 1){
+		cout << "paper, ec. (18): x*y'' + y' - cos(x) = 0, y(0)=0, y'(0)=1";
+	} else {
+		cout << "juguete: y'' + y = 0, y(0)=1, y'(0)=1";
+	}
+	cout << '\n';
+	cout.flush();
 
- 			// Seleccion DE estandar (greedy, uno a uno): el trial reemplaza al
- 			// objetivo solo si su fitness es estrictamente menor. Es el
- 			// `if fitness(trial) < fitness(objetivo): poblacion[j] = trial`
- 			// clasico de Python; ya no hay elitismo por sorting ni
- 			// cross-pollination entre poblaciones.
- 			FunbObj candidato(trial, 0, 1);
- 			if (candidato.fitness() < Population[j].fitness()){
- 				Population[j] = candidato;
- 			}
- 		}
+	while(flag){
 
- 		// Mejor individuo de la generacion (la fitness mas baja). Se busca con
- 		// un barrido simple en vez de ordenar la poblacion entera.
- 		int mejor = 0;
- 		for (int j = 1; j < (int) Population.size(); j++){
- 			if (Population[j].fitness() < Population[mejor].fitness()){
- 				mejor = j;
- 			}
- 		}
- 		ldouble BestCurrent = Population[mejor].fitness();
+		// La generacion se cuenta 1-based desde el principio: asi el campo
+		// `generations=` del resumen final cuenta las generaciones corridas
+		// (antes el contador incrementaba al final y el ultimo avance impreso
+		// era 100001).
+		gen++;
 
- 		cout << "BestCurrent :" << BestCurrent << "  y(x)= " << Population[mejor].represant() << "     " << Bestfit << endl;
+		// Una generacion de DE/rand/1/bin: por cada individuo objetivo se
+		// sortean los tres individuos base (distintos entre si, eq. (7)), se
+		// muta, se cruza (eq. (8)) y se selecciona el mejor de los dos.
+		for (int j = 0; j < (int) Population.size(); j++){
 
- 		if (BestCurrent < Bestfit){
- 			Bestfit = BestCurrent;
- 			Bestvect = Population[mejor].vecvalue();
- 			cout <<"()======================Bestfit=========================()" << endl;
- 			cout << "f(x)= " << parse_tree(Bestvect) << endl;
- 			imprime(Bestvect); cout << endl;
- 			cout <<"()======================Bestfit=========================()" << endl;
- 		}
+			int r1, r2, r3;
+			indices_distintos((int) Population.size(), j, r1, r2, r3);
+			vector<ldouble> mutante(Mutation(Population[r1].vecvalue(), Population[r2].vecvalue(), Population[r3].vecvalue()));
+			vector<ldouble> trial(Recombination(Population[j].vecvalue(), mutante, Cr));
 
- 		if ( Bestfit < eps){
- 			cout <<"==============================================" << endl;
- 			imprime(Bestvect) ;
- 			cout  << endl;
- 			cout << "f(x)= " << parse_tree(Bestvect) << endl;
- 			cout <<"==============================================" << endl;
+			// Seleccion DE estandar (greedy, uno a uno): el trial reemplaza al
+			// objetivo solo si su fitness es estrictamente menor. Es el
+			// `if fitness(trial) < fitness(objetivo): poblacion[j] = trial`
+			// clasico de Python; ya no hay elitismo por sorting ni
+			// cross-pollination entre poblaciones.
+			FunbObj candidato(trial, 0, 1, caso);
+			if (candidato.fitness() < Population[j].fitness()){
+				Population[j] = candidato;
+			}
+		}
 
- 			flag = false;
- 		}
+		// Mejor individuo de la generacion (la fitness mas baja). Se busca con
+		// un barrido simple en vez de ordenar la poblacion entera.
+		int mejor = 0;
+		for (int j = 1; j < (int) Population.size(); j++){
+			if (Population[j].fitness() < Population[mejor].fitness()){
+				mejor = j;
+			}
+		}
+		ldouble BestCurrent = Population[mejor].fitness();
 
- 		if(gen >= 100000){
- 			flag = false;
+		// Avance de la generacion: mejor fitness de la generacion, record
+		// historico y su expresion. Con flush: aunque es la linea de alta
+		// frecuencia (hasta 100000), tiene que verse en vivo (`tail`) y
+		// sobrevivir si un `timeout` mata el proceso (ver la cabecera).
+		log_info() << "gen=" << gen << " best=" << fmt_ciencia(BestCurrent)
+		           << " best_ever=" << fmt_ciencia(Bestfit)
+		           << " expr=" << Population[mejor].represant() << '\n';
+		cout.flush();
 
- 		}
+		if (BestCurrent < Bestfit){
+			Bestfit = BestCurrent;
+			Bestvect = Population[mejor].vecvalue();
+			// Record nuevo: una sola linea (antes eran cinco con adornos) con
+			// su flush, para que quede en el log aunque un `timeout` mate el
+			// proceso a mitad de corrida.
+			log_info() << "new_best | gen=" << gen << " best=" << fmt_ciencia(Bestfit)
+			           << " expr=" << parse_tree(Bestvect)
+			           << " vector=" << fmt_vector(Bestvect) << '\n';
+			cout.flush();
+		}
 
- 		gen++;
- 		cout << "****-> : "<< gen << endl;
+		if ( Bestfit < eps){
+			estado = "converged";
+			flag = false;
+		}
 
- 	}
+		if(gen >= max_gen){
+			flag = false;
+		}
+	}
 
- 	t1 = clock();
- 	cout << "::::::::::::::::::" << endl;
- 	double time = (double(t1-t0)/CLOCKS_PER_SEC);
- 	cout << "Execution Time: " << time << endl;
- 	cout << " Por Lmex " << endl;
+	// Resultado final: la solucion en una linea con su flush. Solo si hubo
+	// algun individuo finito (Bestvect vacio = toda la poblacion dio fitness
+	// infinita; no hay nada que mostrar).
+	if (!Bestvect.empty()){
+		log_info() << "solution | best=" << fmt_ciencia(Bestfit)
+		           << " expr=" << parse_tree(Bestvect)
+		           << " vector=" << fmt_vector(Bestvect) << '\n';
+	} else {
+		log_warn() << "no_solution | best=" << fmt_ciencia(Bestfit) << '\n';
+	}
+	cout.flush();
 
- 	return 0;
+	// Si el bucle se corto por el tope de generaciones no se alcanzo la
+	// tolerancia: es una advertencia, no una solucion.
+	if (estado != "converged"){
+		log_warn() << "no_convergence | reason=" << estado
+		           << " generations=" << gen
+		           << " fitness_target=" << fmt_ciencia(eps) << '\n';
+	}
+	cout.flush();
+
+	// Resumen de la corrida: estado, generaciones, record y tiempo de CPU
+	// (el viejo "Execution Time", ahora como campo estructurado).
+	log_info() << "de_run_end | status=" << estado
+	           << " generations=" << gen
+	           << " best=" << fmt_ciencia(Bestfit)
+	           << " elapsed_cpu_s=" << fmt_fijo(segundos_cpu(), 2) << '\n';
+	cout.flush();
+
+	// Firma del autor, conservada del prototipo original.
+	cout << "Por Lmex" << '\n';
+
+	return 0;
 }
 #endif // ODE_NO_MAIN

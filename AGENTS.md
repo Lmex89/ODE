@@ -45,10 +45,13 @@ and do not re-open those files to "verify" it.
   including them. Include STL headers before it (as `parse_tree.cpp` does) or
   it fails to compile alone.
 - The search is stochastic by default (`srand(time(NULL))`); `ODE_SEED=N` fixes
-  the seed (printed as `Seed: N`) and makes runs reproducible. It usually
-  converges in seconds but can run to 100000 generations with very verbose
-  stdout (the committed `out` file is a 3.4 MB captured run). Prefer
-  `timeout 60 ./main.exe | tail -30` over running bare.
+  the seed (printed as `seed=N` in the startup log line) and makes runs
+  reproducible; `ODE_CASE=1` switches to the paper's Case 1
+  (`x*y'' + y' - cos(x) = 0`, `y(0)=0`, `y'(0)=1`) instead of the default toy
+  ODE (the same startup line carries `case=N`). It usually converges in seconds
+  but can run to 100000 generations with very verbose stdout (the committed
+  `out` file is a 3.4 MB captured run). Prefer `timeout 60 ./main.exe | tail -30`
+  over running bare.
 - `scripts/ab_experiment.sh` runs the pre-fix revision and `HEAD` with the same
   `ODE_SEED` values; its results live in `docs/ab-experiment.md`.
 
@@ -87,7 +90,13 @@ and do not re-open those files to "verify" it.
   penalties for `y(0) != 1` and `y'(0) != 1`; trees that do not fully parse
   or contain no `x` get `INFINITY`. Fitness < 1e-5 stops the run; the expected
   winner renders like `(cos(x))+(sin(x))` (solution of `y'' + y = 0` with
-  `y(0) = y'(0) = 1`).
+  `y(0) = y'(0) = 1`). With `ODE_CASE=1` the residual and conditions switch to
+  the paper's Case 1 (`x*y'' + y' - cos(x)`, `y(0)=0`, `y'(0)=1`, exact
+  solution `Si(x)`): the candidate constructor takes the case as a defaulted
+  4th argument, so `test_grid.cpp` still builds `FunbObj` with 3. As of
+  issue #10 (REVIEW B1) the parser cannot evaluate the expressions Case 1
+  needs (`x/2` → `NaN`, `x*cos(x/5)` → `x*x`), so Case 1 cannot reach the
+  threshold until #10 lands.
 - `Untitled.ipynb` is a SageMath scratchpad for the reference ODE/solution, not
   part of the C++ build; its fitness formula is stale — the C++ code is the
   source of truth.
@@ -117,6 +126,38 @@ block — do not wait to be asked.
   snippet/spelling kept as-is (`# como en Python: ...`).
 - Comments must explain the *idiom*, not restate the syntax: say why the code
   uses a reference parameter, what the prefix-notation walk does, etc.
+
+## Mandatory: professional logs
+
+**MANDATORY RULE.** Every line the program prints must follow the logging
+conventions below. They are the C++ logging best practices checked against
+Context7 on 2026-10-12 (spdlog README/wiki + C++ Core Guidelines) applied to
+this repo; treat them as the reference for any new output.
+
+- One event per line, spdlog-style pattern `[<t>s] [NIVEL] evento | clave=valor
+  ...`, using the helpers in `parse_tree.cpp` (`log_info()`, `log_warn()`,
+  `fmt_ciencia()`, ...) instead of raw `cout`. Level tags are 5 chars wide
+  (`[INFO ]`, `[WARN ]`) so columns align; `INFO` is configuration/progress/
+  results, `WARN` a run that ended without converging.
+- Structured fields: stable, lower-case `key=value` names and values with no
+  spaces (`vector=[21,11,14]`, not `[21, 11, 14]`) so a script can split the
+  line. The keys `seed`, `gen`, `generations`, `best`, `expr`, `vector`,
+  `status` and `elapsed_cpu_s` are a contract with
+  `scripts/ab_experiment.sh` — renaming one means updating that awk too.
+- The timestamp is CPU seconds since start (`fmt_segundos`), not wall clock:
+  runs must stay reproducible under a fixed `ODE_SEED`.
+- Numbers are formatted explicitly with `ostringstream` + `<iomanip>`
+  (`scientific`/`setprecision(6)` for fitness, 2 decimals for times), never
+  `cout`'s default 6-significant-digit output, and the formatting flags must
+  not leak into `cout` for the next caller.
+- `'\n'` plus an explicit `cout.flush()` instead of `std::endl` (Core
+  Guidelines F.3). Flushing every event line is deliberate: output is consumed
+  live (`tail`) and a `timeout` can kill the process mid-run (same as spdlog's
+  console sink). Inside hot loops (the fitness evaluation) print nothing.
+- No decoration (banners, `::::`, `====`): the run header and footer are single
+  structured lines. No external logging libraries (spdlog/fmt) either — the
+  repo has no package manager and builds with plain `g++`; spdlog is the
+  reference, not a dependency.
 
 ## Repo notes
 

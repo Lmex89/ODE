@@ -3,6 +3,8 @@
 #include <ctime>
 #include <cmath>
 #include <cstring>
+#include <cassert>
+#include <climits>
 #include <complex>
 #include <stdlib.h>     /* srand, rand */
 #include <time.h>
@@ -180,76 +182,181 @@ class FunbObj{
 
 };
 
-vector<long double> vector_population(int tam){
-		vector<ldouble> ans;
- bool flag = true;
- int cont  = 0;
+// ---------------------------------------------------------------------------
+// Configuracion de la busqueda (issue #28).
+//
+// Los valores por defecto son los del Caso 1 del paper (REVIEW.md C5-C7):
+// 100 individuos, dimension 20 y 5000 generaciones. Cada uno se puede
+// sobreescribir con una variable de entorno, igual que ODE_SEED (issue #4):
+// ODE_POP, ODE_DIM, ODE_GEN y ODE_WARM_START. Para un desarrollador Python:
+// ConfigBusqueda seria un `@dataclass` con defaults y resolver_config su
+// `from_env()`, funcion pura para poder probarla sin tocar el entorno.
+// ---------------------------------------------------------------------------
 
+// Valores por defecto (Caso 1 del paper, REVIEW.md C5-C7).
+constexpr int POBLACION_DEFECTO = 100;
+constexpr int DIMENSION_DEFECTO = 20;
+constexpr int GENERACIONES_DEFECTO = 5000;
 
- while(flag){
-	 ldouble rand_num = rand() % 21 + 1;
-	 ans.push_back(rand_num);
-	 cont++;
-	 if (cont == tam ){
-		 flag = false;
-		 break;
-	 }
+// Minimos aceptados. DE/rand/1/bin necesita tres individuos base distintos
+// del objetivo (indices_distintos), asi que por debajo de 4 la busqueda
+// degenera; 1 es la dimension minima de un arbol y 1 el tope minimo de
+// generaciones.
+constexpr int POBLACION_MINIMA = 4;
+constexpr int DIMENSION_MINIMA = 1;
+constexpr int GENERACIONES_MINIMAS = 1;
 
- }
+// El alfabeto de tokens llega hasta 21 (README.md). Este numero esta
+// duplicado en parse_tree()/narg()/OperF()/OperF2() de dualfunctions.cpp: si
+// cambia el alfabeto hay que mantener las copias en sincronia (AGENTS.md).
+constexpr int TOKENS_ALFABETO = 21;
 
-	 std::vector<ldouble>::iterator it = std::find(ans.begin(),ans.end(),11.0);
-	 if (it == ans.end()){
-	for (int i = 0 ; i < 2 ; i++){
-		ldouble rand_num = (rand() % tam) ;
-		if ((rand_num <= tam - 4) && (rand_num >= 0)){
-			ans[rand_num] = 11;
-		}
+// Token de la variable x en el alfabeto (11).
+constexpr ldouble TOKEN_X = 11.0L;
 
-	 }
- }
-	 return ans;
+// Longitud de las cinco semillas warm start escritas a mano.
+constexpr int DIMENSION_SEMILLAS = 20;
+
+// ConfigBusqueda: los parametros de la corrida en una estructura en vez de
+// argumentos sueltos (regla I.23 de docs/cpp-standards.md: firmas cortas).
+// Los `= valor` son los defaults, como en un dataclass de Python.
+struct ConfigBusqueda {
+    int poblacion = POBLACION_DEFECTO;
+    int dimension = DIMENSION_DEFECTO;
+    int max_generaciones = GENERACIONES_DEFECTO;
+    bool warm_start = false;
+};
+
+// config_entera: lee una variable de entorno ya obtenida con getenv() (en
+// Python seria el string de os.environ.get(nombre), o None) y devuelve su
+// valor entero solo si representa un numero >= `minimo`; si falta, no es
+// numerica o queda fuera de rango, devuelve el respaldo. Es la regla de
+// ODE_SEED: una variable invalida se ignora, no rompe la corrida.
+int config_entera(const char* valor_env, int respaldo, int minimo) {
+    if (valor_env == nullptr) return respaldo;
+
+    // strtol interpreta el texto como entero en base 10 (como int() de
+    // Python) y deja en `fin` la posicion del primer caracter no consumido.
+    char* fin = nullptr;
+    long valor = strtol(valor_env, &fin, 10);
+
+    // Se exige que TODO el texto sea el numero ("17abc" no vale): es el
+    // `except ValueError` de Python. La cota superior evita que un valor
+    // enorme desborde al convertirlo a int.
+    if (fin == valor_env || *fin != '\0') return respaldo;
+    if (valor < (long) minimo || valor > (long) INT_MAX) return respaldo;
+
+    return (int) valor;
 }
 
+// config_bandera: lee una bandera de entorno: "1" activa, "0" desactiva y
+// cualquier otro valor (o la ausencia) devuelve el respaldo. En Python seria
+// `{"1": True, "0": False}.get(valor, respaldo)`.
+bool config_bandera(const char* valor_env, bool respaldo) {
+    if (valor_env == nullptr) return respaldo;
+    if (strcmp(valor_env, "1") == 0) return true;
+    if (strcmp(valor_env, "0") == 0) return false;
+    return respaldo;
+}
 
-void createPopulation(vector<FunbObj>&Population,int tam,int caso){
+// resolver_config: arma la configuracion efectiva de la corrida a partir de
+// los valores crudos de ODE_POP/ODE_DIM/ODE_GEN/ODE_WARM_START. main() lee el
+// entorno con getenv() y se los pasa (por eso es una funcion pura y testeable,
+// igual que resolver_semilla).
+ConfigBusqueda resolver_config(const char* pop_env, const char* dim_env,
+                               const char* gen_env, const char* warm_env) {
+    ConfigBusqueda config;
+    config.poblacion = config_entera(pop_env, POBLACION_DEFECTO, POBLACION_MINIMA);
+    config.dimension = config_entera(dim_env, DIMENSION_DEFECTO, DIMENSION_MINIMA);
+    config.max_generaciones = config_entera(gen_env, GENERACIONES_DEFECTO, GENERACIONES_MINIMAS);
 
-	//vector<ldouble> uno =   {21,11,2,1,1,1,2,11,11,11,11,11,1,1,1,1,1,1,1,1};
-	// Los cinco seeds escritos a mano miden exactamente 20 tokens, igual que
-	// los individuos aleatorios de vector_population(20): el semillero tiene
-	// que ser uniforme porque Mutation()/Recombination() emparejan genes por
-	// posicion (B5 de REVIEW.md: con dos=21 se leia y[20]/z[20] fuera de
-	// rango). En Python serian listas de 20 elementos, con
-	// `assert len(semilla) == 20` como comprobacion.
-	vector<ldouble> uno =   {18,13,17,11,14,14,11,14,14,14,13,14,14,14,14,14,14,14,14,11};
-	vector<ldouble> dos =   {18,14,13,17,11,14,20,1,5,1,1,1,1,1,1,1,1,1,1,1};
-	vector<ldouble> tres =  {18,13,11,13,13,14,14,14,11,1,1,1,1,1,1,1,1,1,1,1};
-	vector<ldouble> cuatro ={18,14,11,13,13,11,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
-	vector<ldouble> c5 =    {18,13,13,13,11,13,11,11,1,1,1,1,1,1,1,1,1,1,1,1};
+    // Las cinco semillas warm start miden DIMENSION_SEMILLAS tokens: con otra
+    // dimension no valen como individuos (Mutation()/Recombination() emparejan
+    // genes por posicion, B5 de REVIEW.md), asi que se ignora la peticion.
+    config.warm_start = config_bandera(warm_env, false) &&
+                        config.dimension == DIMENSION_SEMILLAS;
 
-	// `caso` se propaga a cada FunbObj: la representacion (los tokens) no
-	// cambia entre casos, solo la ODE que mide fitness(). En Python seria
-	// `FunbObj(uno, 0, 1, caso)` y asi para las demas semillas.
-	FunbObj temp(uno,0,1,caso);
-	Population.push_back(temp);
-	FunbObj temp1(dos,0,1,caso);
-	Population.push_back(temp1);
-	FunbObj temp2(tres,0,1,caso);
-	Population.push_back(temp2);
+    return config;
+}
 
-	FunbObj temp3(cuatro,0,1,caso);
-	Population.push_back(temp3);
+// vector_population: un individuo aleatorio de exactamente `tam` tokens.
+// La longitud la manda la configuracion (dimension del paper: 20) porque
+// Mutation()/Recombination() emparejan genes por posicion: longitudes
+// dispares leian fuera de rango (B5 de REVIEW.md). En Python seria
+// `[random.randint(1, 21) for _ in range(tam)]`.
+vector<long double> vector_population(int tam){
+	vector<ldouble> ans;
 
-	FunbObj temp4(c5,0,1,caso);
-	Population.push_back(temp4);
+	// rand()%21+1 da un entero uniforme en 1..21, el alfabeto completo.
+	for (int i = 0; i < tam; i++){
+		ans.push_back(rand() % TOKENS_ALFABETO + 1);
+	}
 
-	// Se descuentan las cinco semillas fijas: 5 + (tam - 5) = tam individuos
-	// exactos. Antes era `tam - 4` y la poblacion terminaba con un individuo de
-	// mas (off-by-one de REVIEW C5: se pedia tam y se creaba tam + 1).
-	for (int  i = 0 ; i < tam - 5 ; i++){
+	// La fitness descarta los arboles sin token x (11): si el sorteo no saco
+	// ninguno, se escribe x en dos posiciones al azar de todo el vector. Antes
+	// el indice se limitaba a [0, tam-4] (resto del tamano de poblacion de la
+	// version vieja) y las ultimas posiciones nunca se reparaban.
+	if (!ans.empty() && std::find(ans.begin(), ans.end(), TOKEN_X) == ans.end()){
+		for (int i = 0; i < 2; i++){
+			ans[rand() % tam] = TOKEN_X;
+		}
+	}
+	return ans;
+}
 
-		vector<ldouble> temporal(vector_population(20));
-		FunbObj temp(temporal,0,1,caso);
-		Population.push_back(temp);
+// semillas_warm_start: las cinco expresiones escritas a mano del prototipo.
+// Antes se sembraban SIEMPRE junto a los individuos aleatorios; ahora son un
+// warm start opt-in (ODE_WARM_START=1) para que la inicializacion por defecto
+// sea la aleatoria uniforme de la ecuacion (6) del paper (REVIEW D6). Devuelve
+// la lista por referencia constante para no copiarla en cada uso (en C++ `&`
+// evita la copia; en Python la lista ya se pasaria sin copiar).
+const vector<vector<ldouble>>& semillas_warm_start(){
+	// `static const` se construye una sola vez, como una constante de modulo
+	// en Python, y vive mientras dure el proceso.
+	static const vector<vector<ldouble>> semillas = {
+		{18,13,17,11,14,14,11,14,14,14,13,14,14,14,14,14,14,14,14,11},  // uno
+		{18,14,13,17,11,14,20,1,5,1,1,1,1,1,1,1,1,1,1,1},               // dos
+		{18,13,11,13,13,14,14,14,11,1,1,1,1,1,1,1,1,1,1,1},             // tres
+		{18,14,11,13,13,11,1,1,1,1,1,1,1,1,1,1,1,1,1,1},                // cuatro
+		{18,13,13,13,11,13,11,11,1,1,1,1,1,1,1,1,1,1,1,1}               // c5
+	};
+	return semillas;
+}
+
+// createPopulation: llena `Population` (que entra vacia) con exactamente
+// config.poblacion individuos de config.dimension tokens. Es la inicializacion
+// del paper: aleatoria uniforme (ecuacion (6)); las semillas del prototipo
+// solo entran con warm start activo. En Python seria
+// `poblacion += [FunbObj(vector_population(dim), 0, 1, caso) for _ in range(n)]`.
+void createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config, int caso){
+
+	// Precondicion propia del bucle DE: la poblacion entra vacia y se llena
+	// con push_back (en Python seria `poblacion.append(...)`). El assert es la
+	// version C++ de `assert not poblacion`, activa porque no se compila con
+	// -DNDEBUG.
+	assert(Population.empty());
+
+	// Warm start: se copian las cinco semillas solo si tienen la dimension
+	// pedida. El chequeo esta tambien en resolver_config (que apaga la
+	// bandera); aqui se compara contra la longitud real de los datos para que
+	// un cambio de las semillas no reintroduzca el desajuste de B5.
+	const vector<vector<ldouble>>& semillas = semillas_warm_start();
+	const bool usar_semillas = config.warm_start &&
+	                           config.dimension == (int) semillas[0].size();
+	if (usar_semillas){
+		for (size_t i = 0; i < semillas.size() && (int) Population.size() < config.poblacion; i++){
+			// `caso` se propaga a cada FunbObj: los tokens no cambian entre
+			// casos, solo la ODE que mide fitness(). En Python seria
+			// `FunbObj(semilla, 0, 1, caso)`.
+			Population.push_back(FunbObj(semillas[i], 0, 1, caso));
+		}
+	}
+
+	// El resto (o la poblacion entera sin warm start) es aleatorio: tantos
+	// individuos nuevos como falten para llegar a config.poblacion, sin el
+	// off-by-one de REVIEW C5.
+	while ((int) Population.size() < config.poblacion){
+		Population.push_back(FunbObj(vector_population(config.dimension), 0, 1, caso));
 	}
 }
 
@@ -556,12 +663,20 @@ int main() {
 		caso = (atoi(caso_env) == 1) ? 1 : 0;
 	}
 
-	int tam = 275;
+	// Configuracion de la busqueda (issue #28): poblacion, dimension y tope de
+	// generaciones del Caso 1 del paper (REVIEW C5-C7), cada uno sobreescribible
+	// con ODE_POP/ODE_DIM/ODE_GEN; el warm start (las cinco semillas del
+	// prototipo) se activa con ODE_WARM_START=1 y por defecto la poblacion es
+	// aleatoria uniforme, como pide la ecuacion (6) del paper. En Python seria
+	// `config = ConfigBusqueda.from_env()` leyendo os.environ.
+	ConfigBusqueda config = resolver_config(getenv("ODE_POP"), getenv("ODE_DIM"),
+	                                        getenv("ODE_GEN"), getenv("ODE_WARM_START"));
+
 	// Una sola poblacion (issue #6): antes habia dos (Population1/Population2)
 	// que se cruzaban entre si; DE/rand/1/bin (paper) evoluciona una unica
 	// poblacion generacion a generacion.
 	vector<FunbObj> Population;
-	createPopulation(Population, tam, caso);
+	createPopulation(Population, config, caso);
 
 	// Cr: probabilidad de heredar el gen del mutante en el cruce binomial
 	// (eq. (8)). Antes era `int Cr = 85`, un umbral comparado contra el tamano
@@ -572,16 +687,18 @@ int main() {
 	vector<ldouble> Bestvect;
 	int gen = 0;
 	bool flag = true;
-	const int max_gen = 100000;         // tope de generaciones del bucle
+	const int max_gen = config.max_generaciones;  // tope del bucle (ODE_GEN)
 	string estado = "max_generations";  // pasa a "converged" si llega a eps
 
 	// Cabecera de la corrida (reemplaza el banner de ASCII art): una sola
 	// linea con toda la configuracion en clave=valor. `population=` informa el
-	// tamano real de la poblacion ya creada (createPopulation siembra 5
-	// individuos fijos ademas de los aleatorios).
+	// tamano real de la poblacion ya creada; `warm_start=` es el valor efectivo
+	// (con ODE_DIM distinto de 20 la bandera se ignora, ver resolver_config).
 	log_info() << "de_run_start | seed=" << semilla
 	           << " case=" << caso
 	           << " population=" << Population.size()
+	           << " dimension=" << config.dimension
+	           << " warm_start=" << (config.warm_start ? 1 : 0)
 	           << " cr=" << fmt_fijo(Cr, 2)
 	           << " fitness_target=" << fmt_ciencia(eps)
 	           << " max_generations=" << max_gen << '\n';

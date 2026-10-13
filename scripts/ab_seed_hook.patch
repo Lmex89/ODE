@@ -1,0 +1,23 @@
+--- a/parse_tree.cpp	2026-10-12 21:58:53.064868431 -0600
++++ b/parse_tree.cpp	2026-10-12 21:58:53.087582533 -0600
+@@ -9,6 +9,7 @@
+ #include <algorithm>
+ #include <utility>
+ #include "dualfunctions.h"
++#include "semilla.h"
+ 
+ using namespace std;
+ using namespace std::complex_literals;
+@@ -258,7 +259,11 @@
+ 
+ 	unsigned t0, t1;
+  	t0=clock();
+- 	srand (time(NULL));
++ 	// Gancho de semilla del experimento A/B (issue #4): con ODE_SEED=42
++ 	// esta version y la corregida corren con la misma semilla.
++ 	long semilla = resolver_semilla(getenv("ODE_SEED"), (long) time(NULL));
++ 	cout << "Seed: " << semilla << endl;
++ 	srand ((unsigned) semilla);
+  	int tam =275;
+  	vector<FunbObj> Population1 ,Population2;
+ 	createPopulation(Population1,tam);

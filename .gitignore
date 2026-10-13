@@ -6,3 +6,4 @@ test_mutation.exe
 test_semilla.exe
 test_crossover.exe
 test_grid.exe
+test_population.exe

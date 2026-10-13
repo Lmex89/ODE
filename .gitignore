@@ -1,0 +1,2 @@
+# Local codegraph index (machine-specific: sqlite db, sockets, pid files)
+.codegraph/

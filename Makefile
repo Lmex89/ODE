@@ -46,17 +46,27 @@ parse_tree.o: parse_tree.cpp dualfunctions.h
 run: $(TARGET)
 	./$(TARGET)
 
-# `make test`: compila y corre test_dual.cpp (tests de dual numbers del
-# issue #2). Enlaza dualfunctions.cpp + test_dual.cpp nada mas: parse_tree.cpp
-# define su propio main() y no puede entrar (error de simbolo duplicado).
+# `make test`: compila y corre los dos binarios de tests, los de dual numbers
+# (issue #2) y los de la mutacion DE/rand/1/bin (issue #5).
 # En Python seria como correr `pytest`: exit code != 0 si algun assert falla.
-TESTBIN := test_dual.exe
+TESTBIN     := test_dual.exe
+TESTBIN_MUT := test_mutation.exe
 
-test: $(TESTBIN)
+test: $(TESTBIN) $(TESTBIN_MUT)
 	./$(TESTBIN)
+	./$(TESTBIN_MUT)
 
+# test_dual enlaza dualfunctions.cpp + test_dual.cpp nada mas: parse_tree.cpp
+# define su propio main() y no puede entrar (error de simbolo duplicado).
 $(TESTBIN): dualfunctions.cpp test_dual.cpp dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) dualfunctions.cpp test_dual.cpp -o $@
 
+# test_mutation si necesita parse_tree.cpp (ahi vive Mutation). Para evitar dos
+# main() se apaga el del programa con -DODE_NO_MAIN: el preprocesador descarta
+# ese bloque y el unico main() del binario es el del test. En Python no hace
+# falta nada parecido porque los tests solo importan las funciones.
+$(TESTBIN_MUT): dualfunctions.cpp parse_tree.cpp test_mutation.cpp dualfunctions.h
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN dualfunctions.cpp parse_tree.cpp test_mutation.cpp -o $@
+
 clean:
-	rm -f $(OBJS) $(TARGET) $(TESTBIN)
+	rm -f $(OBJS) $(TARGET) $(TESTBIN) $(TESTBIN_MUT)

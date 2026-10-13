@@ -2,3 +2,4 @@
 .codegraph/
 # Test binary built by `make test` (ephemeral, unlike the committed main.exe)
 test_dual.exe
+test_mutation.exe

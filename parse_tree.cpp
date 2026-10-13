@@ -275,52 +275,71 @@ vector<ldouble> Mutation(vector<ldouble>x, vector<ldouble> y,vector<ldouble>z){
 	return res;
 }
 
-void Recombination(vector<ldouble>& x,vector<ldouble>& y){
-	
-	int tam = (x.size() / 2) + 2;
-	int num = rand() % tam;
+// ---------------------------------------------------------------------------
+// Cruce binomial (issue #6), ecuacion (8) del paper.
+// ---------------------------------------------------------------------------
 
-	for (int i = 0 ; i < num; i++){
+// gen_binomial: decision *pura* del cruce para un gen, ecuacion (8): con
+// probabilidad Cr el trial hereda el gen del mutante (v) y con probabilidad
+// 1-Cr el del objetivo (x). La tirada `r` (en [0,1]) llega como parametro para
+// poder probar la regla con valores a mano, sin rand(); Recombination() es
+// quien sortea un r por gen. En Python seria:
+//     def gen_binomial(objetivo, mutante, r, Cr): return mutante if r < Cr else objetivo
+// La comparacion es estricta (r < Cr), igual que en el enunciado del issue.
+ldouble gen_binomial(ldouble objetivo, ldouble mutante, ldouble r, ldouble Cr){
+	return (r < Cr) ? mutante : objetivo;
+}
 
-		int i_random = rand() % tam ;
-		ldouble xi = x[i_random];
-		ldouble yi = y[i_random];
-	/* cout << xi << " xxx" << yi << endl; */
-		swap(xi,yi);
-	/* cout << xi << "uuuuu " << yi << endl; */
-		x[i_random] = xi;
-		y[i_random] = yi;
+// Recombination: cruce binomial del paper, ecuacion (8). Construye el vector
+// trial mezclando, gen a gen, el individuo objetivo (x) con el mutante (v):
+// con probabilidad Cr el gen viene del mutante y en caso contrario del
+// objetivo. Ademas el indice j_rand se fuerza al mutante para que el trial
+// nunca sea una copia exacta del objetivo (asi lo pide el paper; REVIEW D2).
+//
+// Nota C++ para un desarrollador Python: los padres entran por referencia
+// constante (no se copian) y el resultado se devuelve por valor; la funcion no
+// modifica a nadie, a diferencia de la version anterior que intercambiaba
+// genes "in place" entre dos vectores.
+vector<ldouble> Recombination(const vector<ldouble>& objetivo, const vector<ldouble>& mutante, ldouble Cr){
+
+	// Se recorre hasta el menor de los dos tamanos (los individuos semilla
+	// tienen 21 tokens y el resto 20): leer mutante[i] de mas seria una
+	// lectura fuera de rango. En Python seria
+	// `n = min(len(objetivo), len(mutante))`.
+	int n = (int) min(objetivo.size(), mutante.size());
+
+	// Se parte de una copia del objetivo: si el objetivo es mas largo que el
+	// mutante, sus tokens sobrantes sobreviven intactos.
+	vector<ldouble> trial(objetivo);
+
+	// Con vectores vacios no hay genes que cruzar (ni j_rand que sortear).
+	if (n <= 0) return trial;
+
+	// j_rand: indice sorteado que siempre toma el gen del mutante.
+	// `rand() % n` es `random.randrange(n)` en Python.
+	int j_rand = rand() % n;
+
+	for (int i = 0; i < n; i++){
+		// Un rand() por gen, como el `if rand() < Cr` del issue: rand()/RAND_MAX
+		// da un real en [0,1] (random.random()).
+		ldouble r = (ldouble) rand() / (ldouble) RAND_MAX;
+		if (i == j_rand){
+			trial[i] = mutante[i];
+		} else {
+			trial[i] = gen_binomial(objetivo[i], mutante[i], r, Cr);
+		}
 	}
-	std::vector<ldouble>::iterator it = std::find(x.begin(),x.end(),11.0);
-	 if (it == x.end()){
-		for (int i = 0 ; i < 3 ; i++){
-			ldouble rand_num = rand() % (int) x.size();
-			if (rand_num == 0){
-				x[rand_num+1] = 11;
-			}
-			x[rand_num] = 11;
-			
-		}
 
-	 }
-	std::vector<ldouble>::iterator it1 = std::find(y.begin(),y.end(),11.0);
-	 if (it1 == y.end()){
-		for (int j = 0 ; j< 3; j++){
-		ldouble rand_num = rand() % (int) y.size();
-		if (rand_num == 0){
-				y[rand_num+1] = 11;
-			}
-			y[rand_num] = 11;
-		
-		}
-	 }
+	// Reparacion heredada (igual que en Mutation()): la fitness descarta los
+	// arboles sin token x (11), asi que si el cruce los borro todos se fuerza
+	// uno en una posicion al azar. Es una regla propia de este prototipo, no
+	// del paper.
+	if (trial.size() > 0 && std::find(trial.begin(), trial.end(), 11.0) == trial.end()){
+		trial[rand() % trial.size()] = 11;
+	}
 
+	return trial;
 }
-
-bool compare(FunbObj& x1, FunbObj& y1){
-	return (abs(x1.fitness()) < abs(y1.fitness()));
-}
-
 
 // Guarda de compilacion para los tests: `-DODE_NO_MAIN` descarta este bloque
 // (y con el, main()) al compilar parse_tree.cpp dentro de un test. En Python no
@@ -338,259 +357,98 @@ int main() {
  	long semilla = resolver_semilla(getenv("ODE_SEED"), (long) time(NULL));
  	cout << "Seed: " << semilla << endl;
  	srand ((unsigned) semilla);
- 	int tam =275;
- 	vector<FunbObj> Population1 ,Population2;
-	createPopulation(Population1,tam);
-	vector<ldouble> temp1(Population1[0].vecvalue() );
-	vector<ldouble> x_initials = {1.0,1.0,0.0};
 
-	// int start = 0;
-	// ldouble stop = 1.0;
-	// ldouble step = 0.1;
-	// int final  = (stop /step) +2;
-	// ldouble sum = 0 ;
-	// for(int i  = (int) start; i < final; i++){
-	// 	vector<long double> x_temp = {i*step,1.0,0.0};
-	// 	if( !isnan(parsv(temp1,x_temp)[2])){
-	// 		sum += parsv(temp1,x_temp)[2]  ;
-	// 	}
-		
-	// 	cout << parsv(temp1,x_temp)[0] << " "<< i*step <<endl;
-	//  	cout << parsv(temp1,x_temp)[1] << endl;
-	//  	cout << parsv(temp1,x_temp)[2] << endl;
-	// 	cout << "==============================" << endl;
-		
-	// }
-	// cout << "*=====================*" << endl;
-	// cout << sum << endl;
+ 	int tam = 275;
+ 	// Una sola poblacion (issue #6): antes habia dos (Population1/Population2)
+ 	// que se cruzaban entre si; DE/rand/1/bin (paper) evoluciona una unica
+ 	// poblacion generacion a generacion.
+ 	vector<FunbObj> Population;
+ 	createPopulation(Population, tam);
 
-	createPopulation(Population2,tam);
+ 	// Cr: probabilidad de heredar el gen del mutante en el cruce binomial
+ 	// (eq. (8)). Antes era `int Cr = 85`, un umbral comparado contra el tamano
+ 	// de poblacion; el paper (§5, REVIEW D9) usa 0.2.
+ 	ldouble Cr = 0.2;
+ 	long double eps = 0.00001;
+ 	long double Bestfit = INFINITY;
+ 	vector<ldouble> Bestvect;
+ 	int gen = 0;
+ 	bool flag = true;
 
-	int Cr = 85;
-	long double eps =0.00001;
-	long double Bestfit = INFINITY;
-	int gen = 0;
-	bool flag = true;
+ 	cout <<"_______:::::_____________:::::____________::::_____" << endl;
+ 	cout <<"_______:::::_____________:::::____________::::_____" << endl;
+ 	cout <<"                                                   " << endl;
 
-	cout <<"_______:::::_____________:::::____________::::_____" << endl;
-	cout <<"_______:::::_____________:::::____________::::_____" << endl;
-	cout <<"                                                   " << endl;
+ 	while(flag){
 
-	vector<ldouble> Bestvect1;
-	vector<ldouble> Bestvect2;
+ 		// Una generacion de DE/rand/1/bin: por cada individuo objetivo se
+ 		// sortean los tres individuos base (distintos entre si, eq. (7)), se
+ 		// muta, se cruza (eq. (8)) y se selecciona el mejor de los dos.
+ 		for (int j = 0; j < (int) Population.size(); j++){
 
-	while(flag){
+ 			int r1, r2, r3;
+ 			indices_distintos((int) Population.size(), j, r1, r2, r3);
+ 			vector<ldouble> mutante(Mutation(Population[r1].vecvalue(), Population[r2].vecvalue(), Population[r3].vecvalue()));
+ 			vector<ldouble> trial(Recombination(Population[j].vecvalue(), mutante, Cr));
 
-	for (int j = 1 ; j < tam -4   ; j++){
+ 			// Seleccion DE estandar (greedy, uno a uno): el trial reemplaza al
+ 			// objetivo solo si su fitness es estrictamente menor. Es el
+ 			// `if fitness(trial) < fitness(objetivo): poblacion[j] = trial`
+ 			// clasico de Python; ya no hay elitismo por sorting ni
+ 			// cross-pollination entre poblaciones.
+ 			FunbObj candidato(trial, 0, 1);
+ 			if (candidato.fitness() < Population[j].fitness()){
+ 				Population[j] = candidato;
+ 			}
+ 		}
 
+ 		// Mejor individuo de la generacion (la fitness mas baja). Se busca con
+ 		// un barrido simple en vez de ordenar la poblacion entera.
+ 		int mejor = 0;
+ 		for (int j = 1; j < (int) Population.size(); j++){
+ 			if (Population[j].fitness() < Population[mejor].fitness()){
+ 				mejor = j;
+ 			}
+ 		}
+ 		ldouble BestCurrent = Population[mejor].fitness();
 
-		// Tres individuos base *distintos y al azar* para cada mutacion. Antes
-		// los indices eran los offsets fijos j, j+2, j+3; el paper (eq. (7))
-		// pide indices aleatorios distintos. Se excluye `j` para que el
-		// individuo objetivo no sea su propia base.
-		int r1, r2, r3;
-		indices_distintos((int) Population2.size(), j, r1, r2, r3);
-		int s1, s2, s3;
-		indices_distintos((int) Population1.size(), j, s1, s2, s3);
+ 		cout << "BestCurrent :" << BestCurrent << "  y(x)= " << Population[mejor].represant() << "     " << Bestfit << endl;
 
-		vector<ldouble> temporal1(Mutation(Population2[r1].vecvalue(),Population2[r2].vecvalue(),Population2[r3].vecvalue()));
-		vector<ldouble> temporal2(Mutation(Population1[s1].vecvalue(),Population1[s2].vecvalue(),Population1[s3].vecvalue()));
-		
-		int ix = rand() % Population1.size();
-		int iy = rand() % Population1.size();
-		if (ix !=0 && iy != 0){
-			Population2[ix] = FunbObj(temporal1,0,1);
-			Population1[iy] = FunbObj(temporal2,0,1);
-			
-			}
-		
-		
-		// } else if (Cr_random < 20 ){
-		// 	//cout << Cr_random << endl;
-		// 	//cout << "dentro del else " << endl;
-		// 	//cout << "=================" << endl;
-		// 	sort(Population1.begin(),Population1.end(),compare);
+ 		if (BestCurrent < Bestfit){
+ 			Bestfit = BestCurrent;
+ 			Bestvect = Population[mejor].vecvalue();
+ 			cout <<"()======================Bestfit=========================()" << endl;
+ 			cout << "f(x)= " << parse_tree(Bestvect) << endl;
+ 			imprime(Bestvect); cout << endl;
+ 			cout <<"()======================Bestfit=========================()" << endl;
+ 		}
 
-		// 	vector<ldouble> temp1(Population1[1].vecvalue() );
-		// 	vector<ldouble> temp2(Population2[1].vecvalue() );
-		// 	Recombination(temp1,temp2);
-		// 		Population2[j] = FunbObj(temp1,0,1);
-		// 		Population1[j+1] = FunbObj(temp2,0,1);
+ 		if ( Bestfit < eps){
+ 			cout <<"==============================================" << endl;
+ 			imprime(Bestvect) ;
+ 			cout  << endl;
+ 			cout << "f(x)= " << parse_tree(Bestvect) << endl;
+ 			cout <<"==============================================" << endl;
 
-		  	}
+ 			flag = false;
+ 		}
 
-	//sort(Population.begin(),Population.end(),compare);
-	if (gen < 10){
-		sort(Population1.begin(),Population1.end(),compare);
-		sort(Population2.begin(),Population2.end(),compare);
-		Bestvect1 = (Population1[0].vecvalue());
-		Bestvect2 = (Population2[0].vecvalue());
-	}else{
-		
+ 		if(gen >= 100000){
+ 			flag = false;
 
-		
-		sort(Population1.begin(),Population1.end(),compare);
-		sort(Population2.begin(),Population2.end(),compare);
-		 FunbObj temporal1(Bestvect1,0,1);
-		 FunbObj temporal2(Bestvect2,0,1);
-		
-		if (Population1[0].fitness()> temporal1.fitness() ){
-			Population1[0] =FunbObj(Bestvect1,0,1) ;
-			Population2[1] =FunbObj(Bestvect1,0,1) ;
-			sort(Population2.begin(),Population2.end(),compare);
-		}
-		else if (Population2[0].fitness()> temporal2.fitness() ){
-			Population2[0] =FunbObj(Bestvect2,0,1) ;
-			Population1[1] =FunbObj(Bestvect2,0,1) ;
-			sort(Population1.begin(),Population1.end(),compare);
-		}
-	}
-	
-	/* imprime(Population[0].vecvalue());
-		cout <<"()============antes===========()" << endl;
-			vector<ldouble> temp1(Population[0].vecvalue() );
-			vector<ldouble> temp2(Population[1].vecvalue() );
-			Recombination(temp1,temp2);
+ 		}
 
-			Population[0] = FunbObj(temp1,0,1);
-			Population[1] = FunbObj(temp2,0,1);
-			cout <<"()=============despues==========()" << endl;
-	imprime(Population[0].vecvalue());
-	imprime(Population[1].vecvalue());
-	cout << endl;
-	cout <<"()=============despues==========()despues" << endl;
-	sort(Population.begin(),Population.end(),compare); */
-	ldouble BestCurrent1 = Population1[1].fitness();
-	ldouble BestCurrent2 = Population2[1].fitness();
-	
-	cout << "BestCurrent1 :" << BestCurrent1 << "  y(x)= " <<  Population1[1].represant() <<"     " << Bestfit<<endl;
-	cout << "BestCurrent2 :" << BestCurrent2 << "  y(x)= " <<  Population2[1].represant() <<"      "<< parse_tree(Bestvect1) <<endl;
+ 		gen++;
+ 		cout << "****-> : "<< gen << endl;
 
-	if (BestCurrent1 < Bestfit  ){
+ 	}
 
-	/*	cout << "entre deonde de Recombination antes" << endl; */
-		/* imprime(Population[0].vecvalue());
-		cout << endl; */
-		Bestvect1 = (Population1[1].vecvalue());
-		
-			/* cout << "entre deonde de Recombination despues" << endl;
-		imprime(Population[0].vecvalue()); */
-		cout <<"()======================Bestfit1=========================()" << endl;
-		Bestfit = BestCurrent1;
-		vector<ldouble> temp1(Population1[0].vecvalue() );
-		vector<ldouble> temp2(Population2[1].vecvalue() );
-		Recombination(temp1,temp2);
-		Population1[1] = FunbObj(temp1,0,1);
-		cout << Population1[1].fitness() << endl;
-		cout << "f(x)= " << Population1[1].represant() << endl;
-		imprime(Population1[1].vecvalue()); cout << endl;
-		cout <<"()======================Bestfit1=========================()" << endl;
-		int ix = rand() % Population1.size();
-		int iy = rand() % Population1.size();
-		if (ix !=0 && iy != 0){
-				Population1[ix] = FunbObj(temp1,0,1);
-				Population1[iy] = FunbObj(temp2,0,1);
-			}
-	}
+ 	t1 = clock();
+ 	cout << "::::::::::::::::::" << endl;
+ 	double time = (double(t1-t0)/CLOCKS_PER_SEC);
+ 	cout << "Execution Time: " << time << endl;
+ 	cout << " Por Lmex " << endl;
 
-	if (BestCurrent2 < Bestfit ){
-		
-		Bestvect2 = (Population2[1].vecvalue());
-		cout <<"()======================Bestfit2=========================()" << endl;
-		Bestfit = BestCurrent2;
-		
-
-
-		cout << Population2[1].fitness() << endl;
-		cout << "f(x)= " << Population2[1].represant() << endl;
-		imprime(Population2[1].vecvalue()); cout << endl;
-		cout <<"()======================Bestfit2=========================()" << endl;
-
-		vector<ldouble> temp1(Population2[0].vecvalue() );
-		vector<ldouble> temp2(Population1[1].vecvalue() );
-		Recombination(temp1,temp2);
-		Population2[1] = FunbObj(temp1,0,1);
-		int ix = rand() % Population2.size();
-		int iy = rand() % Population2.size();
-			if (ix !=0 && iy != 0){
-				Population2[ix] = FunbObj(temp1,0,1);
-				Population2[iy] = FunbObj(temp2,0,1);
-			}
-		
-		
-	}
-
-
-	int Cr_random = rand() % Population2.size() ;
-		//cout << "Cr_random" << Cr_random << endl;
-		if (Cr >= Cr_random ){
-			//cout << "Cr_random" << Cr_random << endl;
-
-			vector<ldouble> temp1(Bestvect1 );
-			vector<ldouble> temp2(Population2[1].vecvalue() );
-			Recombination(temp1,temp2);
-			for (int i = 0 ; i <= 7 ; i++){
-				int ix = rand() % Population2.size() ;
-				int iy = rand() % Population1.size()  ;
-				
-				if (ix !=0 &&  iy != 0  && ix !=1 &&  iy != 1){
-					Population2[ix] = FunbObj(temp1,0,1);
-					Population1[iy] = FunbObj(temp2,0,1);
-			}
-
-			}
-		
-		}
-
-
-	/* else{
-		for (int j = 1 ; j < tam -2 ; j++){
-			//vector<ldouble> temporal(Mutation(Population[j].vecvalue(),Population[j+1].vecvalue(),Population[j+2].vecvalue()));
-		//imprime(temporal);
-			//Population[j] = FunbObj(temporal,0,1);
-			int Cr_random = rand() % 100 +1;
-
-			if (Cr >= Cr_random){
-
-				vector<ldouble> temp1(Population[0].vecvalue() );
-				vector<ldouble> temp2(Population[j+2].vecvalue() );
-				Recombination_new(temp1,temp2);
-				Population[0] = FunbObj(temp1,0,1);
-				Population[j+2] = FunbObj(temp2,0,1);
-			}
-
-
-		}
-
-	} */
-
-
-	if ( Bestfit < eps){
-		cout <<"==============================================" << endl;
-		imprime(Bestvect1) ;
-		cout  << endl;
-		cout << "f(x)= " << parse_tree(Bestvect1) << endl;
-		cout <<"==============================================" << endl;
-
-		flag = false;
-	}
-
-	if(gen >= 100000){
-		flag = false;
-
-	}
-
-	gen++;
-	cout << "****-> : "<< gen << endl;
-
-	}
-
-	t1 = clock();
-	cout << "::::::::::::::::::" << endl;
-	double time = (double(t1-t0)/CLOCKS_PER_SEC);
-	cout << "Execution Time: " << time << endl;
-	cout << " Por Lmex " << endl;
-
-	return 0;
+ 	return 0;
 }
 #endif // ODE_NO_MAIN

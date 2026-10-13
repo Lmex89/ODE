@@ -48,17 +48,19 @@ semilla.o: semilla.cpp semilla.h
 run: $(TARGET)
 	./$(TARGET)
 
-# `make test`: compila y corre los tres binarios de tests: dual numbers
-# (issue #2), control de semilla (issue #4) y la mutacion DE/rand/1/bin
-# (issue #5). Cada binario enlaza solo lo que necesita; test_mutation si
-# enlaza parse_tree.cpp con -DODE_NO_MAIN (ver abajo).
+# `make test`: compila y corre los cuatro binarios de tests: dual numbers
+# (issue #2), control de semilla (issue #4), la mutacion DE/rand/1/bin
+# (issue #5) y el cruce binomial (issue #6). Cada binario enlaza solo lo que
+# necesita; test_mutation y test_crossover si enlazan parse_tree.cpp con
+# -DODE_NO_MAIN (ver abajo).
 # En Python seria como correr `pytest`: exit code != 0 si algun assert falla.
-TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe
+TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe
 
 test: $(TESTBINS)
 	./test_dual.exe
 	./test_semilla.exe
 	./test_mutation.exe
+	./test_crossover.exe
 
 test_dual.exe: dualfunctions.cpp test_dual.cpp dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) dualfunctions.cpp test_dual.cpp -o $@
@@ -73,6 +75,12 @@ test_semilla.exe: semilla.cpp test_semilla.cpp semilla.h
 # falta nada parecido porque los tests solo importan las funciones.
 test_mutation.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_mutation.cpp semilla.h dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp parse_tree.cpp test_mutation.cpp -o $@
+
+# test_crossover necesita lo mismo que test_mutation: parse_tree.cpp (ahi viven
+# Recombination y su nucleo gen_binomial) y el resto de dependencias que ese
+# archivo enlaza. Con -DODE_NO_MAIN el unico main() del binario es el del test.
+test_crossover.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_crossover.cpp semilla.h dualfunctions.h
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp parse_tree.cpp test_crossover.cpp -o $@
 
 clean:
 	rm -f $(OBJS) $(TARGET) $(TESTBINS)

@@ -64,6 +64,10 @@ Reading of the table:
   conditions but is not the solution of the ODE.
 - `Execution Time` was never printed (no run terminated), so only wall time
   (300 s per run) is recorded.
+- Eight more seeds (2-9) were run for 240 s each (91-93 generations, cut by the
+  timeout): **none converged either**. Across the eleven seeded runs, five
+  reach the `cos(x) + sin(sin(x))` plateau (0.0401972), four stay at 2.5333 and
+  two at 6.6-6.7; fitness < 1e-5 is never reached.
 
 ## Where A and B evaluate differently
 
@@ -123,9 +127,19 @@ hold, but it is not the exact solution of `y'' + y = 0` with `y(0) = y'(0) = 1`
 (that is `cos(x) + sin(x)`, fitness 0). Beating this plateau is the job of the
 Phase-3 DE alignment, not of the bug fixes.
 
+The merged PR #8 mentions a `fitness 0` run for the same pipeline
+(`f(x) = (sin(x))+(cos(x))`, generation 93, ~96 s) with a clock seed. It is not
+reproducible today: none of the eleven fixed seeds tested here reaches
+fitness < 1e-5, and the sweeps pass generation 92 with the best value still at
+0.0401972. A seed that converges should be pinned once found; until then, the
+plateau above is the documented baseline.
+
 ## Reproduce
 
 ```bash
 make test                                                  # unit tests
 scripts/ab_experiment.sh --seed "1 42 2026" --timeout 300  # this report
+for S in 2 3 4 5 6 7 8 9; do                               # extra batch
+    ODE_SEED=$S timeout 240 ./main.exe > /tmp/sweep-$S.log
+done
 ```

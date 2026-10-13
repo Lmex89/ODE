@@ -385,7 +385,14 @@ vector<ldouble> parsv(vector<ldouble> x, vector<ldouble> xval){
 
 
 	for (k = 0; k < dim; k++ ){
-		if(x[k] >= 1 || x[k] <= 10){
+		// Solo las constantes 1-10 son hojas numericas: su valor inicial es
+		// el codigo del token. Con `||` la condicion era siempre verdadera
+		// (todo numero cumple al menos una de las dos comparaciones), asi
+		// que operadores y funciones tambien arrancaban con valor numerico y
+		// las expresiones incompletas producian resultados falsos (p. ej.
+		// [13,18] daba sin(18) en lugar de NaN).
+		// En Python seria `if 1 <= x[k] <= 10:`.
+		if(x[k] >= 1 && x[k] <= 10){
 			 auxv[0][k]= (long double) 1.0*x[k];
 			 auxv[1][k]= (long double) 0.0;
 			 auxv[2][k]= (long double) 0.0;

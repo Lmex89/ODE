@@ -211,3 +211,9 @@ Five canonical triage roles using default label strings (`needs-triage`, `needs-
 ### Domain docs
 
 Single-context layout: `GLOSSARY.md` at root + `docs/adr/`. See `docs/agents/domain.md`.
+
+### C++ standards
+
+Mandatory rules for new or changed C++ (interfaces, RAII, errors, style,
+performance), checked against Context7 (C++ Core Guidelines) on 2026-10-13 and
+adapted to this repo. See `docs/cpp-standards.md`.

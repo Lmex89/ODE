@@ -19,7 +19,7 @@ OBJS   := $(SRCS:.cpp=.o)
 # parse_tree_bckp.cpp NO se compila: es una copia de referencia que tambien
 # define main(), y enlazarla daria un error de simbolo duplicado.
 
-.PHONY: all clean run test
+.PHONY: all clean run test sage-test
 
 # `all` es la regla por defecto: `make` a secas construye el ejecutable.
 all: $(TARGET)
@@ -66,6 +66,12 @@ test: $(TESTBINS)
 	./test_grid.exe
 	./test_population.exe
 	python3 scripts/check_dual_validation.py
+
+# `make sage-test` ejecuta el notebook completo dentro de un kernel SageMath
+# real. El script usa `sage` si esta instalado y, si no, Docker con una imagen
+# fijada por digest para que la evidencia sea reproducible.
+sage-test:
+	scripts/run_sage_dual_validation.sh
 
 test_dual.exe: dualfunctions.cpp test_dual.cpp dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) dualfunctions.cpp test_dual.cpp -o $@

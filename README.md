@@ -106,6 +106,19 @@ make test
 
 `test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included, `FunbObj::fitness()` sums the paper's 100 points, and the Case 1 (`ODE_CASE=1`) residual/weights). They link only the modules under test and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp` and `test_grid.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp` includes `parse_tree.cpp` directly to reach the header-less `FunbObj`).
 
+The SageMath notebook validation is a separate target because it needs a real
+SageMath kernel:
+
+```bash
+make sage-test
+```
+
+`make sage-test` uses a native `sage` executable when available. Otherwise it
+uses Docker and the pinned SageMath image documented in
+[docs/sage-dual-validation.md](docs/sage-dual-validation.md). It executes the
+complete notebook, then checks the stored cell output for 48 passing
+expression/point cases and the `PASS: 48/48 casos` summary.
+
 ### A/B experiment
 
 `scripts/ab_experiment.sh` builds the pre-fix revision and `HEAD` with the same
@@ -134,6 +147,9 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `test_grid.cpp` | Evaluation-grid tests, run with `make test` |
 | `scripts/ab_experiment.sh` | Reproducible A/B experiment (pre-fix vs post-fix, same seed) |
 | `docs/ab-experiment.md` | A/B comparison report and conclusions |
+| `scripts/run_sage_dual_validation.sh` | Execute the complete notebook in SageMath and verify its output |
+| `scripts/check_sage_dual_validation.py` | Check the executed notebook's 48-case PASS/FAIL result |
+| `docs/sage-dual-validation.md` | SageMath command, environment, and captured evidence |
 | `Untitled.ipynb` | SageMath scratchpad for reference ODE/solution (not part of the build) |
 
 ## Caveats

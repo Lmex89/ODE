@@ -91,6 +91,8 @@ make test
 
 `test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). It links only `dualfunctions.cpp` and does not run the evolutionary loop.
 
+`test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). It links `parse_tree.cpp` and `dualfunctions.cpp`; `-DODE_NO_MAIN` disables the program's `main()` so the test's own `main()` runs.
+
 ## Files
 
 | File | Description |
@@ -101,6 +103,7 @@ make test
 | `parse_tree_bckp.cpp` | Reference backup — **do not compile** (also defines `main()`) |
 | `Makefile` | Build targets: `make`, `make run`, `make test`, `make clean` (`g++` by default) |
 | `test_dual.cpp` | Dual-number evaluation tests, run with `make test` |
+| `test_mutation.cpp` | DE/rand/1/bin mutation tests, run with `make test` |
 | `Untitled.ipynb` | SageMath scratchpad for reference ODE/solution (not part of the build) |
 
 ## Caveats

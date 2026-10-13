@@ -108,15 +108,16 @@ echo "  md5 antes/despues  : $(md5sum "$OUTDIR/antes/main.exe" | cut -d' ' -f1) 
 # -------------------------------------------------------------------------
 # 4) Correr A y B con cada semilla y extraer las metricas del log.
 #    El formato lo define parse_tree.cpp (main): cada generacion imprime
-#    "****-> : N", el mejor fitness aparece como "BestCurrent1 :X" y al
-#    terminar imprime "Execution Time: T". El fitness final es el minimo de
-#    los BestCurrent (Bestfit solo baja cuando aparece uno menor).
+#    "****-> : N", el mejor fitness aparece como "BestCurrent :X" (issue #6;
+#    antes habia dos poblaciones y salia "BestCurrent1 :X"/"BestCurrent2 :X")
+#    y al terminar imprime "Execution Time: T". El fitness final es el minimo
+#    de los BestCurrent (Bestfit solo baja cuando aparece uno menor).
 # -------------------------------------------------------------------------
 extraer_metricas() {
     # $1 = log, $2 = estado ("termino" o "timeout")
     # El separador de campos es el tabulador: en el printf de abajo, "\t".
     awk -v estado="$2" '
-        /^BestCurrent[12] :/ {
+        /^BestCurrent[0-9]? :/ {
             v = $2; sub(/^:/, "", v);
             if (v ~ /^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$/) {
                 v += 0;

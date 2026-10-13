@@ -48,19 +48,21 @@ semilla.o: semilla.cpp semilla.h
 run: $(TARGET)
 	./$(TARGET)
 
-# `make test`: compila y corre los cuatro binarios de tests: dual numbers
+# `make test`: compila y corre los cinco binarios de tests: dual numbers
 # (issue #2), control de semilla (issue #4), la mutacion DE/rand/1/bin
-# (issue #5) y el cruce binomial (issue #6). Cada binario enlaza solo lo que
-# necesita; test_mutation y test_crossover si enlazan parse_tree.cpp con
-# -DODE_NO_MAIN (ver abajo).
+# (issue #5), el cruce binomial (issue #6) y la rejilla de evaluacion
+# (issue #7). Cada binario enlaza solo lo que necesita; test_mutation,
+# test_crossover y test_grid necesitan parse_tree.cpp con -DODE_NO_MAIN
+# (ver abajo).
 # En Python seria como correr `pytest`: exit code != 0 si algun assert falla.
-TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe
+TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe test_grid.exe
 
 test: $(TESTBINS)
 	./test_dual.exe
 	./test_semilla.exe
 	./test_mutation.exe
 	./test_crossover.exe
+	./test_grid.exe
 
 test_dual.exe: dualfunctions.cpp test_dual.cpp dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) dualfunctions.cpp test_dual.cpp -o $@
@@ -81,6 +83,13 @@ test_mutation.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_mutation.cp
 # archivo enlaza. Con -DODE_NO_MAIN el unico main() del binario es el del test.
 test_crossover.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_crossover.cpp semilla.h dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp parse_tree.cpp test_crossover.cpp -o $@
+
+# test_grid es el unico test que incluye parse_tree.cpp desde su propio .cpp
+# (FunbObj no tiene header): por eso parse_tree.cpp aparece como dependencia
+# pero NO se compila aparte, o habria simbolos duplicados. -DODE_NO_MAIN apaga
+# el main() del programa y deja el main() del test.
+test_grid.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_grid.cpp semilla.h dualfunctions.h
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp test_grid.cpp -o $@
 
 clean:
 	rm -f $(OBJS) $(TARGET) $(TESTBINS)

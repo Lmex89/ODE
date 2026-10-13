@@ -54,7 +54,7 @@ Domain-specific terms used in this codebase.
 | Term | Definition |
 |------|-----------|
 | **`FunbObj`** | The C++ class representing a candidate solution — holds the token vector, evaluates the parse tree, and computes fitness |
-| **`x_rango()`** | Generates the evaluation grid (array of `[x, 1.0, 0.0]` triples) over which fitness is measured |
+| **`x_rango()`** | Generates the evaluation grid (array of `[x, 1.0, 0.0]` triples) over which fitness is measured; exactly `npoints` points with both endpoints included (100 for `[0,1]`, paper §5) |
 | **`OperF` / `OperF2`** | Functions that dispatch unary (1-arg) and binary (2-arg) operations on dual-number vectors |
 | **`narg()`** | Returns the arity (number of arguments) for a given token code |
 | **`vector_population`** | 2D vector holding all individuals; each is a `vector<long double>` of token codes |

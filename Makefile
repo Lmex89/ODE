@@ -51,9 +51,10 @@ run: $(TARGET)
 # `make test`: compila y corre los seis binarios de tests: dual numbers
 # (issue #2), control de semilla (issue #4), la mutacion DE/rand/1/bin
 # (issue #5), el cruce binomial (issue #6), la rejilla de evaluacion
-# (issue #7) y el semillero de la poblacion (issue #11). Cada binario enlaza
-# solo lo que necesita; test_mutation, test_crossover, test_grid y
-# test_population necesitan parse_tree.cpp con -DODE_NO_MAIN (ver abajo).
+# (issue #7), el semillero de la poblacion (issue #11) y el validador Python
+# de notebook (issue #18). Cada binario enlaza solo lo que necesita;
+# test_mutation, test_crossover, test_grid y test_population necesitan
+# parse_tree.cpp con -DODE_NO_MAIN (ver abajo).
 # En Python seria como correr `pytest`: exit code != 0 si algun assert falla.
 TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe test_grid.exe test_population.exe
 
@@ -64,6 +65,7 @@ test: $(TESTBINS)
 	./test_crossover.exe
 	./test_grid.exe
 	./test_population.exe
+	python3 scripts/check_dual_validation.py
 
 test_dual.exe: dualfunctions.cpp test_dual.cpp dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) dualfunctions.cpp test_dual.cpp -o $@

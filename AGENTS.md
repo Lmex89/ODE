@@ -29,9 +29,10 @@ and do not re-open those files to "verify" it.
 - `Makefile` builds with `g++` by default (`CXX ?= g++`, so `make CXX=icpc`
   still works where Intel's `icpc` exists). `make` only builds `main.exe`;
   `make run` compiles if needed and executes it; `make test` compiles and runs
-  the two test binaries: `test_dual.cpp` (dual-number tests; links only
-  `dualfunctions.cpp`) and `test_mutation.cpp` (DE/rand/1/bin mutation tests;
-  links `parse_tree.cpp` too, with `-DODE_NO_MAIN` so the test's `main()` wins);
+  the three test binaries: `test_dual.cpp` (dual-number tests; links
+  `dualfunctions.cpp`), `test_semilla.cpp` (seed resolution; links
+  `semilla.cpp`) and `test_mutation.cpp` (DE/rand/1/bin mutation tests; links
+  `parse_tree.cpp` too, with `-DODE_NO_MAIN` so the test's `main()` wins);
   `make clean` removes the objects and binaries. Flags: `-std=c++17 -Wall -O3`.
 - Never add `parse_tree_bckp.cpp` to a build: it is a reference backup that
   also defines `main()` (duplicate symbol). The Makefile does not compile it.
@@ -40,17 +41,21 @@ and do not re-open those files to "verify" it.
 - `dualfunctions.h` is not self-contained: it uses `vector`/`string` without
   including them. Include STL headers before it (as `parse_tree.cpp` does) or
   it fails to compile alone.
-- The search is stochastic (`srand(time(NULL))`), so runs are not reproducible.
-  It usually converges in seconds but can run to 100000 generations with very
-  verbose stdout (the committed `out` file is a 3.4 MB captured run). Prefer
+- The search is stochastic by default (`srand(time(NULL))`); `ODE_SEED=N` fixes
+  the seed (printed as `Seed: N`) and makes runs reproducible. It usually
+  converges in seconds but can run to 100000 generations with very verbose
+  stdout (the committed `out` file is a 3.4 MB captured run). Prefer
   `timeout 60 ./main.exe | tail -30` over running bare.
+- `scripts/ab_experiment.sh` runs the pre-fix revision and `HEAD` with the same
+  `ODE_SEED` values; its results live in `docs/ab-experiment.md`.
 
 ## How it works
 
 - `parse_tree.cpp` — `main()` and the DE loop (population, mutation,
   recombination, sorting/elitism). `dualfunctions.{h,cpp}` — token interpreter
   and 2nd-order dual-number ("2dual") arithmetic; `parsv()` evaluates a tree to
-  `[y(x), y'(x), y''(x)]`.
+  `[y(x), y'(x), y''(x)]`. `semilla.{h,cpp}` — resolves `ODE_SEED` for
+  reproducible runs.
 - `Mutation()` implements DE/rand/1/bin with dither (paper eq. (7)):
   `v = x_r1 + F*(x_r2 - x_r3)` with one `F` random in `[0,1]` per call, the
   result rounded/clamped to a token in `1..21` by `token_valido()`, and the

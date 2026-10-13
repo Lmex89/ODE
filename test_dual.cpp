@@ -496,6 +496,127 @@ static void test_sqrt2dual_guardas() {
     check_vec("sqrt2dual(0)", sq2d({0.0L, 1.0L, 0.0L}), {0.0L, NAN, NAN});
 }
 
+// -------------------------------------------------------------------------
+// Slice 10 (issue #26): la expresion renderizada es el arbol que se evalua.
+// Cada caso fija por separado las dos observaciones publicas:
+//   (a) el texto exacto que muestra parse_tree(), y
+//   (b) el triple [y, y', y''] que parsv() devuelve segun esa misma formula.
+// Los esperados de (b) son derivadas cerradas con libm (regla de la cadena,
+// no una copia de la implementacion). Los casos anidan unario dentro de
+// binario y al reves, reutilizan x varias veces y cubren los dos ordenes de
+// cada operacion: un cambio que rompa el consumo exacto de operandos
+// (issue #10) o el orden del render falla aqui.
+// -------------------------------------------------------------------------
+
+// check_render_y_triple: aplica a `tokens` las dos comprobaciones del issue.
+// parse_tree() recibe `vector&` no-const y lo recorre (en Python seria una
+// lista normal, sin esa distincion), asi que se le pasa una copia local y el
+// vector original queda intacto para la llamada a parsv().
+static void check_render_y_triple(const std::string& nombre,
+                                  const std::vector<long double>& tokens,
+                                  const std::string& render_esperado,
+                                  long double x,
+                                  const std::vector<long double>& esperado) {
+    std::vector<long double> copia = tokens;   // equivalente a `tokens[:]` en Python
+    check_str("parse_tree " + nombre, parse_tree(copia), render_esperado);
+    check_vec("parsv " + nombre, parsv(tokens, {x, 1.0L, 0.0L}), esperado);
+}
+
+static void test_parsv_render_evaluacion_anidada() {
+    // -(x+x) en x=1: la negacion envuelve a la suma completa -> [-2,-2,0].
+    check_render_y_triple("-(x+x) en x=1", {12, 18, 11, 11},
+                          "-1.0*((x)+(x))", 1.0L,
+                          {-2.0L, -2.0L, 0.0L});
+    // sin(x+cos(x)) en x=0: unario sobre binario.
+    //   f'  = cos(x+cos(x))*(1-sin(x))
+    //   f'' = -sin(x+cos(x))*(1-sin(x))^2 - cos(x+cos(x))*cos(x)
+    long double s1 = std::sin(1.0L), c1 = std::cos(1.0L);
+    check_render_y_triple("sin(x+cos(x)) en x=0", {13, 18, 11, 14, 11},
+                          "sin((x)+(cos(x)))", 0.0L,
+                          {s1, c1, -(s1 + c1)});
+    // La misma forma con los operandos en orden distinto: ambos valen 6 en
+    // x=2 y el render conserva el orden (una hoja x por cada factor).
+    check_render_y_triple("(x*x)+x en x=2", {18, 19, 11, 11, 11},
+                          "((x)*(x))+(x)", 2.0L, {6.0L, 5.0L, 2.0L});
+    check_render_y_triple("x+(x*x) en x=2", {18, 11, 19, 11, 11},
+                          "(x)+((x)*(x))", 2.0L, {6.0L, 5.0L, 2.0L});
+    // Un binario con una funcion no conmutativa en cada lado; ambas valen
+    // [1,1,-1] en x=0 porque cos(0)=1 y sin(0)=0.
+    check_render_y_triple("(x+1)*cos(x) en x=0", {19, 18, 11, 1, 14, 11},
+                          "((x)+(1.0))*(cos(x))", 0.0L, {1.0L, 1.0L, -1.0L});
+    check_render_y_triple("cos(x)*(x+1) en x=0", {19, 14, 11, 18, 11, 1},
+                          "(cos(x))*((x)+(1.0))", 0.0L, {1.0L, 1.0L, -1.0L});
+    // log(exp(x)+x) en x=0: f=ln(e^x+x); f'=(e^x+1)/(e^x+x)=2 y
+    // f''=(e^x*(e^x+x)-(e^x+1)^2)/(e^x+x)^2=-3.
+    check_render_y_triple("log(exp(x)+x) en x=0", {16, 18, 15, 11, 11},
+                          "log((exp(x))+(x))", 0.0L, {0.0L, 2.0L, -3.0L});
+    // sqrt(x*x+2) en x=1 (sqrt se renderiza como **(1/2)):
+    //   f=sqrt(3), f'=1/sqrt(3), f''=2/(3*sqrt(3)).
+    long double r3 = std::sqrt(3.0L);
+    check_render_y_triple("sqrt(x*x+2) en x=1", {17, 18, 19, 11, 11, 2},
+                          "(((x)*(x))+(2.0))**(1/2)", 1.0L,
+                          {r3, 1.0L / r3, 2.0L / (3.0L * r3)});
+    // x repetida dentro de un divisor: x/(x+x) es la constante 0.5 y
+    // (x+x)/x la constante 2; las derivadas solo se anulan si cada hoja x
+    // se consume exactamente una vez.
+    check_render_y_triple("x/(x+x) en x=2", {20, 11, 18, 11, 11},
+                          "(x)/((x)+(x))", 2.0L, {0.5L, 0.0L, 0.0L});
+    check_render_y_triple("(x+x)/x en x=2", {20, 18, 11, 11, 11},
+                          "((x)+(x))/(x)", 2.0L, {2.0L, 0.0L, 0.0L});
+    // 2^(x*x) en x=1: exponente variable.
+    //   f' = f*(v'*ln2) = 4*ln2; f'' = f*(g^2+g') con g=v'*ln2 y g'=v''*ln2.
+    long double ln2 = std::log(2.0L);
+    check_render_y_triple("2^(x*x) en x=1", {21, 2, 19, 11, 11},
+                          "(2.0)**((x)*(x))", 1.0L,
+                          {2.0L, 4.0L * ln2, 8.0L * ln2 * ln2 + 4.0L * ln2});
+    // (-x)*cos(x) en x=0: el unario es el operando izquierdo -> [0,-1,0].
+    check_render_y_triple("(-x)*cos(x) en x=0", {19, 12, 11, 14, 11},
+                          "(-1.0*(x))*(cos(x))", 0.0L, {0.0L, -1.0L, 0.0L});
+    // -sin(x+1) en x=0: unario sobre el binario completo.
+    check_render_y_triple("-sin(x+1) en x=0", {12, 13, 18, 11, 1},
+                          "-1.0*(sin((x)+(1.0)))", 0.0L, {-s1, -c1, s1});
+    // x+(-x) en x=2: una hoja x por rama; la suma exacta cancela todo.
+    check_render_y_triple("x+(-x) en x=2", {18, 11, 12, 11},
+                          "(x)+(-1.0*(x))", 2.0L, {0.0L, 0.0L, 0.0L});
+    // x/(x+1) en x=1: f'=1/(x+1)^2, f''=-2/(x+1)^3.
+    check_render_y_triple("x/(x+1) en x=1", {20, 11, 18, 11, 1},
+                          "(x)/((x)+(1.0))", 1.0L, {0.5L, 0.25L, -0.25L});
+    // exp(x^2+(x+x)) en x=0: g=x^2+2x, g(0)=0, g'(0)=2, g''(0)=2;
+    //   f=e^g -> f'=2 y f''=g''+g'^2=6.
+    check_render_y_triple("exp(x^2+(x+x)) en x=0", {15, 18, 21, 11, 2, 18, 11, 11},
+                          "exp(((x)**(2.0))+((x)+(x)))", 0.0L, {1.0L, 2.0L, 6.0L});
+    // sin(x*x)*x en x=0.5: unario a la izquierda de un producto.
+    //   f=sin(x^2)*x; f'=2x^2*cos(x^2)+sin(x^2);
+    //   f''=6x*cos(x^2)-4x^3*sin(x^2).
+    long double x = 0.5L;
+    long double sxx = std::sin(x * x), cxx = std::cos(x * x);
+    check_render_y_triple("sin(x*x)*x en x=0.5", {19, 13, 19, 11, 11, 11},
+                          "(sin((x)*(x)))*(x)", x,
+                          {x * sxx, 2.0L * x * x * cxx + sxx,
+                           6.0L * x * cxx - 4.0L * x * x * x * sxx});
+    // x-sin(x*x) en x=0.5: la resta es una suma con negacion; la hoja x del
+    // minuendo no la consume el sin del sustraendo.
+    //   f=x-sin(x^2); f'=1-2x*cos(x^2); f''=4x^2*sin(x^2)-2*cos(x^2).
+    check_render_y_triple("x-sin(x*x) en x=0.5", {18, 11, 12, 13, 19, 11, 11},
+                          "(x)+(-1.0*(sin((x)*(x))))", x,
+                          {x - sxx, 1.0L - 2.0L * x * cxx,
+                           4.0L * x * x * sxx - 2.0L * cxx});
+    // sin(x*x)+2 en x=0.5: si el producto no consumiera sus dos hojas, la
+    // suma engancharia una x ya usada en vez del 2.0 independiente del final
+    // (daria sin(x^2)+x, que en x=0.5 vale distinto).
+    //   f=sin(x^2)+2; f'=2x*cos(x^2); f''=2*cos(x^2)-4x^2*sin(x^2).
+    check_render_y_triple("sin(x*x)+2 en x=0.5", {18, 13, 19, 11, 11, 2},
+                          "(sin((x)*(x)))+(2.0)", x,
+                          {sxx + 2.0L, 2.0L * x * cxx,
+                           2.0L * cxx - 4.0L * x * x * sxx});
+    // -cos(x)+1 en x=2: si el unario no consumiera su operando, la suma
+    // engancharia la x de dentro del cos en vez del 1.0 final.
+    //   f=1-cos(x); f'=sin(x); f''=cos(x).
+    check_render_y_triple("-cos(x)+1 en x=2", {18, 12, 14, 11, 1},
+                          "(-1.0*(cos(x)))+(1.0)", 2.0L,
+                          {1.0L - std::cos(2.0L), std::sin(2.0L), std::cos(2.0L)});
+}
+
 int main() {
     std::cout << "== test_dual: issue #2 ==\n";
     test_narg_token12();
@@ -518,6 +639,7 @@ int main() {
     test_pow2dual_indefinidos_son_nan();
     test_pow2dual_base_cero_guardas();
     test_sqrt2dual_guardas();
+    test_parsv_render_evaluacion_anidada();
     test_parsv_sin_finite_difference();
     test_parsv_finite_difference_bateria();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "

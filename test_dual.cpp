@@ -333,6 +333,94 @@ static void test_parsv_parada_temprana_nan() {
               {NAN, NAN, NAN});
 }
 
+// -------------------------------------------------------------------------
+// Slice 9 (issue #19, B8 de REVIEW.md): pow2dual con rama real y guardas.
+// Antes la funcion calculaba con complejos y descartaba la parte imaginaria:
+// casos con derivada bien definida daban NaN (x^2 en x=0 -> [0,NaN,NaN]) y los
+// indefinidos no tenian una politica explicita. Los valores esperados salen de
+// derivar a mano con la regla de la potencia, no de la implementacion.
+// -------------------------------------------------------------------------
+
+// p2d / sq2d: atajos locales que copian los vectores de entrada; pow2dual y
+// sqrt2dual reciben referencias no-const y no aceptan temporales `{...}`
+// (en Python no existe esa distincion: una lista se pasa sin ceremonia).
+static std::vector<long double> p2d(std::vector<long double> u, std::vector<long double> v) {
+    return pow2dual(u, v);
+}
+static std::vector<long double> sq2d(std::vector<long double> u) {
+    return sqrt2dual(u);
+}
+
+static void test_pow2dual_rama_real() {
+    // 2^3: f=8, f'=3*2^2=12, f''=6*2=12 (exponente constante).
+    check_vec("pow2dual(2^3)", p2d({2.0L, 1.0L, 0.0L}, {3.0L, 0.0L, 0.0L}),
+              {8.0L, 12.0L, 12.0L});
+    // 4^0.5 = sqrt(4): f=2, f'=1/(2*sqrt(4))=0.25, f''=-1/(4*4^1.5)=-0.03125.
+    check_vec("pow2dual(4^0.5)", p2d({4.0L, 1.0L, 0.0L}, {0.5L, 0.0L, 0.0L}),
+              {2.0L, 0.25L, -0.03125L});
+    // 2^x en x=2 (el exponente tambien varia): f'=f''=4*ln(2)^2, como en parsv.
+    ldouble ln2 = std::log(2.0L);
+    check_vec("pow2dual(2^x) con exponente variable",
+              p2d({2.0L, 0.0L, 0.0L}, {2.0L, 1.0L, 0.0L}),
+              {4.0L, 4.0L * ln2, 4.0L * ln2 * ln2});
+}
+
+static void test_pow2dual_base_negativa_entera() {
+    // (-2)^3: f=-8, f'=3*(-2)^2=12, f''=6*(-2)=-12 (el signo de f'' tambien
+    // es menos; el issue #1 lo escribio como +12, era un typo).
+    check_vec("pow2dual((-2)^3)", p2d({-2.0L, 1.0L, 0.0L}, {3.0L, 0.0L, 0.0L}),
+              {-8.0L, 12.0L, -12.0L});
+    // (-2)^2: f=4, f'=2*(-2)=-4, f''=2*1*1=2.
+    check_vec("pow2dual((-2)^2)", p2d({-2.0L, 1.0L, 0.0L}, {2.0L, 0.0L, 0.0L}),
+              {4.0L, -4.0L, 2.0L});
+    // (-2)^-1 = 1/u: f=-0.5, f'=-u'/u^2=-0.25, f''=2*u'^2/u^3=-0.25.
+    check_vec("pow2dual((-2)^-1)", p2d({-2.0L, 1.0L, 0.0L}, {-1.0L, 0.0L, 0.0L}),
+              {-0.5L, -0.25L, -0.25L});
+}
+
+static void test_pow2dual_indefinidos_son_nan() {
+    // Base negativa con exponente fraccionario: sin resultado real.
+    check_vec("pow2dual((-8)^(1/3)) es NaN",
+              p2d({-8.0L, 1.0L, 0.0L}, {1.0L / 3.0L, 0.0L, 0.0L}), {NAN, NAN, NAN});
+    check_vec("pow2dual((-4)^0.5) es NaN",
+              p2d({-4.0L, 1.0L, 0.0L}, {0.5L, 0.0L, 0.0L}), {NAN, NAN, NAN});
+    // Base negativa con exponente entero pero *variable*: ln(-u) no existe en
+    // los reales, asi que la regla de la cadena no aplica -> NaN explicito.
+    check_vec("pow2dual((-2)^(3+x)) es NaN",
+              p2d({-2.0L, 1.0L, 0.0L}, {3.0L, 1.0L, 0.0L}), {NAN, NAN, NAN});
+    // 0^0 es indeterminado (el limite depende de por donde se acerque).
+    check_vec("pow2dual(0^0) es NaN",
+              p2d({0.0L, 1.0L, 0.0L}, {0.0L, 0.0L, 0.0L}), {NAN, NAN, NAN});
+}
+
+static void test_pow2dual_base_cero_guardas() {
+    // x^1 en x=0: base u=[0,1,0] (u'=1): f=0, f'=u'=1, f''=u''=0.
+    check_vec("pow2dual(0^1)", p2d({0.0L, 1.0L, 0.0L}, {1.0L, 0.0L, 0.0L}),
+              {0.0L, 1.0L, 0.0L});
+    // x^2 en x=0: f=0, f'=0, f''=2*u'^2=2 (antes daba [0,NaN,NaN]).
+    check_vec("pow2dual(0^2)", p2d({0.0L, 1.0L, 0.0L}, {2.0L, 0.0L, 0.0L}),
+              {0.0L, 0.0L, 2.0L});
+    // x^3 en x=0: f=f'=f''=0.
+    check_vec("pow2dual(0^3)", p2d({0.0L, 1.0L, 0.0L}, {3.0L, 0.0L, 0.0L}),
+              {0.0L, 0.0L, 0.0L});
+    // x^0.5 en x=0: valor 0 pero derivadas realmente infinitas -> NaN.
+    check_vec("pow2dual(0^0.5)", p2d({0.0L, 1.0L, 0.0L}, {0.5L, 0.0L, 0.0L}),
+              {0.0L, NAN, NAN});
+    // x^1.5 en x=0: f'=0 (1.5>1) pero f'' sigue siendo infinita -> NaN.
+    check_vec("pow2dual(0^1.5)", p2d({0.0L, 1.0L, 0.0L}, {1.5L, 0.0L, 0.0L}),
+              {0.0L, 0.0L, NAN});
+    // x^-1 en x=0: 1/0, sin valor real -> NaN.
+    check_vec("pow2dual(0^-1)", p2d({0.0L, 1.0L, 0.0L}, {-1.0L, 0.0L, 0.0L}),
+              {NAN, NAN, NAN});
+}
+
+static void test_sqrt2dual_guardas() {
+    // sqrt(u) es pow2dual(u, [0.5,0,0]): en u=4 todo finito; en u=0 la
+    // derivada es infinita y queda NaN.
+    check_vec("sqrt2dual(4)", sq2d({4.0L, 1.0L, 0.0L}), {2.0L, 0.25L, -0.03125L});
+    check_vec("sqrt2dual(0)", sq2d({0.0L, 1.0L, 0.0L}), {0.0L, NAN, NAN});
+}
+
 int main() {
     std::cout << "== test_dual: issue #2 ==\n";
     test_narg_token12();
@@ -350,6 +438,11 @@ int main() {
     test_parsv_bateria_binaria();
     test_parsv_binario_no_reutiliza_hoja();
     test_parsv_parada_temprana_nan();
+    test_pow2dual_rama_real();
+    test_pow2dual_base_negativa_entera();
+    test_pow2dual_indefinidos_son_nan();
+    test_pow2dual_base_cero_guardas();
+    test_sqrt2dual_guardas();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
               << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;  // codigo de salida como el de pytest

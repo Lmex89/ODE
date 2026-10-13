@@ -2,7 +2,7 @@
 
 C++ research prototype that searches for symbolic solutions of 2nd-order ODEs
 using a Differential Evolution / genetic-programming loop (paper linked in
-`README.md`). No tests, no CI, no package manager.
+`README.md`). No CI, no package manager; dual-number tests run with `make test`.
 
 ## Mandatory: codegraph first
 
@@ -28,8 +28,9 @@ and do not re-open those files to "verify" it.
 
 - `Makefile` builds with `g++` by default (`CXX ?= g++`, so `make CXX=icpc`
   still works where Intel's `icpc` exists). `make` only builds `main.exe`;
-  `make run` compiles if needed and executes it; `make clean` removes the
-  objects and the binary. Flags: `-std=c++17 -Wall -O3`.
+  `make run` compiles if needed and executes it; `make test` compiles and runs
+  `test_dual.cpp` (dual-number tests; links only `dualfunctions.cpp`);
+  `make clean` removes the objects and binaries. Flags: `-std=c++17 -Wall -O3`.
 - Never add `parse_tree_bckp.cpp` to a build: it is a reference backup that
   also defines `main()` (duplicate symbol). The Makefile does not compile it.
 - `.vscode/tasks.json` builds only the active file, which cannot link — the two

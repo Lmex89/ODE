@@ -19,7 +19,7 @@ OBJS   := $(SRCS:.cpp=.o)
 # parse_tree_bckp.cpp NO se compila: es una copia de referencia que tambien
 # define main(), y enlazarla daria un error de simbolo duplicado.
 
-.PHONY: all clean run
+.PHONY: all clean run test
 
 # `all` es la regla por defecto: `make` a secas construye el ejecutable.
 all: $(TARGET)
@@ -46,5 +46,17 @@ parse_tree.o: parse_tree.cpp dualfunctions.h
 run: $(TARGET)
 	./$(TARGET)
 
+# `make test`: compila y corre test_dual.cpp (tests de dual numbers del
+# issue #2). Enlaza dualfunctions.cpp + test_dual.cpp nada mas: parse_tree.cpp
+# define su propio main() y no puede entrar (error de simbolo duplicado).
+# En Python seria como correr `pytest`: exit code != 0 si algun assert falla.
+TESTBIN := test_dual.exe
+
+test: $(TESTBIN)
+	./$(TESTBIN)
+
+$(TESTBIN): dualfunctions.cpp test_dual.cpp dualfunctions.h
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) dualfunctions.cpp test_dual.cpp -o $@
+
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(TARGET) $(TESTBIN)

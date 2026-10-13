@@ -1,2 +1,4 @@
 # Local codegraph index (machine-specific: sqlite db, sockets, pid files)
 .codegraph/
+# Test binary built by `make test` (ephemeral, unlike the committed main.exe)
+test_dual.exe

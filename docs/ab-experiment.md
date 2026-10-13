@@ -24,8 +24,8 @@ loop. A and B therefore differ exactly in the issue #2 fixes.
 scripts/ab_experiment.sh --seed <S> --timeout 300
 ```
 
-For every seed in {1, 42, 2026}: both binaries run from to a temporary
-directory with `ODE_SEED=<S>` and a 300 s `timeout`, and each log is parsed for
+For every seed in {1, 42, 2026}: both binaries run from a temporary directory
+with `ODE_SEED=<S>` and a 300 s `timeout`, and each log is parsed for
 the best fitness, the last-improvement expression/vector, the generations
 reached and the wall time. `best fitness` is the minimum over all printed
 `BestCurrent` values, which equals `Bestfit` at exit (it only decreases). The
@@ -58,9 +58,10 @@ Reading of the table:
   both; seeds 42 and 2026 reach different best individuals and different
   fitness values, with B finding the better near-solution in seed 2026
   (0.0401972 vs 1.13369).
-- The winner vector in both versions has the shape
+- The best run of each version found the vector
   `[18, 14, 11, 13, 13, 11, 1, ..., 1]` = `cos(x) + sin(sin(x))`, fitness
-  0.0401972. It fits the initial conditions but is not the solution of the ODE.
+  0.0401972 (A on seed 1, B on seeds 1 and 2026). It fits the initial
+  conditions but is not the solution of the ODE.
 - `Execution Time` was never printed (no run terminated), so only wall time
   (300 s per run) is recorded.
 
@@ -80,8 +81,8 @@ generates:
   200 000 uniformly random 20-token trees (the same distribution as
   `vector_population()`) shows **20 356 of them (10.2 %) evaluate differently**:
   444/75 462 (0.6 %) of the trees *without* negation and 19 912/124 538 (16 %)
-  of the trees *with* negation — the two fixes above account for every
-  difference.
+  of the trees *with* negation. Both fixes therefore change real fitness
+  values, not just edge cases.
 
 For complete trees without negation (e.g. `cos(x) + sin(sin(x))`) both
 versions agree, which is why the same individual can win in both.
@@ -104,8 +105,9 @@ and belongs to the Phase-3 alignment (issue #1).
   pre-repo build, so they cannot correspond to any revision here.
 - `out` is a truncated capture: 3.3 M lines, no `Execution Time`, ending
   mid-run at generation 1197 with `BestCurrent1 :5.44721 ... cos((2.0)+(2.0))`.
-  `cos((2.0)+(2.0))` is a constant with fitness ≈ 5.4, i.e. a fabricated
-  evaluation, not a solution.
+  A constant expression cannot score 5.44721 under the current fitness (which
+  adds initial-condition penalties), so the capture cannot come from the
+  current formula either.
 - `out.txt` claims convergence in **generation 1 with fitness 0** for
   `y(x) = x`. Neither revision reproduces anything like that: with the same
   seeds, A needs 232 generations to reach 0.0401972 at best, and under B

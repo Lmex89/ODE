@@ -3,13 +3,11 @@
 #include <ctime>
 #include <cmath>
 #include <cstring>
-#include <complex>
 
 using namespace std;
 typedef long long int llint;
 typedef  long double ldouble;
 typedef string  str;
-using namespace std::complex_literals;
 
 vector<ldouble> sin2dual(vector<ldouble>& xval){
 
@@ -79,45 +77,81 @@ vector<ldouble> division2dual(vector<ldouble>&x, vector<ldouble>& y){
 	return f;
 }
 
+// pow2dual: potencia de duales de segundo orden (u^v, con u y v funciones de
+// x) con rama real y guardas explicitas en los casos limite (issue #19, B8 de
+// REVIEW.md). `x = [u, u', u'']` es la base y `y = [v, v', v'']` el exponente.
+//
+// La version anterior calculaba con numeros complejos y descartaba siempre la
+// parte imaginaria: x^2 en x=0 daba [0,NaN,NaN] aunque la derivada existe, y
+// (-2)^(3+x) colaba valores finitos enganosos. Ahora:
+//   u > 0  -> reglas reales de la potencia u^v = exp(v*ln u)
+//   u = 0  -> limites finitos conocidos y NaN explicito cuando la derivada es
+//             realmente infinita o la potencia indeterminada (0^0)
+//   u < 0  -> real solo con exponente entero y constante; si no, NaN explicito
+// En Python seria la misma cascada de `if/elif` con math.pow/math.log; `NAN`
+// es float("nan") (aqui es el macro NAN de <cmath>).
 vector<ldouble> pow2dual(vector<ldouble>&x, vector<ldouble>& y){
 
+	// Arranca en NaN: toda rama que no asigne un valor deja NaN, que es la
+	// politica explicita para los casos indefinidos (equivale a
+	// `f = [float("nan"), float("nan"), float("nan")]`).
+	vector<ldouble> f(3, NAN);
 
-	vector<ldouble> f(3);
+	ldouble u0 = x[0], u1 = x[1], u2 = x[2];
+	ldouble v0 = y[0], v1 = y[1], v2 = y[2];
 
-
-	using namespace std::complex_literals;
-	complex <long double> xz,yz,z1,z2,z3;
-	complex <long double>  uno(1.0,0),dos(2.0,0.0);
-	xz = x[0] ;
-	yz  = y[0];
-
-	ldouble eps = 0.000001;
-	z1 = pow(x[0],y[0]);
-	//cout << "z1 "<< z1   << endl;
-	z2 = z1*(x[1]*y[0]/x[0] + y[1]*log(xz) );
-	//cout << "z2 : "<<z2 << endl;
-	z3 = z1*((pow(x[1],2)*(-uno + y[0])*y[0])/pow(x[0],2) + (x[2]*y[0]+2.0*x[1]*(uno + log(xz)*y[0])*y[1])/x[0] + log(xz)*(log(xz)*pow(y[1],dos) + y[2]));
-	//cout << "z3 " << z3 << endl;
-	 if (abs(imag(z1)) < eps){
-		f[0] = real(z1);
-		}
-	else{
-		f[0] = real(z1);
+	if (u0 > 0.0L){
+		// f = u^v, f' = f*(v*u'/u + v'*ln u) y f'' = f*(g^2 + g') con
+		// g = d/dx(v*ln u); u > 0 garantiza ln u definido.
+		ldouble uv = pow(u0, v0);
+		ldouble lu = log(u0);
+		ldouble g  = v0*u1/u0 + v1*lu;
+		f[0] = uv;
+		f[1] = uv*g;
+		f[2] = uv*(g*g + 2.0L*v1*u1/u0 + v0*u2/u0 - v0*u1*u1/(u0*u0) + v2*lu);
+		return f;
 	}
 
-	 if (abs(imag(z2)) < eps){
-		f[1] = real(z2);
+	if (u0 == 0.0L){
+		// Base cero: el valor 0^v0 es 0 para v0 > 0; las derivadas son
+		// limites que solo existen con exponente constante (v1 = v2 = 0).
+		if (v0 > 0.0L && v1 == 0.0L && v2 == 0.0L){
+			f[0] = 0.0L;
+			if (v0 == 1.0L){          // u^1 = u
+				f[1] = u1;
+				f[2] = u2;
+			} else if (v0 == 2.0L){   // u^2: f'' = 2*u'^2 + 2*u*u'' con u=0
+				f[1] = 0.0L;
+				f[2] = 2.0L*u1*u1;
+			} else if (v0 > 2.0L){    // v0 > 2: f, f' y f'' se anulan
+				f[1] = 0.0L;
+				f[2] = 0.0L;
+			} else if (v0 > 1.0L){    // 1 < v0 < 2: f'=0, f'' infinita
+				f[1] = 0.0L;
+			}
+			// 0 < v0 < 1: f' y f'' infinitas -> queda el NaN inicial.
 		}
-	else{
-		f[1] = real(z2);
-	}
-	 if (abs(imag(z3)) < eps){
-		f[2] = real(z3);
-		}
-	else{
-		f[2] = real(z3);
+		return f;
 	}
 
+	// u0 < 0: u^v es real solo si el exponente es un entero constante; una
+	// base negativa con exponente variable no tiene derivada real (ln(-u) no
+	// existe). `floor(v0 + 0.5)` es el mismo redondeo que token_valido().
+	ldouble k = floor(v0 + 0.5L);
+	if (v0 != k || v1 != 0.0L || v2 != 0.0L){
+		return f;   // NaN explicito
+	}
+	if (k == 0.0L){   // u^0 = 1 para u != 0 (0^0 ya quedo como NaN arriba)
+		f[0] = 1.0L;
+		f[1] = 0.0L;
+		f[2] = 0.0L;
+		return f;
+	}
+	// Regla de la potencia con exponente entero k:
+	//   f = u^k, f' = k*u^(k-1)*u', f'' = k*(k-1)*u^(k-2)*u'^2 + k*u^(k-1)*u''
+	f[0] = pow(u0, k);
+	f[1] = k*pow(u0, k - 1.0L)*u1;
+	f[2] = k*(k - 1.0L)*pow(u0, k - 2.0L)*u1*u1 + k*pow(u0, k - 1.0L)*u2;
 	return f;
 }
 

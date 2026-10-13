@@ -69,6 +69,81 @@ static void check_vec(const std::string& nombre,
     }
 }
 
+// valor_parsv: observa solo f(x) a traves de la seam publica parsv(). En
+// Python seria `return parsv(tokens, [x, 1.0, 0.0])[0]`; crear xval aqui evita
+// que la prueba use una funcion interna de dualfunctions.cpp.
+static long double valor_parsv(const std::vector<long double>& tokens,
+                               long double x) {
+    std::vector<long double> xval = {x, 1.0L, 0.0L};
+    return parsv(tokens, xval)[0];
+}
+
+// check_parsv_finite_difference: compara las derivadas que devuelve parsv()
+// con una aproximacion independiente centrada. Es equivalente a calcular en
+// Python `(f(x+h)-f(x-h))/(2*h)` y `(f(x+h)-2*f(x)+f(x-h))/h**2`.
+static void check_parsv_finite_difference(const std::string& nombre,
+                                          const std::vector<long double>& tokens,
+                                          long double x,
+                                          long double tol) {
+    const long double h = 1e-5L;
+    std::vector<long double> xval = {x, 1.0L, 0.0L};
+    std::vector<long double> centro = parsv(tokens, xval);
+    long double menos = valor_parsv(tokens, x - h);
+    long double mas = valor_parsv(tokens, x + h);
+    long double primera = (mas - menos) / (2.0L * h);
+    long double segunda = (mas - 2.0L * centro[0] + menos) / (h * h);
+    check_vec(nombre, {centro[1], centro[2]}, {primera, segunda}, tol);
+}
+
+// -------------------------------------------------------------------------
+// Slice issue #18: la regla de sin() debe coincidir con una diferencia finita
+// calculada sin reutilizar el resultado de parsv().
+// -------------------------------------------------------------------------
+
+static void test_parsv_sin_finite_difference() {
+    check_parsv_finite_difference("parsv(sin(x)) coincide con diferencias finitas",
+                                  {13, 11}, 0.5L, 1e-6L);
+}
+
+// check_parsv_case: aplica una expresion a todos los puntos del dominio que
+// comparte la bateria. Es como `for x in puntos: assert_case(...)` en Python;
+// el nombre incluye el punto para localizar un fallo sin inspeccionar indices.
+static void check_parsv_case(const std::string& nombre,
+                             const std::vector<long double>& tokens,
+                             const std::vector<long double>& puntos) {
+    for (long double x : puntos) {
+        std::ostringstream caso;
+        caso << nombre << " en x=" << static_cast<double>(x);
+        check_parsv_finite_difference(caso.str(), tokens, x, 1e-6L);
+    }
+}
+
+// test_parsv_finite_difference_bateria: cubre cada operacion de la gramatica
+// por la seam publica parsv(). Las expresiones usan notacion prefija, igual
+// que la lista de tokens que evolucionan los individuos del DE.
+static void test_parsv_finite_difference_bateria() {
+    // Estos puntos mantienen positivas las bases de log/sqrt y evitan x=0 en
+    // 2/x; asi la aproximacion central mide derivadas reales y finitas.
+    std::vector<long double> puntos = {0.25L, 0.5L, 0.75L};
+    check_parsv_case("parsv(x)", {11}, puntos);
+    check_parsv_case("parsv(-x)", {12, 11}, puntos);
+    check_parsv_case("parsv(sin(x))", {13, 11}, puntos);
+    check_parsv_case("parsv(cos(x))", {14, 11}, puntos);
+    check_parsv_case("parsv(exp(x))", {15, 11}, puntos);
+    check_parsv_case("parsv(log(x+2))", {16, 18, 11, 2}, puntos);
+    check_parsv_case("parsv(sqrt(x+2))", {17, 18, 11, 2}, puntos);
+    check_parsv_case("parsv(x+2)", {18, 11, 2}, puntos);
+    check_parsv_case("parsv(x-2)", {18, 11, 12, 2}, puntos);
+    check_parsv_case("parsv(x*x)", {19, 11, 11}, puntos);
+    check_parsv_case("parsv(x/2)", {20, 11, 2}, puntos);
+    check_parsv_case("parsv(2/x)", {20, 2, 11}, puntos);
+    check_parsv_case("parsv(x^2)", {21, 11, 2}, puntos);
+    check_parsv_case("parsv(2^x)", {21, 2, 11}, puntos);
+    check_parsv_case("parsv(x^x)", {21, 11, 11}, puntos);
+    check_parsv_case("parsv(sin(x^2+cos(x)))",
+                     {13, 18, 21, 11, 2, 14, 11}, puntos);
+}
+
 // check_int: igual que `assert narg(12) == 1` en pytest.
 static void check_int(const std::string& nombre, int got, int esperado) {
     g_checks++;
@@ -443,6 +518,8 @@ int main() {
     test_pow2dual_indefinidos_son_nan();
     test_pow2dual_base_cero_guardas();
     test_sqrt2dual_guardas();
+    test_parsv_sin_finite_difference();
+    test_parsv_finite_difference_bateria();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
               << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;  // codigo de salida como el de pytest

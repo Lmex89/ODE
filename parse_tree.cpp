@@ -195,8 +195,14 @@ vector<long double> vector_population(int tam){
 void createPopulation(vector<FunbObj>&Population,int tam,int caso){
 
 	//vector<ldouble> uno =   {21,11,2,1,1,1,2,11,11,11,11,11,1,1,1,1,1,1,1,1};
+	// Los cinco seeds escritos a mano miden exactamente 20 tokens, igual que
+	// los individuos aleatorios de vector_population(20): el semillero tiene
+	// que ser uniforme porque Mutation()/Recombination() emparejan genes por
+	// posicion (B5 de REVIEW.md: con dos=21 se leia y[20]/z[20] fuera de
+	// rango). En Python serian listas de 20 elementos, con
+	// `assert len(semilla) == 20` como comprobacion.
 	vector<ldouble> uno =   {18,13,17,11,14,14,11,14,14,14,13,14,14,14,14,14,14,14,14,11};
-	vector<ldouble> dos =   {18,14,13,17,11,14,20,1,5,1,1,1,1,1,1,1,1,1,1,1,1};
+	vector<ldouble> dos =   {18,14,13,17,11,14,20,1,5,1,1,1,1,1,1,1,1,1,1,1};
 	vector<ldouble> tres =  {18,13,11,13,13,14,14,14,11,1,1,1,1,1,1,1,1,1,1,1};
 	vector<ldouble> cuatro ={18,14,11,13,13,11,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 	vector<ldouble> c5 =    {18,13,13,13,11,13,11,11,1,1,1,1,1,1,1,1,1,1,1,1};
@@ -294,9 +300,9 @@ void indices_distintos(int tam, int excluir, int& r1, int& r2, int& r3){
 // funcion devuelve un vector nuevo; nadie muta los padres.
 vector<ldouble> Mutation(vector<ldouble>x, vector<ldouble> y,vector<ldouble>z){
 
-	// Se recorre hasta el menor de los tres tamanos: un individuo semilla
-	// tiene 21 tokens y el resto 20 (B5 de REVIEW.md), y leer y[i]/z[i] de mas
-	// era una lectura fuera de rango. En Python seria
+	// Se recorre hasta el menor de los tres tamanos: si dos vectores midieran
+	// distinto (p. ej. un seed mal escrito, B5 de REVIEW.md), leer y[i]/z[i]
+	// de mas seria una lectura fuera de rango. En Python seria
 	// `n = min(len(x), len(y), len(z))` (aqui `min` es std::min, de <algorithm>).
 	int n = (int) min(x.size(), min(y.size(), z.size()));
 

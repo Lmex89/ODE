@@ -177,33 +177,100 @@ void createPopulation(vector<FunbObj>&Population,int tam){
 }
 
 
+// mutacion_rand1: nucleo de la mutacion DE/rand/1/bin, ecuacion (7) del paper:
+//
+//     v = x_r1 + F * (x_r2 - x_r3)
+//
+// Es una funcion *pura* (sin rand(), sin estado): por eso se puede testear con
+// valores a mano. En Python seria `def mutacion_rand1(r1, r2, r3, F): return
+// r1 + F * (r2 - r3)`. Se separa de Mutation() para poder probar la formula
+// sola, sin depender del sorteo de F.
+ldouble mutacion_rand1(ldouble r1, ldouble r2, ldouble r3, ldouble F){
+	return r1 + F * (r2 - r3);
+}
+
+// token_valido: pasa el valor real de la ecuacion (7) a un token entero del
+// alfabeto (1..21). Redondea al entero mas cercano y recorta los extremos.
+//
+// Detalle C++ sin equivalente directo en Python: se devuelve `int` y no
+// `long double` porque un token es un codigo, no una cantidad; el redondeo se
+// hace con floor(v + 0.5) (equivalente a round() pero sin la ambiguedad de
+// round() con los .5 negativos) y el recorte con dos `if` en vez de min/max
+// para que quede explicito. En Python seria:
+//     def token_valido(v): return min(21, max(1, floor(v + 0.5)))
+int token_valido(ldouble v){
+	ldouble redondeado = floor(v + 0.5L);
+	if (redondeado < 1.0L) return 1;
+	if (redondeado > 21.0L) return 21;
+	return (int) redondeado;
+}
+
+// indices_distintos: sortea tres indices de poblacion distintos entre si y
+// distintos de `excluir` (el individuo objetivo). Son los x_r1, x_r2, x_r3 de
+// la ecuacion (7): el paper exige individuos distintos para que la diferencia
+// (x_r2 - x_r3) no sea siempre cero.
+//
+// Los parametros `int& r1` son *referencias*: en C++ equivalen a un parametro
+// de salida (Python tendria que devolver una tupla, `return r1, r2, r3`).
+// El sorteo se hace por rechazo: se tira rand() hasta que no toque un indice
+// repetido. Con poblaciones de ~275 individuos el bucle casi nunca repite.
+void indices_distintos(int tam, int excluir, int& r1, int& r2, int& r3){
+	// Con menos de 4 individuos no existen 3 indices distintos del objetivo;
+	// se devuelven los que haya para no quedarse en un bucle infinito (solo
+	// puede pasar si alguien achica la poblacion a mano).
+	if (tam < 4) {
+		r1 = 0;
+		r2 = (tam > 1) ? 1 : 0;
+		r3 = (tam > 2) ? 2 : 0;
+		return;
+	}
+	do { r1 = rand() % tam; } while (r1 == excluir);
+	do { r2 = rand() % tam; } while (r2 == excluir || r2 == r1);
+	do { r3 = rand() % tam; } while (r3 == excluir || r3 == r1 || r3 == r2);
+}
+
+// ---------------------------------------------------------------------------
+// Operadores DE/rand/1/bin (issue #5).
+// ---------------------------------------------------------------------------
+
+// Mutation: version DE/rand/1/bin con dither, ecuacion (7) del paper. Aplica,
+// token a token, v = x_r1 + F*(x_r2 - x_r3), donde x_r1/x_r2/x_r3 son los tres
+// individuos base que recibe (el llamador garantiza que son distintos) y F es
+// un unico aleatorio en [0,1] por llamada (parte "dither": F cambia en cada
+// generacion, no es una constante del algoritmo). El real resultante se
+// convierte a un token valido con token_valido().
+//
+// Nota C++ para un desarrollador Python: los tres parametros entran *por
+// valor* (una copia de cada vector, como una lista copiada en Python) y la
+// funcion devuelve un vector nuevo; nadie muta los padres.
 vector<ldouble> Mutation(vector<ldouble>x, vector<ldouble> y,vector<ldouble>z){
 
-	vector<ldouble> res;
-	for(int i = 0 ; i < (int)x.size(); i++ ){
-		res.push_back( abs(x[i]- y[i]));
-		if (res[i] <= 0 || res[i]> 21){
-			int resta = abs(x[i]- y[i]);
-			res[i] = resta % 21 + 1;
-		}
-		if( (res[i] + rand()*z[i]) > 21  || res[i] < 0 ){
-			int suma = res[i] + z[i];
-			res[i] = suma % 21 +1;
-		}else{
-			res[i] =res[i]+z[i];
-		}
+	// Se recorre hasta el menor de los tres tamanos: un individuo semilla
+	// tiene 21 tokens y el resto 20 (B5 de REVIEW.md), y leer y[i]/z[i] de mas
+	// era una lectura fuera de rango. En Python seria
+	// `n = min(len(x), len(y), len(z))` (aqui `min` es std::min, de <algorithm>).
+	int n = (int) min(x.size(), min(y.size(), z.size()));
+
+	// Se parte de una copia de x: asi, si x es mas largo que y/z, los tokens
+	// sobrantes sobreviven intactos en vez de quedar indefinidos.
+	vector<ldouble> res(x);
+
+	// Dither: un rand() por llamada. rand()/RAND_MAX da un real en [0,1]
+	// (rand() devuelve enteros en [0,RAND_MAX]); en Python seria
+	// `F = random.random()`.
+	ldouble F = (ldouble) rand() / (ldouble) RAND_MAX;
+
+	for(int i = 0 ; i < n; i++ ){
+		res[i] = token_valido(mutacion_rand1(x[i], y[i], z[i], F));
 	}
 
-	std::vector<ldouble>::iterator it = std::find(res.begin(),res.end(),11.0);
-	 if (it == res.end()){
-		for (int i = 0 ; i < 3 ; i++){
-			ldouble rand_num = rand() % (int) x.size();
-			if ((rand_num <= res.size() - 4) && (rand_num > 0)){
-				res[rand_num] = 11;
-			}		
-		}
-
-	 }
+	// Reparacion heredada: la fitness descarta los arboles sin token x (11),
+	// asi que si la mutacion los borro todos se fuerza uno en una posicion al
+	// azar (un solo token; antes se intentaban 3 posiciones con un rango
+	// dudoso). Es una regla propia de este prototipo, no del paper.
+	if (res.size() > 0 && std::find(res.begin(), res.end(), 11.0) == res.end()){
+		res[rand() % res.size()] = 11;
+	}
 
 	return res;
 }
@@ -255,6 +322,11 @@ bool compare(FunbObj& x1, FunbObj& y1){
 }
 
 
+// Guarda de compilacion para los tests: `-DODE_NO_MAIN` descarta este bloque
+// (y con el, main()) al compilar parse_tree.cpp dentro de un test. En Python no
+// existe nada parecido: un modulo no "contiene" el entry point, asi que no hay
+// que apagarlo; importarlo simplemente no ejecuta la busqueda.
+#ifndef ODE_NO_MAIN
 int main() {
 
 	unsigned t0, t1;
@@ -312,8 +384,17 @@ int main() {
 	for (int j = 1 ; j < tam -4   ; j++){
 
 
-		vector<ldouble> temporal1(Mutation(Population2[j].vecvalue(),Population2[j+2].vecvalue(),Population2[j+3].vecvalue()));
-		vector<ldouble> temporal2(Mutation(Population1[j].vecvalue(),Population1[j+2].vecvalue(),Population1[j+3].vecvalue()));
+		// Tres individuos base *distintos y al azar* para cada mutacion. Antes
+		// los indices eran los offsets fijos j, j+2, j+3; el paper (eq. (7))
+		// pide indices aleatorios distintos. Se excluye `j` para que el
+		// individuo objetivo no sea su propia base.
+		int r1, r2, r3;
+		indices_distintos((int) Population2.size(), j, r1, r2, r3);
+		int s1, s2, s3;
+		indices_distintos((int) Population1.size(), j, s1, s2, s3);
+
+		vector<ldouble> temporal1(Mutation(Population2[r1].vecvalue(),Population2[r2].vecvalue(),Population2[r3].vecvalue()));
+		vector<ldouble> temporal2(Mutation(Population1[s1].vecvalue(),Population1[s2].vecvalue(),Population1[s3].vecvalue()));
 		
 		int ix = rand() % Population1.size();
 		int iy = rand() % Population1.size();
@@ -512,3 +593,4 @@ int main() {
 
 	return 0;
 }
+#endif // ODE_NO_MAIN

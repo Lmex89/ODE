@@ -93,7 +93,7 @@ The program prints the best-fitting expression and its fitness each generation. 
 make test
 ```
 
-`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. Both link only the modules under test and do not run the evolutionary loop.
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). They link only the modules under test and do not run the evolutionary loop; `test_mutation.cpp` needs `parse_tree.cpp` and is built with `-DODE_NO_MAIN` so the test's own `main()` runs.
 
 ### A/B experiment
 
@@ -117,6 +117,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `parse_tree_bckp.cpp` | Reference backup — **do not compile** (also defines `main()`) |
 | `Makefile` | Build targets: `make`, `make run`, `make test`, `make clean` (`g++` by default) |
 | `test_dual.cpp` | Dual-number evaluation tests, run with `make test` |
+| `test_mutation.cpp` | DE/rand/1/bin mutation tests, run with `make test` |
 | `test_semilla.cpp` | `ODE_SEED` resolution tests, run with `make test` |
 | `scripts/ab_experiment.sh` | Reproducible A/B experiment (pre-fix vs post-fix, same seed) |
 | `docs/ab-experiment.md` | A/B comparison report and conclusions |

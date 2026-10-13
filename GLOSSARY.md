@@ -21,7 +21,10 @@ Domain-specific terms used in this codebase.
 | **Individual** | One candidate solution in the population — here, a vector of integer token codes representing a parse tree |
 | **Fitness** | A scalar score measuring how well a candidate satisfies the ODE and its conditions; lower is better |
 | **Elitism** | Strategy of always preserving the best individuals from one generation to the next |
-| **Mutation** | Random perturbation of an individual's token vector to explore new expressions |
+| **Mutation** | Random perturbation of an individual's token vector to explore new expressions; here `v = x_r1 + F*(x_r2 - x_r3)` (paper eq. (7)) |
+| **DE/rand/1/bin** | The DE variant used here: a random base individual `x_r1` plus one scaled difference vector `F*(x_r2 - x_r3)`, followed by binomial crossover |
+| **Dither** | Drawing the scaling factor `F` randomly (here once per mutation) instead of keeping it fixed |
+| **Trial vector** | The offspring produced by mutation for one target individual, before selection decides whether it replaces it |
 | **Recombination / Crossover** | Combining tokens from two or more parent individuals to produce offspring |
 | **Generation** | One iteration of the evolutionary loop |
 | **Convergence** | When fitness drops below a threshold (1e-5), indicating a sufficiently good solution has been found |

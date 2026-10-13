@@ -169,9 +169,7 @@ this repo; treat them as the reference for any new output.
 
 ## Repo notes
 
-- `.gitignore` only excludes the local `.codegraph/` index; `main.exe`, `*.o`,
-  `out.txt`, and the `out` transcript are committed — don't treat them as
-  source.
+- `.gitignore` excludes `.codegraph/`, compiled artifacts (`main.exe`, `*.o`), run outputs (`out`, `out.txt`), and tool noise (`.inteopt.txt`, `.ipynb_checkpoints/`). Don't re-add them.
 - Code comments are in Spanish.
 - Verification is manual: build, run, inspect the printed best fit and fitness.
 

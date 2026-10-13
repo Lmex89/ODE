@@ -1,6 +1,19 @@
 # Local codegraph index (machine-specific: sqlite db, sockets, pid files)
 .codegraph/
-# Test binary built by `make test` (ephemeral, unlike the committed main.exe)
+
+# Compiled binaries and object files
+main.exe
+*.o
+
+# Run outputs
+out
+out.txt
+
+# Tool/machine artifacts
+.inteopt.txt
+.ipynb_checkpoints/
+
+# Test binaries built by `make test` (ephemeral, unlike the committed main.exe)
 test_dual.exe
 test_mutation.exe
 test_semilla.exe

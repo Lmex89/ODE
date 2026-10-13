@@ -56,7 +56,7 @@ The expected solution for the default ODE `y'' + y = 0` with `y(0) = y'(0) = 1` 
 **Without the Makefile** (plain `g++`):
 
 ```bash
-g++ -std=c++17 -Wall -O3 dualfunctions.cpp parse_tree.cpp -o main.exe
+g++ -std=c++17 -Wall -O3 dualfunctions.cpp semilla.cpp parse_tree.cpp -o main.exe
 ```
 
 **With the Makefile** (recommended):
@@ -64,7 +64,7 @@ g++ -std=c++17 -Wall -O3 dualfunctions.cpp parse_tree.cpp -o main.exe
 ```bash
 make        # build ./main.exe (incremental)
 make run    # build if needed, then execute
-make test   # build and run the dual-number test suite
+make test   # build and run the unit tests (dual numbers + seed)
 make clean  # remove object files and binaries
 ```
 
@@ -74,8 +74,12 @@ compiler is available.
 ### Running
 
 ```bash
-./main.exe
+./main.exe                # stochastic: seed from the clock
+ODE_SEED=42 ./main.exe    # reproducible: fixed seed, identical run
 ```
+
+`ODE_SEED` fixes the `srand()` seed and the chosen value is printed as
+`Seed: N` at startup. Without the variable the clock is used, as before.
 
 The program prints the best-fitting expression and its fitness each generation. It typically converges in seconds but may run up to 100,000 generations. Output can be very verbose — consider piping through `tail`:
 
@@ -89,7 +93,18 @@ The program prints the best-fitting expression and its fitness each generation. 
 make test
 ```
 
-`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). It links only `dualfunctions.cpp` and does not run the evolutionary loop.
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. Both link only the modules under test and do not run the evolutionary loop.
+
+### A/B experiment
+
+`scripts/ab_experiment.sh` builds the pre-fix revision and `HEAD` with the same
+flags, runs both with identical `ODE_SEED` values, and writes a metrics table
+(fitness, vector, generations, times). Results and conclusions are documented in
+[docs/ab-experiment.md](docs/ab-experiment.md).
+
+```bash
+scripts/ab_experiment.sh --seed 42 --timeout 300
+```
 
 ## Files
 
@@ -98,15 +113,19 @@ make test
 | `parse_tree.cpp` | `main()` and the DE loop (population, mutation, recombination, elitism) |
 | `dualfunctions.h` | Header for token interpreter and 2nd-order dual-number arithmetic |
 | `dualfunctions.cpp` | Implementation of 2dual operations (sin, cos, exp, log, pow, etc.) and tree evaluation |
+| `semilla.h` / `semilla.cpp` | Run-seed control: resolves `ODE_SEED`, falling back to the clock |
 | `parse_tree_bckp.cpp` | Reference backup — **do not compile** (also defines `main()`) |
 | `Makefile` | Build targets: `make`, `make run`, `make test`, `make clean` (`g++` by default) |
 | `test_dual.cpp` | Dual-number evaluation tests, run with `make test` |
+| `test_semilla.cpp` | `ODE_SEED` resolution tests, run with `make test` |
+| `scripts/ab_experiment.sh` | Reproducible A/B experiment (pre-fix vs post-fix, same seed) |
+| `docs/ab-experiment.md` | A/B comparison report and conclusions |
 | `Untitled.ipynb` | SageMath scratchpad for reference ODE/solution (not part of the build) |
 
 ## Caveats
 
-- Search is stochastic (`srand(time(NULL))`) — runs are not reproducible
-- No CI; dual-number tests run with `make test`
+- Search is stochastic by default (`srand(time(NULL))`); set `ODE_SEED=N` for reproducible runs
+- No CI; dual-number and seed tests run with `make test`
 - Code comments are in Spanish
 - `dualfunctions.h` requires STL headers (`vector`, `string`) to be included before it
 - The SageMath notebook's fitness formula is stale; the C++ code is the source of truth

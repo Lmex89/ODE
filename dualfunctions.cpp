@@ -38,7 +38,9 @@ vector<ldouble> tan2dual(vector<ldouble>& xval){
 	vector<ldouble> f = {NAN,NAN,NAN}; ;
 
 	f[0] = tan(xval[0]);
-	f[1] = xval[0]/(pow(cos(xval[0]),2));
+	// tan(u)' = u'/cos^2(u): la derivada usa la componente dual xval[1]
+	// (du/dx, la regla de la cadena), no la componente real xval[0].
+	f[1] = xval[1]/(pow(cos(xval[0]),2));
 	f[2] = xval[2]/pow(cos(xval[0]),2) + ((2.0*tan(xval[0]))/pow(cos(xval[0]),2))*pow(xval[1],2);
 
 	return f;

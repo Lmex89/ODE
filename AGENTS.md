@@ -60,7 +60,10 @@ and do not re-open those files to "verify" it.
 - `parse_tree.cpp` — `main()` and the DE loop (single population, mutation,
   binomial crossover, greedy selection). `dualfunctions.{h,cpp}` — token
   interpreter and 2nd-order dual-number ("2dual") arithmetic; `parsv()`
-  evaluates a tree to `[y(x), y'(x), y''(x)]`. `semilla.{h,cpp}` — resolves
+  evaluates a tree to `[y(x), y'(x), y''(x)]`, consuming operands in place
+  (blanking them to NaN) and stopping at the first NaN operation, per the
+  paper's Algorithm 1; `OperF2` takes the full `auxv` matrix plus the start
+  index so that blanking lands in the tree. `semilla.{h,cpp}` — resolves
   `ODE_SEED` for reproducible runs.
 - `Mutation()` implements DE/rand/1/bin with dither (paper eq. (7)):
   `v = x_r1 + F*(x_r2 - x_r3)` with one `F` random in `[0,1]` per call, the
@@ -93,10 +96,9 @@ and do not re-open those files to "verify" it.
   `y(0) = y'(0) = 1`). With `ODE_CASE=1` the residual and conditions switch to
   the paper's Case 1 (`x*y'' + y' - cos(x)`, `y(0)=0`, `y'(0)=1`, exact
   solution `Si(x)`): the candidate constructor takes the case as a defaulted
-  4th argument, so `test_grid.cpp` still builds `FunbObj` with 3. As of
-  issue #10 (REVIEW B1) the parser cannot evaluate the expressions Case 1
-  needs (`x/2` → `NaN`, `x*cos(x/5)` → `x*x`), so Case 1 cannot reach the
-  threshold until #10 lands.
+  4th argument, so `test_grid.cpp` still builds `FunbObj` with 3. Issue #10
+  (REVIEW B1) fixed operand consumption in `parsv`/`OperF2`, so the parser
+  now evaluates the expressions Case 1 needs (`x/2`, `x*cos(x/5)`) correctly.
 - `Untitled.ipynb` is a SageMath scratchpad for the reference ODE/solution, not
   part of the C++ build; its fitness formula is stale — the C++ code is the
   source of truth.

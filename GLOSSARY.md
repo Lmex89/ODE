@@ -25,6 +25,7 @@ Domain-specific terms used in this codebase.
 | **DE/rand/1/bin** | The DE variant used here: a random base individual `x_r1` plus one scaled difference vector `F*(x_r2 - x_r3)`, followed by binomial crossover |
 | **Dither** | Drawing the scaling factor `F` randomly (here once per mutation) instead of keeping it fixed |
 | **Trial vector** | The offspring produced by mutation and binomial crossover for one target individual, before selection decides whether it replaces it |
+| **Warm start** | Starting the population from known candidate expressions — here the prototype's five hand-written seeds — instead of an all-random draw; opt-in via `ODE_WARM_START=1` |
 | **Recombination / Crossover** | Combining tokens from two or more parent individuals to produce offspring |
 | **Generation** | One iteration of the evolutionary loop |
 | **Convergence** | When fitness drops below a threshold (1e-5), indicating a sufficiently good solution has been found |
@@ -57,4 +58,4 @@ Domain-specific terms used in this codebase.
 | **`x_rango()`** | Generates the evaluation grid (array of `[x, 1.0, 0.0]` triples) over which fitness is measured; exactly `npoints` points with both endpoints included (100 for `[0,1]`, paper §5) |
 | **`OperF` / `OperF2`** | Functions that dispatch unary (1-arg) and binary (2-arg) operations on dual-number vectors |
 | **`narg()`** | Returns the arity (number of arguments) for a given token code |
-| **`vector_population`** | 2D vector holding all individuals; each is a `vector<long double>` of token codes |
+| **`vector_population`** | Builds one random individual: `tam` token codes drawn uniformly from the 1–21 alphabet |

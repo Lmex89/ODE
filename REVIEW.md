@@ -270,6 +270,13 @@ per-generation probability.
 | C9 | Seeding | — | `srand(time(NULL))`: runs are not reproducible and no seed can be supplied; this blocks the A/B experiment (section 8) | `parse_tree.cpp:261` |
 | C10 | Problem instance | ten case studies | one toy ODE not present in the paper (closest in shape: none of the 10 cases match `y''+y=0`) | `fitness()` (`parse_tree.cpp:95,103`), `README.md` |
 
+> Status (issue #28): C5–C7 are fixed — population size, individual dimension
+> and generation cap are configurable (`ODE_POP`, `ODE_DIM`, `ODE_GEN`) and
+> default to the Case 1 values (100 individuals, 20 tokens, 5 000 generations).
+> D6 is addressed by keeping the five hand-written expressions as an opt-in
+> warm start (`ODE_WARM_START=1`) on top of the uniform random initialisation.
+> The code references above describe the reviewed (pre-fix) revision.
+
 Additional details worth knowing:
 
 * The grid point `[0,1,0]` is equivalent to the paper's dual variable `x̃ = {x,1,0}`

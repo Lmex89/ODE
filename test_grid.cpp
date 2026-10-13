@@ -184,6 +184,51 @@ static void test_fitness_caso1_funcion_unaria() {
     check_ld("fitness_caso1(sin(x)) usa los pesos del caso 1", f.fitness(), esperado, 1e-6L);
 }
 
+// -------------------------------------------------------------------------
+// Slice 4 (issue #20, B6 de REVIEW.md): fitness() no muta al individuo y se
+// cachea. Antes, un arbol sin x recibia hasta 4 escrituras aleatorias de 11
+// dentro de fitness() y la primera llamada devolvia INFINITY mientras una
+// segunda podia devolver otro valor: la evaluacion cambiaba al individuo.
+// -------------------------------------------------------------------------
+
+static void test_fitness_sin_x_no_muta_el_individuo() {
+    // 20 constantes (misma longitud que un individuo real), sin token x (11).
+    srand(20261013);   // fija el sorteo de la reparacion heredada
+    std::vector<long double> sin_x(20, 3.0L);
+    FunbObj f(sin_x, 0.0L, 1.0L);
+    std::vector<long double> antes = f.vecvalue();
+
+    long double r1 = f.fitness();
+    long double r2 = f.fitness();
+
+    check_bool("fitness() de un arbol sin x no toca el vector",
+               f.vecvalue() == antes);
+    check_bool("fitness() de un arbol sin x es INFINITY", std::isinf(r1));
+    check_bool("fitness() repetido devuelve lo mismo", r2 == r1);
+}
+
+static void test_fitness_valido_es_estable() {
+    // sin(x) (tokens 13,11): fitness finita, y dos llamadas deben devolver
+    // exactamente lo mismo (la cache no cambia el resultado).
+    FunbObj f({13, 11}, 0.0L, 1.0L);
+    long double r1 = f.fitness();
+    check_bool("fitness() de un arbol valido es estable",
+               !std::isnan(r1) && f.fitness() == r1);
+}
+
+// La radicanda (x - 1/2)^2 - 1/10 es positiva en x=0 y x=1, pero negativa
+// cerca de x=1/2. Asi la expresion es evaluable en los extremos y produce
+// NaN en puntos interiores, que debe invalidar al individuo completo.
+static void test_fitness_nan_interior_es_infinita() {
+    // En Python seria una lista de enteros: sqrt((x - 1/2)**2 - 1/10).
+    std::vector<long double> nan_interior = {
+        17, 18, 21, 18, 11, 12, 20, 1, 2, 2, 12, 20, 1, 10
+    };
+    FunbObj f(nan_interior, 0.0L, 1.0L);
+    check_bool("fitness() con NaN interior es INFINITY",
+               std::isinf(f.fitness()));
+}
+
 // NOTA (#10, REVIEW B1): la solucion aproximada del paper para el Caso 1,
 //     y_s(x) = x*cos(x/(5*cos(cos 9)))   (ec. (20))
 // en prefijo es {19,11,14,20,11,19,5,14,14,9}, y su fitness con este residuo
@@ -203,6 +248,9 @@ int main() {
     test_fitness_usa_la_rejilla_de_100_puntos();
     test_fitness_caso1_residuo_del_paper();
     test_fitness_caso1_funcion_unaria();
+    test_fitness_sin_x_no_muta_el_individuo();
+    test_fitness_valido_es_estable();
+    test_fitness_nan_interior_es_infinita();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
               << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;  // como el exit code de pytest

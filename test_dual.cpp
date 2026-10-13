@@ -69,6 +69,81 @@ static void check_vec(const std::string& nombre,
     }
 }
 
+// valor_parsv: observa solo f(x) a traves de la seam publica parsv(). En
+// Python seria `return parsv(tokens, [x, 1.0, 0.0])[0]`; crear xval aqui evita
+// que la prueba use una funcion interna de dualfunctions.cpp.
+static long double valor_parsv(const std::vector<long double>& tokens,
+                               long double x) {
+    std::vector<long double> xval = {x, 1.0L, 0.0L};
+    return parsv(tokens, xval)[0];
+}
+
+// check_parsv_finite_difference: compara las derivadas que devuelve parsv()
+// con una aproximacion independiente centrada. Es equivalente a calcular en
+// Python `(f(x+h)-f(x-h))/(2*h)` y `(f(x+h)-2*f(x)+f(x-h))/h**2`.
+static void check_parsv_finite_difference(const std::string& nombre,
+                                          const std::vector<long double>& tokens,
+                                          long double x,
+                                          long double tol) {
+    const long double h = 1e-5L;
+    std::vector<long double> xval = {x, 1.0L, 0.0L};
+    std::vector<long double> centro = parsv(tokens, xval);
+    long double menos = valor_parsv(tokens, x - h);
+    long double mas = valor_parsv(tokens, x + h);
+    long double primera = (mas - menos) / (2.0L * h);
+    long double segunda = (mas - 2.0L * centro[0] + menos) / (h * h);
+    check_vec(nombre, {centro[1], centro[2]}, {primera, segunda}, tol);
+}
+
+// -------------------------------------------------------------------------
+// Slice issue #18: la regla de sin() debe coincidir con una diferencia finita
+// calculada sin reutilizar el resultado de parsv().
+// -------------------------------------------------------------------------
+
+static void test_parsv_sin_finite_difference() {
+    check_parsv_finite_difference("parsv(sin(x)) coincide con diferencias finitas",
+                                  {13, 11}, 0.5L, 1e-6L);
+}
+
+// check_parsv_case: aplica una expresion a todos los puntos del dominio que
+// comparte la bateria. Es como `for x in puntos: assert_case(...)` en Python;
+// el nombre incluye el punto para localizar un fallo sin inspeccionar indices.
+static void check_parsv_case(const std::string& nombre,
+                             const std::vector<long double>& tokens,
+                             const std::vector<long double>& puntos) {
+    for (long double x : puntos) {
+        std::ostringstream caso;
+        caso << nombre << " en x=" << static_cast<double>(x);
+        check_parsv_finite_difference(caso.str(), tokens, x, 1e-6L);
+    }
+}
+
+// test_parsv_finite_difference_bateria: cubre cada operacion de la gramatica
+// por la seam publica parsv(). Las expresiones usan notacion prefija, igual
+// que la lista de tokens que evolucionan los individuos del DE.
+static void test_parsv_finite_difference_bateria() {
+    // Estos puntos mantienen positivas las bases de log/sqrt y evitan x=0 en
+    // 2/x; asi la aproximacion central mide derivadas reales y finitas.
+    std::vector<long double> puntos = {0.25L, 0.5L, 0.75L};
+    check_parsv_case("parsv(x)", {11}, puntos);
+    check_parsv_case("parsv(-x)", {12, 11}, puntos);
+    check_parsv_case("parsv(sin(x))", {13, 11}, puntos);
+    check_parsv_case("parsv(cos(x))", {14, 11}, puntos);
+    check_parsv_case("parsv(exp(x))", {15, 11}, puntos);
+    check_parsv_case("parsv(log(x+2))", {16, 18, 11, 2}, puntos);
+    check_parsv_case("parsv(sqrt(x+2))", {17, 18, 11, 2}, puntos);
+    check_parsv_case("parsv(x+2)", {18, 11, 2}, puntos);
+    check_parsv_case("parsv(x-2)", {18, 11, 12, 2}, puntos);
+    check_parsv_case("parsv(x*x)", {19, 11, 11}, puntos);
+    check_parsv_case("parsv(x/2)", {20, 11, 2}, puntos);
+    check_parsv_case("parsv(2/x)", {20, 2, 11}, puntos);
+    check_parsv_case("parsv(x^2)", {21, 11, 2}, puntos);
+    check_parsv_case("parsv(2^x)", {21, 2, 11}, puntos);
+    check_parsv_case("parsv(x^x)", {21, 11, 11}, puntos);
+    check_parsv_case("parsv(sin(x^2+cos(x)))",
+                     {13, 18, 21, 11, 2, 14, 11}, puntos);
+}
+
 // check_int: igual que `assert narg(12) == 1` en pytest.
 static void check_int(const std::string& nombre, int got, int esperado) {
     g_checks++;
@@ -208,6 +283,219 @@ static void test_parse_tree_token12() {
     check_str("parse_tree([18,14,11,13,11])", parse_tree(suma), "(cos(x))+(sin(x))");
 }
 
+// -------------------------------------------------------------------------
+// Slice 5 (issue #10): OperF2 consume sus operandos en el sitio.
+// El parser de referencia (paper, Apendice A, Algorithm 1) evalua de derecha
+// a izquierda y borra (componente real = NaN) cada operando que consume, para
+// que la operacion siguiente solo vea los resultados de sus dos subarboles.
+// OperF2 recibe la matriz completa y la posicion desde la que buscar
+// (`inicio`), como el Fortran que pasa `auxv(:,k+1:length)` por referencia:
+// en Python no vale una copia de la lista, hay que mutar la original.
+// -------------------------------------------------------------------------
+
+static void test_operf2_consumo_en_sitio() {
+    // x*x en x=2 -> [4, 4, 2]; los dos operandos [2,1,0] quedan borrados
+    // (NaN en su componente real) despues de la operacion.
+    std::vector<std::vector<long double>> mat = {{2, 2}, {1, 1}, {0, 0}};
+    check_vec("OperF2(19) calcula x*x", OperF2(19, mat), {4.0L, 4.0L, 2.0L});
+    check_vec("OperF2(19) borra los operandos consumidos", mat[0], {NAN, NAN});
+}
+
+static void test_operf2_salta_huecos_nan() {
+    // [5, NaN, 3, 7]: los dos primeros operandos no-NaN son 5 y 3; el 7
+    // queda fuera (una operacion binaria solo come dos) y el hueco NaN no
+    // se toca. Antes se borraba el vecino (j+1) y el escaneo paraba en
+    // dim-1, asi que este caso ni se alcanzaba.
+    std::vector<std::vector<long double>> mat = {{5, NAN, 3, 7}, {0, 0, 0, 0}, {0, 0, 0, 0}};
+    check_vec("OperF2(18) toma los dos primeros no-NaN", OperF2(18, mat),
+              {8.0L, 0.0L, 0.0L});
+    check_vec("OperF2(18) borra exactamente los consumidos", mat[0],
+              {NAN, NAN, NAN, 7.0L});
+}
+
+static void test_operf2_inicio() {
+    // `inicio` emula la seccion `auxv(:,k+1:length)` del Fortran: se busca
+    // desde esa columna hacia la derecha y lo anterior no se toca. En Python
+    // seria el equivalente a `for j in range(inicio, len(row))`.
+    std::vector<std::vector<long double>> mat = {{9, 9, 5, 3}, {9, 9, 0, 0}, {9, 9, 0, 0}};
+    check_vec("OperF2(18, inicio=2) opera desde la columna 2", OperF2(18, mat, 2),
+              {8.0L, 0.0L, 0.0L});
+    check_vec("OperF2(18, inicio=2) no toca lo anterior", mat[0],
+              {9.0L, 9.0L, NAN, NAN});
+}
+
+// -------------------------------------------------------------------------
+// Slice 6 (issue #10): parsv borra el operando que consume un unario.
+// El operando de `sin`, `cos`, ... vive en la columna k+1; tras evaluarlo hay
+// que escribir NaN en auxv[0][k+1] para que la operacion de la izquierda no
+// lo vuelva a ver (Algorithm 1). Sin ese borrado, `-x+2` suma la hoja x dos
+// veces y `sin(cos(x))+2` engancha cos(x) en vez del 2.
+// -------------------------------------------------------------------------
+
+static void test_parsv_consumo_unario() {
+    // -x+2 en x=1 -> [1, -1, 0] (hoja x consumida por la negacion).
+    std::vector<long double> x1 = {1.0L, 1.0L, 0.0L};
+    check_vec("parsv(-x+2) en x=1", parsv({18, 12, 11, 2}, x1), {1.0L, -1.0L, 0.0L});
+}
+
+static void test_parsv_cadena_unaria() {
+    // sin(cos(x))+2 en x=0.3. Valores esperados por regla de la cadena:
+    //   f   = sin(cos(x)) + 2
+    //   f'  = cos(cos(x)) * (-sin(x))
+    //   f'' = -sin(cos(x))*sin(x)^2 - cos(cos(x))*cos(x)
+    // (formulas cerradas de libm, independientes de la implementacion).
+    long double x = 0.3L;
+    std::vector<long double> esperado = {
+        std::sin(std::cos(x)) + 2.0L,
+        std::cos(std::cos(x)) * (-std::sin(x)),
+        -std::sin(std::cos(x)) * std::sin(x) * std::sin(x) - std::cos(std::cos(x)) * std::cos(x)
+    };
+    check_vec("parsv(sin(cos(x))+2) en x=0.3", parsv({18, 13, 14, 11, 2}, {x, 1.0L, 0.0L}),
+              esperado);
+}
+
+// -------------------------------------------------------------------------
+// Slice 7 (issue #10): parsv ejecuta los binarios sobre la matriz completa.
+// parsv ya no copia la sub-matriz a `auxv321`: le pasa auxv y k+1 para que
+// el borrado de OperF2 caiga en el arbol real. La diferencia se ve cuando el
+// operando consumido por un binario esta en medio del subarbol de otro:
+// (x*x)+1 debe sumar 9+1, no 9+3 (la hoja x que el producto ya se comio).
+// -------------------------------------------------------------------------
+
+static void test_parsv_bateria_binaria() {
+    std::vector<long double> x2 = {2.0L, 1.0L, 0.0L};
+    // Bateria de aceptacion del issue #10; cada esperado es la formula
+    // cerrada (libm), no una copia de la implementacion.
+    check_vec("parsv(x*x) en x=2", parsv({19, 11, 11}, x2), {4.0L, 4.0L, 2.0L});
+    check_vec("parsv(sin(x)+x) en x=2", parsv({18, 13, 11, 11}, x2),
+              {std::sin(2.0L) + 2.0L, std::cos(2.0L) + 1.0L, -std::sin(2.0L)});
+    check_vec("parsv(x/2) en x=2", parsv({20, 11, 2}, x2), {1.0L, 0.5L, 0.0L});
+    check_vec("parsv(2/x) en x=2", parsv({20, 2, 11}, x2), {1.0L, -0.5L, 0.5L});
+    check_vec("parsv(x^2) en x=2", parsv({21, 11, 2}, x2), {4.0L, 4.0L, 2.0L});
+    check_vec("parsv(2^x) en x=2", parsv({21, 2, 11}, x2),
+              {4.0L, 4.0L * std::log(2.0L),
+               4.0L * std::log(2.0L) * std::log(2.0L)});
+    check_vec("parsv(x+(x+x)) en x=2", parsv({18, 11, 18, 11, 11}, x2),
+              {6.0L, 3.0L, 0.0L});
+    // Expresion binaria incompleta: sin segundo operando -> NaN.
+    check_vec("parsv(x*x sin segundo operando) es NaN", parsv({19, 11}, x2),
+              {NAN, NAN, NAN});
+}
+
+static void test_parsv_binario_no_reutiliza_hoja() {
+    // (x*x)+1 en x=3: el 9 consume las dos hojas x; la suma debe usar 9 y 1.
+    // Con la copia de la sub-matriz, la segunda hoja x seguia viva y la suma
+    // daba 12 (silenciosamente incorrecto).
+    check_vec("parsv((x*x)+1) en x=3", parsv({18, 19, 11, 11, 1}, {3.0L, 1.0L, 0.0L}),
+              {10.0L, 6.0L, 2.0L});
+    // (2/x)+1 en x=2: 2/x = 1, +1 = 2 (con la hoja viva daria 3).
+    check_vec("parsv((2/x)+1) en x=2", parsv({18, 20, 2, 11, 1}, {2.0L, 1.0L, 0.0L}),
+              {2.0L, -0.5L, 0.5L});
+}
+
+// -------------------------------------------------------------------------
+// Slice 8 (issue #10): parada temprana cuando una operacion da NaN.
+// Algorithm 1 devuelve NaN en cuanto una operacion produce NaN, en vez de
+// seguir evaluando. Con una cola de tokens de mas se nota: [18,16,11,14,11,2]
+// es log(x)+cos(x) con un "2" de cola; log(-1) da NaN y, sin cortar, la suma
+// salta ese NaN y engancha cos(-1) y la cola 2 (2.5403 en vez de NaN).
+// -------------------------------------------------------------------------
+
+static void test_parsv_parada_temprana_nan() {
+    std::vector<long double> tokens = {18, 16, 11, 14, 11, 2};
+    std::vector<long double> xval   = {-1.0L, 1.0L, 0.0L};  // log(-1) = NaN
+    check_vec("parsv(operacion NaN) corta con NaN", parsv(tokens, xval),
+              {NAN, NAN, NAN});
+}
+
+// -------------------------------------------------------------------------
+// Slice 9 (issue #19, B8 de REVIEW.md): pow2dual con rama real y guardas.
+// Antes la funcion calculaba con complejos y descartaba la parte imaginaria:
+// casos con derivada bien definida daban NaN (x^2 en x=0 -> [0,NaN,NaN]) y los
+// indefinidos no tenian una politica explicita. Los valores esperados salen de
+// derivar a mano con la regla de la potencia, no de la implementacion.
+// -------------------------------------------------------------------------
+
+// p2d / sq2d: atajos locales que copian los vectores de entrada; pow2dual y
+// sqrt2dual reciben referencias no-const y no aceptan temporales `{...}`
+// (en Python no existe esa distincion: una lista se pasa sin ceremonia).
+static std::vector<long double> p2d(std::vector<long double> u, std::vector<long double> v) {
+    return pow2dual(u, v);
+}
+static std::vector<long double> sq2d(std::vector<long double> u) {
+    return sqrt2dual(u);
+}
+
+static void test_pow2dual_rama_real() {
+    // 2^3: f=8, f'=3*2^2=12, f''=6*2=12 (exponente constante).
+    check_vec("pow2dual(2^3)", p2d({2.0L, 1.0L, 0.0L}, {3.0L, 0.0L, 0.0L}),
+              {8.0L, 12.0L, 12.0L});
+    // 4^0.5 = sqrt(4): f=2, f'=1/(2*sqrt(4))=0.25, f''=-1/(4*4^1.5)=-0.03125.
+    check_vec("pow2dual(4^0.5)", p2d({4.0L, 1.0L, 0.0L}, {0.5L, 0.0L, 0.0L}),
+              {2.0L, 0.25L, -0.03125L});
+    // 2^x en x=2 (el exponente tambien varia): f'=f''=4*ln(2)^2, como en parsv.
+    ldouble ln2 = std::log(2.0L);
+    check_vec("pow2dual(2^x) con exponente variable",
+              p2d({2.0L, 0.0L, 0.0L}, {2.0L, 1.0L, 0.0L}),
+              {4.0L, 4.0L * ln2, 4.0L * ln2 * ln2});
+}
+
+static void test_pow2dual_base_negativa_entera() {
+    // (-2)^3: f=-8, f'=3*(-2)^2=12, f''=6*(-2)=-12 (el signo de f'' tambien
+    // es menos; el issue #1 lo escribio como +12, era un typo).
+    check_vec("pow2dual((-2)^3)", p2d({-2.0L, 1.0L, 0.0L}, {3.0L, 0.0L, 0.0L}),
+              {-8.0L, 12.0L, -12.0L});
+    // (-2)^2: f=4, f'=2*(-2)=-4, f''=2*1*1=2.
+    check_vec("pow2dual((-2)^2)", p2d({-2.0L, 1.0L, 0.0L}, {2.0L, 0.0L, 0.0L}),
+              {4.0L, -4.0L, 2.0L});
+    // (-2)^-1 = 1/u: f=-0.5, f'=-u'/u^2=-0.25, f''=2*u'^2/u^3=-0.25.
+    check_vec("pow2dual((-2)^-1)", p2d({-2.0L, 1.0L, 0.0L}, {-1.0L, 0.0L, 0.0L}),
+              {-0.5L, -0.25L, -0.25L});
+}
+
+static void test_pow2dual_indefinidos_son_nan() {
+    // Base negativa con exponente fraccionario: sin resultado real.
+    check_vec("pow2dual((-8)^(1/3)) es NaN",
+              p2d({-8.0L, 1.0L, 0.0L}, {1.0L / 3.0L, 0.0L, 0.0L}), {NAN, NAN, NAN});
+    check_vec("pow2dual((-4)^0.5) es NaN",
+              p2d({-4.0L, 1.0L, 0.0L}, {0.5L, 0.0L, 0.0L}), {NAN, NAN, NAN});
+    // Base negativa con exponente entero pero *variable*: ln(-u) no existe en
+    // los reales, asi que la regla de la cadena no aplica -> NaN explicito.
+    check_vec("pow2dual((-2)^(3+x)) es NaN",
+              p2d({-2.0L, 1.0L, 0.0L}, {3.0L, 1.0L, 0.0L}), {NAN, NAN, NAN});
+    // 0^0 es indeterminado (el limite depende de por donde se acerque).
+    check_vec("pow2dual(0^0) es NaN",
+              p2d({0.0L, 1.0L, 0.0L}, {0.0L, 0.0L, 0.0L}), {NAN, NAN, NAN});
+}
+
+static void test_pow2dual_base_cero_guardas() {
+    // x^1 en x=0: base u=[0,1,0] (u'=1): f=0, f'=u'=1, f''=u''=0.
+    check_vec("pow2dual(0^1)", p2d({0.0L, 1.0L, 0.0L}, {1.0L, 0.0L, 0.0L}),
+              {0.0L, 1.0L, 0.0L});
+    // x^2 en x=0: f=0, f'=0, f''=2*u'^2=2 (antes daba [0,NaN,NaN]).
+    check_vec("pow2dual(0^2)", p2d({0.0L, 1.0L, 0.0L}, {2.0L, 0.0L, 0.0L}),
+              {0.0L, 0.0L, 2.0L});
+    // x^3 en x=0: f=f'=f''=0.
+    check_vec("pow2dual(0^3)", p2d({0.0L, 1.0L, 0.0L}, {3.0L, 0.0L, 0.0L}),
+              {0.0L, 0.0L, 0.0L});
+    // x^0.5 en x=0: valor 0 pero derivadas realmente infinitas -> NaN.
+    check_vec("pow2dual(0^0.5)", p2d({0.0L, 1.0L, 0.0L}, {0.5L, 0.0L, 0.0L}),
+              {0.0L, NAN, NAN});
+    // x^1.5 en x=0: f'=0 (1.5>1) pero f'' sigue siendo infinita -> NaN.
+    check_vec("pow2dual(0^1.5)", p2d({0.0L, 1.0L, 0.0L}, {1.5L, 0.0L, 0.0L}),
+              {0.0L, 0.0L, NAN});
+    // x^-1 en x=0: 1/0, sin valor real -> NaN.
+    check_vec("pow2dual(0^-1)", p2d({0.0L, 1.0L, 0.0L}, {-1.0L, 0.0L, 0.0L}),
+              {NAN, NAN, NAN});
+}
+
+static void test_sqrt2dual_guardas() {
+    // sqrt(u) es pow2dual(u, [0.5,0,0]): en u=4 todo finito; en u=0 la
+    // derivada es infinita y queda NaN.
+    check_vec("sqrt2dual(4)", sq2d({4.0L, 1.0L, 0.0L}), {2.0L, 0.25L, -0.03125L});
+    check_vec("sqrt2dual(0)", sq2d({0.0L, 1.0L, 0.0L}), {0.0L, NAN, NAN});
+}
+
 int main() {
     std::cout << "== test_dual: issue #2 ==\n";
     test_narg_token12();
@@ -217,6 +505,21 @@ int main() {
     test_narg_tabla();
     test_parsv_funciones_conocidas();
     test_parse_tree_token12();
+    test_operf2_consumo_en_sitio();
+    test_operf2_salta_huecos_nan();
+    test_operf2_inicio();
+    test_parsv_consumo_unario();
+    test_parsv_cadena_unaria();
+    test_parsv_bateria_binaria();
+    test_parsv_binario_no_reutiliza_hoja();
+    test_parsv_parada_temprana_nan();
+    test_pow2dual_rama_real();
+    test_pow2dual_base_negativa_entera();
+    test_pow2dual_indefinidos_son_nan();
+    test_pow2dual_base_cero_guardas();
+    test_sqrt2dual_guardas();
+    test_parsv_sin_finite_difference();
+    test_parsv_finite_difference_bateria();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
               << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;  // codigo de salida como el de pytest

@@ -47,6 +47,11 @@ class FunbObj{
 	vector<ldouble> _vecval;
 	string _repre;
 	ldouble _fresult;
+	// Cache de la fitness ya calculada (B6 de REVIEW.md): los individuos se
+	// reemplazan enteros en el bucle DE (`Population[j] = candidato`), nunca
+	// se mutan, asi que el valor cacheado no puede quedar obsoleto. En Python
+	// serian `self._cache_valido = False` y `self._fresult`.
+	bool _cache_valido = false;
 	vector<vector<ldouble>> _xrange;
 	vector<long double> _xinitials = {0.0,1.0,0.0};
 	// Caso del problema que mide esta fitness (lo elige ODE_CASE en main()):
@@ -79,30 +84,46 @@ class FunbObj{
 		return _vecval;
 	}
 	long double fitness(){	
+		// Cache por individuo: el bucle DE pide la fitness varias veces (la
+		// comparacion del trial contra el objetivo y, en el barrido del mejor
+		// de la generacion, dos por comparacion); recalcular la rejilla de 100
+		// puntos en cada llamada era trabajo repetido. En Python seria
+		// `if self._cache_valido: return self._fresult`.
+		if (_cache_valido) return _fresult;
+
 		ldouble res = 0 ;
-		//vector<long double> xinitials = {0.0,1.0,0.0};
 		string fun = parse_tree(_vecval);
 
 		std::size_t poss = fun.find("()");
 		if (poss !=std::string::npos){
-			res = INFINITY;
-			_fresult  = res;
+			_fresult  = INFINITY;
+			_cache_valido = true;
 			return _fresult ;
 			}
 	std::vector<ldouble>::iterator it = std::find(_vecval.begin(),_vecval.end(),11.0);
 	if (it == _vecval.end()){
-	for (int i = 0 ; i < 4 ; i++){
-		ldouble rand_num = (rand() % _vecval.size())  ;
-		if ((rand_num <= _vecval.size() - 5) && (rand_num >= 0)){
-			_vecval[rand_num] = 11;
-		}	
-	 }
-			res = INFINITY;
-			_fresult  = res;
-			return _fresult ;
+		// Sin token x (11) la expresion no es funcion de x: INFINITY sin
+		// tocar el vector. Antes se escribian 11s al azar y luego se devolvia
+		// INFINITY igual: la evaluacion mutaba al individuo y una segunda
+		// llamada podia devolver otra cosa (B6 de REVIEW.md). Los productores
+		// (vector_population, Mutation, Recombination) ya garantizan un token
+		// x, asi que aqui solo se penaliza.
+		_fresult  = INFINITY;
+		_cache_valido = true;
+		return _fresult ;
  }				
+	// Condicion inicial en x=0: [y(0), y'(0), y''(0)]. Antes se calculaba
+	// tambien `b_end` (la misma evaluacion en x=1) y nunca se usaba; se
+	// elimino (REVIEW C4, plan de correccion item 16).
 	vector<ldouble> a_start = parsv(_vecval,_xrange[0]);
-	vector<ldouble> b_end = parsv(_vecval,_xrange[_xrange.size()-1]);
+	// Cualquier componente NaN invalida el individuo completo. En Python seria
+	// `any(math.isnan(componente) for componente in a_start)`; no hay una
+	// conversion automatica de NaN a una excepcion en este codigo C++.
+	if (isnan(a_start[0]) || isnan(a_start[1]) || isnan(a_start[2])){
+		_fresult = INFINITY;
+		_cache_valido = true;
+		return _fresult;
+	}
 
 	for (	int i = 0 ; i < (int)_xrange.size(); i++){
 		vector<ldouble> fitnessval(parsv(_vecval,_xrange[i]));
@@ -113,34 +134,30 @@ class FunbObj{
 		//  imprime(_xrange[i]) ; cout << "despues de _range" << endl;
 		// imprime(fitnessval);
 		// cout <<" <<<<<"  << endl;
-		// imprime(a_start); 
-		// cout  << " (b-a)" ; imprime(b_end) ;
+		// imprime(a_start);
 		// cin.get();
 
-		if ( 	!isnan(fitnessval[1]) || !isnan(fitnessval[0]) || !isnan(fitnessval[2] )  ){
-				//  imprime(fitnessval) ; cout << endl;
-				//  cout << "res :: " ;
-				// Residuo de la ODE en el punto de la rejilla, elevado a la
-				// cuarta, segun el caso (ver _caso). En Python seria algo
-				// como `res += r**4` con `r` calculado por ramas.
-				if (_caso == 1){
-					// Caso 1 del paper. Se minimiza la forma (18)
-					//     x*y'' + y' - cos(x) = 0
-					// (equivalente a la (16) y'' + y'/x - cos(x)/x = 0), que
-					// es la que el paper usa "para la minimizacion" porque no
-					// divide por x=0, el primer punto de la rejilla.
-					ldouble x = _xrange[i][0];
-					res +=pow(x*fitnessval[2] + fitnessval[1] - cos(x),4) ;
-				} else {
-					// Caso 0 (juguete del prototipo): y'' + y = 0.
-					res +=pow(fitnessval[2] + fitnessval[0],4) ;
-				}
-				//  cout << res<< endl;
-			}
-			else
-{
-			res +=1000000;
-			}
+		// Cualquier componente NaN hace que todo el individuo sea no evaluable.
+		// En Python equivale a `if any(math.isnan(c) for c in fitnessval):`
+		// seguido de `return math.inf`; asi no existe una penalizacion finita
+		// distinta para un punto sin informacion util.
+		if (isnan(fitnessval[0]) || isnan(fitnessval[1]) || isnan(fitnessval[2])){
+			_fresult = INFINITY;
+			_cache_valido = true;
+			return _fresult;
+		}
+
+		// Residuo de la ODE en el punto de la rejilla, elevado a la cuarta,
+		// segun el caso (ver _caso). En Python seria `res += r**4`.
+		if (_caso == 1){
+			// Caso 1 del paper: x*y'' + y' - cos(x) = 0. Se evita
+			// dividir por x=0, que es el primer punto de la rejilla.
+			ldouble x = _xrange[i][0];
+			res +=pow(x*fitnessval[2] + fitnessval[1] - cos(x),4) ;
+		} else {
+			// Caso 0 (juguete del prototipo): y'' + y = 0.
+			res +=pow(fitnessval[2] + fitnessval[0],4) ;
+		}
 		}
 			// Condiciones iniciales del caso. Caso 0: y(0)=1, y'(0)=1 (la
 			// solucion esperada es cos(x)+sin(x)); Caso 1 del paper: y(0)=0,
@@ -153,9 +170,11 @@ class FunbObj{
 		// cin.get();
 	if (isnan(res)){
 		_fresult = INFINITY;
+		_cache_valido = true;
 		return _fresult;
 	}
 	_fresult = res;
+	_cache_valido = true;
 	return _fresult;
 	}
 
@@ -195,8 +214,14 @@ vector<long double> vector_population(int tam){
 void createPopulation(vector<FunbObj>&Population,int tam,int caso){
 
 	//vector<ldouble> uno =   {21,11,2,1,1,1,2,11,11,11,11,11,1,1,1,1,1,1,1,1};
+	// Los cinco seeds escritos a mano miden exactamente 20 tokens, igual que
+	// los individuos aleatorios de vector_population(20): el semillero tiene
+	// que ser uniforme porque Mutation()/Recombination() emparejan genes por
+	// posicion (B5 de REVIEW.md: con dos=21 se leia y[20]/z[20] fuera de
+	// rango). En Python serian listas de 20 elementos, con
+	// `assert len(semilla) == 20` como comprobacion.
 	vector<ldouble> uno =   {18,13,17,11,14,14,11,14,14,14,13,14,14,14,14,14,14,14,14,11};
-	vector<ldouble> dos =   {18,14,13,17,11,14,20,1,5,1,1,1,1,1,1,1,1,1,1,1,1};
+	vector<ldouble> dos =   {18,14,13,17,11,14,20,1,5,1,1,1,1,1,1,1,1,1,1,1};
 	vector<ldouble> tres =  {18,13,11,13,13,14,14,14,11,1,1,1,1,1,1,1,1,1,1,1};
 	vector<ldouble> cuatro ={18,14,11,13,13,11,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
 	vector<ldouble> c5 =    {18,13,13,13,11,13,11,11,1,1,1,1,1,1,1,1,1,1,1,1};
@@ -294,9 +319,9 @@ void indices_distintos(int tam, int excluir, int& r1, int& r2, int& r3){
 // funcion devuelve un vector nuevo; nadie muta los padres.
 vector<ldouble> Mutation(vector<ldouble>x, vector<ldouble> y,vector<ldouble>z){
 
-	// Se recorre hasta el menor de los tres tamanos: un individuo semilla
-	// tiene 21 tokens y el resto 20 (B5 de REVIEW.md), y leer y[i]/z[i] de mas
-	// era una lectura fuera de rango. En Python seria
+	// Se recorre hasta el menor de los tres tamanos: si dos vectores midieran
+	// distinto (p. ej. un seed mal escrito, B5 de REVIEW.md), leer y[i]/z[i]
+	// de mas seria una lectura fuera de rango. En Python seria
 	// `n = min(len(x), len(y), len(z))` (aqui `min` es std::min, de <algorithm>).
 	int n = (int) min(x.size(), min(y.size(), z.size()));
 

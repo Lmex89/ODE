@@ -29,14 +29,16 @@ and do not re-open those files to "verify" it.
 - `Makefile` builds with `g++` by default (`CXX ?= g++`, so `make CXX=icpc`
   still works where Intel's `icpc` exists). `make` only builds `main.exe`;
   `make run` compiles if needed and executes it; `make test` compiles and runs
-  the five test binaries: `test_dual.cpp` (dual-number tests; links
+  the six test binaries: `test_dual.cpp` (dual-number tests; links
   `dualfunctions.cpp`), `test_semilla.cpp` (seed resolution; links
   `semilla.cpp`), `test_mutation.cpp` (DE/rand/1/bin mutation tests),
-  `test_crossover.cpp` (binomial crossover tests) and `test_grid.cpp`
-  (evaluation-grid tests); the last three need `parse_tree.cpp` and are built
-  with `-DODE_NO_MAIN` so the test's `main()` wins (`test_grid.cpp` includes
-  `parse_tree.cpp` itself, since `FunbObj` has no header); `make clean` removes
-  the objects and binaries. Flags: `-std=c++17 -Wall -O3`.
+  `test_crossover.cpp` (binomial crossover tests), `test_grid.cpp`
+  (evaluation-grid tests) and `test_population.cpp` (uniform seed lengths,
+  issue #11); the last four need `parse_tree.cpp` and are built with
+  `-DODE_NO_MAIN` so the test's `main()` wins (`test_grid.cpp` and
+  `test_population.cpp` include `parse_tree.cpp` itself, since `FunbObj` has no
+  header); `make clean` removes the objects and binaries. Flags:
+  `-std=c++17 -Wall -O3`.
 - Never add `parse_tree_bckp.cpp` to a build: it is a reference backup that
   also defines `main()` (duplicate symbol). The Makefile does not compile it.
 - `.vscode/tasks.json` builds only the active file, which cannot link — the two
@@ -60,15 +62,19 @@ and do not re-open those files to "verify" it.
 - `parse_tree.cpp` — `main()` and the DE loop (single population, mutation,
   binomial crossover, greedy selection). `dualfunctions.{h,cpp}` — token
   interpreter and 2nd-order dual-number ("2dual") arithmetic; `parsv()`
-  evaluates a tree to `[y(x), y'(x), y''(x)]`. `semilla.{h,cpp}` — resolves
+  evaluates a tree to `[y(x), y'(x), y''(x)]`, consuming operands in place
+  (blanking them to NaN) and stopping at the first NaN operation, per the
+  paper's Algorithm 1; `OperF2` takes the full `auxv` matrix plus the start
+  index so that blanking lands in the tree. `semilla.{h,cpp}` — resolves
   `ODE_SEED` for reproducible runs.
 - `Mutation()` implements DE/rand/1/bin with dither (paper eq. (7)):
   `v = x_r1 + F*(x_r2 - x_r3)` with one `F` random in `[0,1]` per call, the
   result rounded/clamped to a token in `1..21` by `token_valido()`, and the
   three distinct base individuals chosen by `indices_distintos()`. The helper
   `mutacion_rand1()` is the pure formula (no randomness) and is covered by
-  `test_mutation.cpp`. A legacy repair still forces one `x` token when the
-  mutation removes them all.
+  `test_mutation.cpp`; its loop walks up to `min(x.size(), y.size(), z.size())`
+  tokens, so a size mismatch cannot read out of range (B5 of REVIEW.md). A
+  legacy repair still forces one `x` token when the mutation removes them all.
 - `Recombination()` implements the paper's binomial crossover (eq. (8)) with
   `Cr = 0.2`: each trial gene comes from the mutant with probability `Cr` and
   from the target otherwise, plus one forced `j_rand` index taken from the
@@ -79,7 +85,10 @@ and do not re-open those files to "verify" it.
   the trial replaces its target only when its fitness is lower. There is no
   second population, no cross-pollination and no sort-based elitism.
 - An individual is a `vector<long double>` of integer token codes in **prefix
-  notation**. Alphabet (decoded in `parse_tree()`, arity in `narg()`):
+  notation**, 20 tokens long: `createPopulation()` seeds five hand-written
+  expressions and fills the rest with `vector_population(20)`; that uniform
+  length is what keeps `Mutation()`/`Recombination()` gene pairing in bounds
+  (B5 of REVIEW.md). Alphabet (decoded in `parse_tree()`, arity in `narg()`):
   `1`-`10` constants 1.0-10.0, `11` x, `12` negation, `13` sin, `14` cos,
   `15` exp, `16` log, `17` sqrt, `18` +, `19` *, `20` /, `21` ^.
 - Token codes are duplicated in `parse_tree`, `narg`, `OperF`, `OperF2`, and
@@ -93,10 +102,9 @@ and do not re-open those files to "verify" it.
   `y(0) = y'(0) = 1`). With `ODE_CASE=1` the residual and conditions switch to
   the paper's Case 1 (`x*y'' + y' - cos(x)`, `y(0)=0`, `y'(0)=1`, exact
   solution `Si(x)`): the candidate constructor takes the case as a defaulted
-  4th argument, so `test_grid.cpp` still builds `FunbObj` with 3. As of
-  issue #10 (REVIEW B1) the parser cannot evaluate the expressions Case 1
-  needs (`x/2` → `NaN`, `x*cos(x/5)` → `x*x`), so Case 1 cannot reach the
-  threshold until #10 lands.
+  4th argument, so `test_grid.cpp` still builds `FunbObj` with 3. Issue #10
+  (REVIEW B1) fixed operand consumption in `parsv`/`OperF2`, so the parser
+  now evaluates the expressions Case 1 needs (`x/2`, `x*cos(x/5)`) correctly.
 - `Untitled.ipynb` is a SageMath scratchpad for the reference ODE/solution, not
   part of the C++ build; its fitness formula is stale — the C++ code is the
   source of truth.

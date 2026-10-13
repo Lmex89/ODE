@@ -19,7 +19,7 @@ OBJS   := $(SRCS:.cpp=.o)
 # parse_tree_bckp.cpp NO se compila: es una copia de referencia que tambien
 # define main(), y enlazarla daria un error de simbolo duplicado.
 
-.PHONY: all clean run test
+.PHONY: all clean run test sage-test
 
 # `all` es la regla por defecto: `make` a secas construye el ejecutable.
 all: $(TARGET)
@@ -48,14 +48,15 @@ semilla.o: semilla.cpp semilla.h
 run: $(TARGET)
 	./$(TARGET)
 
-# `make test`: compila y corre los cinco binarios de tests: dual numbers
+# `make test`: compila y corre los seis binarios de tests: dual numbers
 # (issue #2), control de semilla (issue #4), la mutacion DE/rand/1/bin
-# (issue #5), el cruce binomial (issue #6) y la rejilla de evaluacion
-# (issue #7). Cada binario enlaza solo lo que necesita; test_mutation,
-# test_crossover y test_grid necesitan parse_tree.cpp con -DODE_NO_MAIN
-# (ver abajo).
+# (issue #5), el cruce binomial (issue #6), la rejilla de evaluacion
+# (issue #7), el semillero de la poblacion (issue #11) y el validador Python
+# de notebook (issue #18). Cada binario enlaza solo lo que necesita;
+# test_mutation, test_crossover, test_grid y test_population necesitan
+# parse_tree.cpp con -DODE_NO_MAIN (ver abajo).
 # En Python seria como correr `pytest`: exit code != 0 si algun assert falla.
-TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe test_grid.exe
+TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe test_grid.exe test_population.exe
 
 test: $(TESTBINS)
 	./test_dual.exe
@@ -63,6 +64,14 @@ test: $(TESTBINS)
 	./test_mutation.exe
 	./test_crossover.exe
 	./test_grid.exe
+	./test_population.exe
+	python3 scripts/check_dual_validation.py
+
+# `make sage-test` ejecuta el notebook completo dentro de un kernel SageMath
+# real. El script usa `sage` si esta instalado y, si no, Docker con una imagen
+# fijada por digest para que la evidencia sea reproducible.
+sage-test:
+	scripts/run_sage_dual_validation.sh
 
 test_dual.exe: dualfunctions.cpp test_dual.cpp dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) dualfunctions.cpp test_dual.cpp -o $@
@@ -90,6 +99,13 @@ test_crossover.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_crossover.
 # el main() del programa y deja el main() del test.
 test_grid.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_grid.cpp semilla.h dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp test_grid.cpp -o $@
+
+# test_population sigue el mismo patron que test_grid: incluye parse_tree.cpp
+# desde su propio .cpp para probar createPopulation; parse_tree.cpp es
+# dependencia pero NO se compila aparte (simbolos duplicados). -DODE_NO_MAIN
+# deja el main() del test como unico punto de entrada.
+test_population.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_population.cpp semilla.h dualfunctions.h
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp test_population.cpp -o $@
 
 clean:
 	rm -f $(OBJS) $(TARGET) $(TESTBINS)

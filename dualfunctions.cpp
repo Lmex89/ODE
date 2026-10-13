@@ -237,10 +237,16 @@ str parse_tree( vector<ldouble>& v){
 int narg(ldouble x){
 /*
 * Esta funcion devuelve el numero de argumentos para evaular una operacion.
+* Funciona como la tabla de aridad de la gramatica: 0 = hoja, 1 = funcion
+* unaria, 2 = operador binario.
 */
 	int f_result ;
-	if (x >=  1 && x <= 12) f_result = 0;
-	if (x >= 13 && x <= 17) f_result = 1;
+	// Constantes 1-10 y x (11) son hojas: 0 argumentos.
+	// El token 12 (negacion) es una funcion unaria: 1 argumento. Antes caia
+	// en el rango 0 junto con x, pero OperF() lo trataba como funcion de un
+	// argumento: esa inconsistencia hacia que parsv() nunca lo evaluara.
+	if (x >=  1 && x <= 11) f_result = 0;
+	if (x >= 12 && x <= 17) f_result = 1;
 	if (x >= 18 && x <= 21) f_result = 2;
 	return f_result;
 }
@@ -390,11 +396,12 @@ vector<ldouble> parsv(vector<ldouble> x, vector<ldouble> xval){
 			auxv[2][k]= xval[2];
 		}
 
-		if(x[k] == 12){
-			 auxv[0][k] = -1.0*xval[0];
-			 auxv[1][k]=  -1.0*xval[1];
-			 auxv[2][k]=  -1.0*xval[2];
-			 }
+		// Token 12 (negacion): NO se inicializa aqui. Es una funcion de un
+		// argumento (narg(12) == 1) y el segundo bucle la evalua con
+		// OperF(), que niega el valor del subarbol a su derecha (auxv[k+1]).
+		// Antes se ponia a mano -xval, y eso negaba la *entrada* [x, y', y'']
+		// en vez del argumento: p. ej. -sin(x) daba [-x, -1, 0] en lugar de
+		// [-sin(x), -cos(x), sin(x)].
 	}
 
 

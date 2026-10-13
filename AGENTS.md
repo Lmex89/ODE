@@ -39,10 +39,8 @@ and do not re-open those files to "verify" it.
   `test_population.cpp` include `parse_tree.cpp` itself, since `FunbObj` has no
   header); `make clean` removes the objects and binaries. Flags:
   `-std=c++17 -Wall -O3`.
-- Never add `parse_tree_bckp.cpp` to a build: it is a reference backup that
-  also defines `main()` (duplicate symbol). The Makefile does not compile it.
-- `.vscode/tasks.json` builds only the active file, which cannot link — the two
-  translation units must be compiled together.
+- Never add `parse_tree_bckp.cpp` to a build: it is a reference backup that also defines `main()` (duplicate symbol). The Makefile does not compile it.
+- `.vscode/` is gitignored. Always use `make` to build — the project requires compiling multiple translation units together.
 - `dualfunctions.h` is not self-contained: it uses `vector`/`string` without
   including them. Include STL headers before it (as `parse_tree.cpp` does) or
   it fails to compile alone.

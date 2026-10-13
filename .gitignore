@@ -12,6 +12,7 @@ out.txt
 # Tool/machine artifacts
 .inteopt.txt
 .ipynb_checkpoints/
+.vscode/
 
 # Test binaries built by `make test` (ephemeral, unlike the committed main.exe)
 test_dual.exe

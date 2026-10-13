@@ -29,10 +29,11 @@ and do not re-open those files to "verify" it.
 - `Makefile` builds with `g++` by default (`CXX ?= g++`, so `make CXX=icpc`
   still works where Intel's `icpc` exists). `make` only builds `main.exe`;
   `make run` compiles if needed and executes it; `make test` compiles and runs
-  the three test binaries: `test_dual.cpp` (dual-number tests; links
+  the four test binaries: `test_dual.cpp` (dual-number tests; links
   `dualfunctions.cpp`), `test_semilla.cpp` (seed resolution; links
-  `semilla.cpp`) and `test_mutation.cpp` (DE/rand/1/bin mutation tests; links
-  `parse_tree.cpp` too, with `-DODE_NO_MAIN` so the test's `main()` wins);
+  `semilla.cpp`), `test_mutation.cpp` (DE/rand/1/bin mutation tests) and
+  `test_crossover.cpp` (binomial crossover tests); the last two link
+  `parse_tree.cpp` too, with `-DODE_NO_MAIN` so the test's `main()` wins;
   `make clean` removes the objects and binaries. Flags: `-std=c++17 -Wall -O3`.
 - Never add `parse_tree_bckp.cpp` to a build: it is a reference backup that
   also defines `main()` (duplicate symbol). The Makefile does not compile it.
@@ -51,11 +52,11 @@ and do not re-open those files to "verify" it.
 
 ## How it works
 
-- `parse_tree.cpp` — `main()` and the DE loop (population, mutation,
-  recombination, sorting/elitism). `dualfunctions.{h,cpp}` — token interpreter
-  and 2nd-order dual-number ("2dual") arithmetic; `parsv()` evaluates a tree to
-  `[y(x), y'(x), y''(x)]`. `semilla.{h,cpp}` — resolves `ODE_SEED` for
-  reproducible runs.
+- `parse_tree.cpp` — `main()` and the DE loop (single population, mutation,
+  binomial crossover, greedy selection). `dualfunctions.{h,cpp}` — token
+  interpreter and 2nd-order dual-number ("2dual") arithmetic; `parsv()`
+  evaluates a tree to `[y(x), y'(x), y''(x)]`. `semilla.{h,cpp}` — resolves
+  `ODE_SEED` for reproducible runs.
 - `Mutation()` implements DE/rand/1/bin with dither (paper eq. (7)):
   `v = x_r1 + F*(x_r2 - x_r3)` with one `F` random in `[0,1]` per call, the
   result rounded/clamped to a token in `1..21` by `token_valido()`, and the
@@ -63,6 +64,15 @@ and do not re-open those files to "verify" it.
   `mutacion_rand1()` is the pure formula (no randomness) and is covered by
   `test_mutation.cpp`. A legacy repair still forces one `x` token when the
   mutation removes them all.
+- `Recombination()` implements the paper's binomial crossover (eq. (8)) with
+  `Cr = 0.2`: each trial gene comes from the mutant with probability `Cr` and
+  from the target otherwise, plus one forced `j_rand` index taken from the
+  mutant (REVIEW D2). The pure per-gene core `gen_binomial()` is covered by
+  `test_crossover.cpp`, and the same legacy repair forces an `x` token when the
+  crossover removes them all.
+- The DE loop evolves a single population with greedy one-to-one selection:
+  the trial replaces its target only when its fitness is lower. There is no
+  second population, no cross-pollination and no sort-based elitism.
 - An individual is a `vector<long double>` of integer token codes in **prefix
   notation**. Alphabet (decoded in `parse_tree()`, arity in `narg()`):
   `1`-`10` constants 1.0-10.0, `11` x, `12` negation, `13` sin, `14` cos,

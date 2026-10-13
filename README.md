@@ -37,11 +37,12 @@ The default fitness sums `(y'' + y)⁴` over a grid (testing how close the candi
 
 ### Evolutionary loop
 
+Single-population DE/rand/1/bin:
+
 1. Initialise a random population
-2. Evaluate fitness for each individual
-3. Select via elitism (sort + keep best)
-4. Mutate and recombine to produce offspring
-5. Repeat until convergence (fitness < 1e-5) or generation limit
+2. For each target individual: pick three distinct random individuals as base vectors, form the mutant `v = x_r1 + F*(x_r2 - x_r3)` (one random `F` in `[0,1]` per mutation), build the trial by binomial crossover with `Cr = 0.2` (one forced index always comes from the mutant), and keep the trial only if its fitness is lower than the target's (greedy one-to-one selection)
+3. Track the best individual of the generation
+4. Repeat until convergence (fitness < 1e-5) or generation limit
 
 The expected solution for the default ODE `y'' + y = 0` with `y(0) = y'(0) = 1` is `y = cos(x) + sin(x)`.
 
@@ -64,7 +65,7 @@ g++ -std=c++17 -Wall -O3 dualfunctions.cpp semilla.cpp parse_tree.cpp -o main.ex
 ```bash
 make        # build ./main.exe (incremental)
 make run    # build if needed, then execute
-make test   # build and run the unit tests (dual numbers + seed)
+make test   # build and run the unit tests (dual numbers, seed, mutation, crossover)
 make clean  # remove object files and binaries
 ```
 
@@ -93,7 +94,7 @@ The program prints the best-fitting expression and its fitness each generation. 
 make test
 ```
 
-`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). They link only the modules under test and do not run the evolutionary loop; `test_mutation.cpp` needs `parse_tree.cpp` and is built with `-DODE_NO_MAIN` so the test's own `main()` runs.
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). They link only the modules under test and do not run the evolutionary loop; `test_mutation.cpp` and `test_crossover.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs.
 
 ### A/B experiment
 
@@ -110,7 +111,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 
 | File | Description |
 |------|-------------|
-| `parse_tree.cpp` | `main()` and the DE loop (population, mutation, recombination, elitism) |
+| `parse_tree.cpp` | `main()` and the DE loop (single population, mutation, binomial crossover, greedy selection) |
 | `dualfunctions.h` | Header for token interpreter and 2nd-order dual-number arithmetic |
 | `dualfunctions.cpp` | Implementation of 2dual operations (sin, cos, exp, log, pow, etc.) and tree evaluation |
 | `semilla.h` / `semilla.cpp` | Run-seed control: resolves `ODE_SEED`, falling back to the clock |
@@ -118,6 +119,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `Makefile` | Build targets: `make`, `make run`, `make test`, `make clean` (`g++` by default) |
 | `test_dual.cpp` | Dual-number evaluation tests, run with `make test` |
 | `test_mutation.cpp` | DE/rand/1/bin mutation tests, run with `make test` |
+| `test_crossover.cpp` | Binomial crossover tests, run with `make test` |
 | `test_semilla.cpp` | `ODE_SEED` resolution tests, run with `make test` |
 | `scripts/ab_experiment.sh` | Reproducible A/B experiment (pre-fix vs post-fix, same seed) |
 | `docs/ab-experiment.md` | A/B comparison report and conclusions |
@@ -126,7 +128,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 ## Caveats
 
 - Search is stochastic by default (`srand(time(NULL))`); set `ODE_SEED=N` for reproducible runs
-- No CI; dual-number and seed tests run with `make test`
+- No CI; dual-number, seed, mutation and crossover tests run with `make test`
 - Code comments are in Spanish
 - `dualfunctions.h` requires STL headers (`vector`, `string`) to be included before it
 - The SageMath notebook's fitness formula is stale; the C++ code is the source of truth

@@ -1,21 +1,50 @@
-CXX      := icpc
-CXXFLAGS := -Wall -O3
-LDFLAGS  := 
-TARGET   := main.exe
-CPPVERSION := -std=c++17
-SRC1  :=dualfunctions.cpp
-SRC2  :=parse_tree.cpp
-Obj1  :=dualfunctions.o
-Obj2  :=parse_tree.o
-   
+# Makefile del prototipo ODE (parse_tree.cpp + dualfunctions.cpp).
+#
+# Para un desarrollador Python: un Makefile equivale a la seccion de build de
+# un `pyproject.toml`/`setup.py`; `make` seria como `python -m build` y `make
+# clean` como borrar los artefactos (dist/, __pycache__/).
 
+# CXX ?= g++ -> usa g++ por defecto, pero se puede sobreescribir:
+# `make CXX=icpc`. En Python seria `os.environ.get("CXX", "g++")`.
+CXX      ?= g++
+CXXFLAGS := -std=c++17 -Wall -O3
+LDFLAGS  :=
 
-all:
-	$(CXX) $(CPPVERSION) $(CXXFLAGS) $(LDFLAGS) -c $(SRC1)
-	$(CXX) $(CPPVERSION) $(CXXFLAGS) $(LDFLAGS) -c $(SRC2)
-	$(CXX) $(CPPVERSION) $(CXXFLAGS) $(LDFLAGS)  $(Obj1) $(Obj2) -o $(TARGET)
+TARGET := main.exe
+SRCS   := dualfunctions.cpp parse_tree.cpp
+# $(SRCS:.cpp=.o) renombra cada fuente a un objeto: seria como
+# [s[:-4] + ".o" for s in SRCS] en Python.
+OBJS   := $(SRCS:.cpp=.o)
 
-	./main.exe
+# parse_tree_bckp.cpp NO se compila: es una copia de referencia que tambien
+# define main(), y enlazarla daria un error de simbolo duplicado.
+
+.PHONY: all clean run
+
+# `all` es la regla por defecto: `make` a secas construye el ejecutable.
+all: $(TARGET)
+
+# Enlazado ("link") de los .o en el binario final. $@ es el objetivo
+# (main.exe) y $^ todas sus dependencias (los .o); es el paso equivalente a
+# empaquetar varios modulos Python en un solo distributable.
+$(TARGET): $(OBJS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $^ -o $@
+
+# Compila cada .cpp a un .o por separado (como importar/compilar un modulo
+# individual). $< es la primera dependencia, el .cpp de turno.
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# parse_tree.cpp incluye dualfunctions.h: si el header cambia, hay que
+# recompilar ese .o. (dualfunctions.cpp no incluye el header, por eso no
+# aparece aqui.)
+parse_tree.o: parse_tree.cpp dualfunctions.h
+
+# `make run` compila si hace falta y ejecuta el binario. Esta separado de
+# `all` porque el programa es estocastico (srand(time(NULL))) y puede tardar
+# mucho o imprimir en exceso; conviene correrlo con `timeout` y `tail`.
+run: $(TARGET)
+	./$(TARGET)
+
 clean:
-	rm -rf $(Obj1) $(Obj2) $(TARGET)
-	
+	rm -f $(OBJS) $(TARGET)

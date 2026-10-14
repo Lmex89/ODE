@@ -193,7 +193,7 @@ static void test_parsv_negacion_de_sin() {
 }
 
 // -------------------------------------------------------------------------
-// Slice 2: tokens 13-21 no se inicializan como constantes.
+// Slice 2: tokens 13-22 no se inicializan como constantes.
 // Criterio del issue #2: `x[k] >= 1 || x[k] <= 10` es siempre verdadera, asi
 // que cada token (incluidos operadores y funciones) arrancaba con valor
 // numerico = su codigo. Una expresion incompleta -aqui sin(+) sin operandos-
@@ -228,6 +228,26 @@ static void test_tan2dual_primera_derivada() {
     check_vec("tan2dual([0.5,2,1]) usa xval[1] en f'", tan2dual(xval), esperado);
 }
 
+// Slice issue #60: tan se integra por las costuras publicas que usa el solver.
+// En Python seria comprobar `render`, `arity`, `operf` y `parsv` con el mismo
+// token; aqui OperF recibe la entrada dual por referencia para no copiarla.
+static void test_token_tan_integracion() {
+    std::vector<long double> tokens = {TOKEN_TAN, TOKEN_X};
+    std::vector<long double> xval = {0.5L, 1.0L, 0.0L};
+    long double sec2 = 1.0L / std::pow(std::cos(0.5L), 2);
+    std::vector<long double> esperado = {
+        std::tan(0.5L),
+        sec2,
+        2.0L * std::tan(0.5L) * sec2
+    };
+
+    check_str("parse_tree([TOKEN_TAN,TOKEN_X]) = tan(x)",
+              parse_tree(tokens), "tan(x)");
+    check_int("narg(TOKEN_TAN) = 1", narg(TOKEN_TAN), 1);
+    check_vec("OperF(TOKEN_TAN) calcula el dual de tan", OperF(TOKEN_TAN, xval), esperado);
+    check_vec("parsv([TOKEN_TAN,TOKEN_X]) calcula tan(x)", parsv(tokens, xval), esperado);
+}
+
 // -------------------------------------------------------------------------
 // Slice 4: locks de regresion. Estos casos ya daban bien antes de los
 // arreglos; quedan fijados aqui para que un cambio futuro no los rompa.
@@ -240,6 +260,7 @@ static void test_narg_tabla() {
     check_int("narg(11) = 0 (variable x)", narg(11.0L), 0);
     check_int("narg(13) = 1 (seno)", narg(13.0L), 1);
     check_int("narg(17) = 1 (raiz)", narg(17.0L), 1);
+    check_int("narg(22) = 1 (tangente)", narg(TOKEN_TAN), 1);
     check_int("narg(18) = 2 (suma)", narg(18.0L), 2);
     check_int("narg(21) = 2 (potencia)", narg(21.0L), 2);
 }
@@ -250,7 +271,8 @@ static void test_narg_tabla() {
 // sin inicializar (que no tiene equivalente seguro en Python).
 static void test_narg_codigo_invalido() {
     check_int("narg(0) devuelve -1 fuera del alfabeto", narg(0.0L), -1);
-    check_int("narg(22) devuelve -1 fuera del alfabeto", narg(22.0L), -1);
+    check_int("narg(TOKEN_MAX+1) devuelve -1 fuera del alfabeto",
+              narg(TOKEN_MAX + 1.0L), -1);
 }
 
 static void test_parsv_funciones_conocidas() {
@@ -642,6 +664,7 @@ int main() {
     test_parsv_negacion_de_sin();
     test_parsv_expresion_incompleta_es_nan();
     test_tan2dual_primera_derivada();
+    test_token_tan_integracion();
     test_narg_tabla();
     test_narg_codigo_invalido();
     test_parsv_funciones_conocidas();

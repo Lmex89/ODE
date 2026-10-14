@@ -20,6 +20,7 @@
 #include <ctime>
 
 #include "dualfunctions.h"  // necesita <vector>/<string> antes (header no autocontenido)
+#include "token.h"          // expone el contrato publico del rango del alfabeto
 
 // Prototipos de las costuras (seams) que se prueban: son funciones publicas de
 // parse_tree.cpp que hoy no viven en un header, asi que el test las declara.
@@ -95,7 +96,7 @@ static void test_mutacion_rand1_formula() {
 
 // -------------------------------------------------------------------------
 // Slice 2: token_valido() — el paper pide convertir el real de la ecuacion (7)
-// a un token entero del alfabeto (1..21). Redondeo al entero mas cercano y
+// a un token entero del alfabeto (1..TOKENS_ALFABETO). Redondeo al entero mas cercano y
 // recorte ("clamp") al rango; esperados calculados a mano.
 // -------------------------------------------------------------------------
 
@@ -103,8 +104,10 @@ static void test_token_valido_rango() {
     check_int("token_valido(7.5)  = 8  (redondea hacia arriba)", token_valido(7.5L), 8);
     check_int("token_valido(7.4)  = 7  (redondea hacia abajo)",  token_valido(7.4L), 7);
     check_int("token_valido(11.0) = 11 (token intacto)",         token_valido(11.0L), 11);
-    check_int("token_valido(21.0) = 21 (borde superior)",        token_valido(21.0L), 21);
-    check_int("token_valido(30.2) = 21 (recorta por arriba)",    token_valido(30.2L), 21);
+    check_int("token_valido(TOKENS_ALFABETO) conserva el borde superior",
+              token_valido(TOKENS_ALFABETO), TOKENS_ALFABETO);
+    check_int("token_valido(30.2) recorta a TOKENS_ALFABETO",
+              token_valido(30.2L), TOKENS_ALFABETO);
     check_int("token_valido(0.6)  = 1  (recorta por abajo)",     token_valido(0.6L), 1);
     check_int("token_valido(-0.25)= 1  (negativo recorta)",      token_valido(-0.25L), 1);
 }
@@ -212,9 +215,9 @@ static void test_mutation_vecindad_acotada() {
     bool tokens_ok = true;
     for (size_t i = 0; i < res.size(); i++) {
         bool entero = (res[i] == floor(res[i]));
-        if (!entero || res[i] < 1 || res[i] > 21) tokens_ok = false;
+        if (!entero || res[i] < TOKEN_MIN || res[i] > TOKENS_ALFABETO) tokens_ok = false;
     }
-    check_bool("Mutation devuelve tokens enteros en [1,21]", tokens_ok);
+    check_bool("Mutation devuelve tokens enteros en [TOKEN_MIN,TOKENS_ALFABETO]", tokens_ok);
 
     bool cota_ok = true;
     for (size_t i = 0; i < res.size(); i++) {
@@ -224,22 +227,25 @@ static void test_mutation_vecindad_acotada() {
     check_bool("Mutation mueve cada token a lo sumo |y-z| (F en [0,1])", cota_ok);
 }
 
-// B5 de REVIEW.md: un individuo semilla tiene 21 tokens y el resto 20; la
-// mutacion no debe leer y[20]/z[20] (fuera de rango) y debe devolver un vector
-// de 21 tokens validos.
+// B5 de REVIEW.md: un individuo semilla tiene TOKENS_ALFABETO tokens y el
+// resto 20; la mutacion no debe leer y[20]/z[20] (fuera de rango) y debe
+// devolver un vector de TOKENS_ALFABETO tokens validos.
 static void test_mutation_tamanos_distintos() {
     srand(20261012);
-    std::vector<long double> x(21, 11.0L);
+    std::vector<long double> x(TOKENS_ALFABETO, 11.0L);
     std::vector<long double> y(20, 5.0L);
     std::vector<long double> z(20, 3.0L);
     std::vector<long double> res = Mutation(x, y, z);
 
-    check_bool("Mutation(x[21], y[20], z[20]) devuelve 21 tokens", res.size() == 21);
+    check_bool("Mutation(x[TOKENS_ALFABETO], y[20], z[20]) conserva el tamano",
+               res.size() == TOKENS_ALFABETO);
     bool tokens_ok = true;
     for (size_t i = 0; i < res.size(); i++) {
-        if (res[i] < 1 || res[i] > 21 || res[i] != floor(res[i])) tokens_ok = false;
+        if (res[i] < TOKEN_MIN || res[i] > TOKENS_ALFABETO || res[i] != floor(res[i])) {
+            tokens_ok = false;
+        }
     }
-    check_bool("Mutation(x[21], y[20], z[20]) no inventa tokens invalidos", tokens_ok);
+    check_bool("Mutation no inventa tokens invalidos con tamanos distintos", tokens_ok);
 }
 
 // Reparacion heredada: la fitness descarta los arboles sin token x (11), asi

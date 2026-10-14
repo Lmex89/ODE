@@ -367,6 +367,9 @@ vector<ldouble> OperF(ldouble x, vector<ldouble>& xval){
 	if (x == TOKEN_EXP) f_result = exp2dual(xval);
 	if (x == TOKEN_LOG) f_result = log2dual(xval);
 	if (x == TOKEN_SQRT) f_result = sqrt2dual((xval));
+	// Despacha el token 22 hacia la regla dual ya existente; en Python seria
+	// `if token == TOKEN_TAN: resultado = tan2dual(xval)`.
+	if (x == TOKEN_TAN) f_result = tan2dual(xval);
 
 	return f_result;
 }

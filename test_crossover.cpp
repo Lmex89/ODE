@@ -20,6 +20,7 @@
 #include <ctime>
 
 #include "dualfunctions.h"  // necesita <vector>/<string> antes (header no autocontenido)
+#include "token.h"          // expone el contrato publico del rango del alfabeto
 
 // Prototipos de las costuras (seams) que se prueban: son funciones publicas de
 // parse_tree.cpp que hoy no viven en un header, asi que el test las declara.
@@ -214,24 +215,25 @@ static void test_recombination_genes_de_los_padres_y_fraccion_cr() {
                fraccion > 0.18 && fraccion < 0.30);
 }
 
-// B5 de REVIEW.md: un individuo semilla tiene 21 tokens y el resto 20. El
+// B5 de REVIEW.md: un individuo semilla tiene TOKENS_ALFABETO tokens y el resto 20. El
 // trial debe conservar el tamano del objetivo y sus tokens sobrantes; a los
 // padres les falta esa cola, asi que no pueden aportarla (j_rand solo apunta a
 // las posiciones 0..19, las comunes a ambos).
 static void test_recombination_tamano_y_cola_del_objetivo() {
     srand(20261012);
-    std::vector<long double> objetivo(21, 5.0L);
+    std::vector<long double> objetivo(TOKENS_ALFABETO, 5.0L);
     std::vector<long double> mutante(20, 7.0L);
     objetivo[0] = 11.0L;
     mutante[0]  = 11.0L;
-    objetivo[20] = 21.0L;  // cola propia del objetivo, fuera del alcance del cruce
+    objetivo[TOKENS_ALFABETO - 1] = TOKEN_POW;  // cola propia fuera del alcance del cruce
 
     std::vector<long double> trial = Recombination(objetivo, mutante, 0.2L);
 
-    check_bool("Recombination(objetivo[21], mutante[20]) devuelve 21 tokens",
-               trial.size() == 21);
+    check_bool("Recombination(objetivo[TOKENS_ALFABETO], mutante[20]) conserva el tamano",
+               trial.size() == TOKENS_ALFABETO);
     check_bool("el token extra del objetivo sobrevive al cruce",
-               trial.size() == 21 && trial[20] == 21.0L);
+               trial.size() == TOKENS_ALFABETO
+                   && trial[TOKENS_ALFABETO - 1] == TOKEN_POW);
 }
 
 // Reparacion heredada: la fitness descarta los arboles sin token x (11), asi
@@ -239,7 +241,7 @@ static void test_recombination_tamano_y_cola_del_objetivo() {
 static void test_recombination_repara_token_x() {
     srand(20261012);
     std::vector<long double> objetivo = {1, 2, 3, 4};
-    std::vector<long double> mutante  = {21, 20, 19, 18};
+    std::vector<long double> mutante  = {TOKEN_POW, TOKEN_DIV, TOKEN_MUL, TOKEN_ADD};
     std::vector<long double> trial = Recombination(objetivo, mutante, 0.2L);
 
     bool hay_x = false;

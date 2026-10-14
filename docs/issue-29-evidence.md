@@ -73,9 +73,10 @@ validated_cases=48/48
 The documented execution uses the pinned image
 `sagemath/sagemath@sha256:310dfe23fc786f3a5a06a7b0387c60201ec79b32c0db941b7624505ee5edb565`.
 The local re-run of `make sage-test` could not start in this environment
-because neither `sage` nor `docker` is installed. The committed output is
-therefore captured validation evidence, while the command remains the
-reproducible way to regenerate it on a host with SageMath or Docker.
+because no usable `sage` executable or Docker runtime is available. The
+committed output is therefore captured validation evidence, while the command
+remains the reproducible way to regenerate it on a host with SageMath or
+Docker.
 
 ## Selected paper case and reference functional
 

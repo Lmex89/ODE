@@ -27,7 +27,8 @@
   `ODE_SEED=42 ODE_GEN=200 timeout 60 ./main.exe | tail -30`.
   `ODE_CASE=1` selects the paper case; `ODE_CASE=2` selects the hyperbolic case.
   `ODE_POP`, `ODE_DIM`, `ODE_GEN`, and `ODE_WARM_START=1` override the search
-  configuration (warm start is ignored unless the dimension is 20).
+  configuration; the dimension default is 30 since issue #64, and warm start
+  (20-token seeds) only activates with `ODE_DIM=20`.
 - There is no CI. For behaviorally neutral DE changes, compare fixed-seed runs
   with `scripts/ab_experiment.sh --seed 42 --timeout 300`.
 
@@ -43,10 +44,11 @@
 - Interpreter operand blanking to `NAN` is deliberate. Invalid/incomplete or
   x-independent trees receive `INFINITY` fitness rather than throwing. Preserve
   that numerical-error contract and keep the hot fitness loop free of output.
-- When extending tokens, update the `token.h` grammar/rendering helpers, the
-  evaluator dispatch in `dualfunctions.cpp`, and focused token/dual/population
-  tests. Use named token constants and `random_token()` rather than literal
-  bounds.
+- When extending tokens, keep the alphabet contiguous (append after
+  `TOKEN_MAX`, bump `TOKENS_ALFABETO`), update the `token.h` helpers (render,
+  arity, category predicates) and the evaluator dispatch in
+  `dualfunctions.cpp`, and cover it with focused token/dual tests. Use named
+  token constants and `random_token()` rather than literal bounds.
 - `dualfunctions.h` is currently not self-contained: include `<vector>` and
   `<string>` before it in a new translation unit until that header is fixed.
 

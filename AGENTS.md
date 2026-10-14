@@ -101,11 +101,13 @@ and do not re-open those files to "verify" it.
 - Token codes are duplicated in `parse_tree`, `narg`, `OperF`, `OperF2`, and
   `vector_population` (`rand()%21+1`); keep them in sync when changing the
   alphabet.
-- `FunbObj::fitness()` sums `(y'' + y)^4` over `x_rango(0, 1, 100)` — 100
-  equally spaced points in `[0,1]`, step `1/99 ≈ 0.0101` (paper §5) — plus
-  penalties for `y(0) != 1` and `y'(0) != 1`; trees that do not fully parse
-  or contain no `x` get `INFINITY`. Fitness < 1e-5 stops the run; the expected
-  winner renders like `(cos(x))+(sin(x))` (solution of `y'' + y = 0` with
+- `FunbObj::fitness()` implements the paper's functional (eq. (4)),
+  `R = lambda1*h1^2 + lambda2*h2^2 + dx*sum(f^2)`, over `x_rango(0, 1, 100)` —
+  100 equally spaced points in `[0,1]`, step `1/99 ≈ 0.0101` (paper §5) — with
+  `lambda1 = lambda2 = 10` (issue #27), squared residuals and penalties, and
+  the `dx = 1/99` integration factor; trees that do not fully parse or contain
+  no `x` get `INFINITY`. Fitness < 1e-5 stops the run; the expected winner
+  renders like `(cos(x))+(sin(x))` (solution of `y'' + y = 0` with
   `y(0) = y'(0) = 1`). With `ODE_CASE=1` the residual and conditions switch to
   the paper's Case 1 (`x*y'' + y' - cos(x)`, `y(0)=0`, `y'(0)=1`, exact
   solution `Si(x)`): the candidate constructor takes the case as a defaulted

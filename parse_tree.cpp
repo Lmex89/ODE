@@ -218,16 +218,20 @@ class FunbObj{
 // Configuracion de la busqueda (issue #28).
 //
 // Los valores por defecto son los del Caso 1 del paper (REVIEW.md C5-C7):
-// 100 individuos, dimension 20 y 5000 generaciones. Cada uno se puede
-// sobreescribir con una variable de entorno, igual que ODE_SEED (issue #4):
-// ODE_POP, ODE_DIM, ODE_GEN y ODE_WARM_START. Para un desarrollador Python:
-// ConfigBusqueda seria un `@dataclass` con defaults y resolver_config su
-// `from_env()`, funcion pura para poder probarla sin tocar el entorno.
+// 100 individuos y 5000 generaciones; la dimension por defecto es 30 desde el
+// issue #64 (el paper usaba 20, pero el alfabeto crecio a 29 tokens). Cada uno
+// se puede sobreescribir con una variable de entorno, igual que ODE_SEED
+// (issue #4): ODE_POP, ODE_DIM, ODE_GEN y ODE_WARM_START. Para un
+// desarrollador Python: ConfigBusqueda seria un `@dataclass` con defaults y
+// resolver_config su `from_env()`, funcion pura para poder probarla sin tocar
+// el entorno.
 // ---------------------------------------------------------------------------
 
 // Valores por defecto (Caso 1 del paper, REVIEW.md C5-C7).
 constexpr int POBLACION_DEFECTO = 100;
-constexpr int DIMENSION_DEFECTO = 20;
+// 30 tokens (issue #64): el alfabeto crecio a 29 hojas/funciones y los 20 del
+// paper dejan poco espacio para arboles que usen las hojas nuevas.
+constexpr int DIMENSION_DEFECTO = 30;
 constexpr int GENERACIONES_DEFECTO = 5000;
 
 // Minimos aceptados. DE/rand/1/bin necesita tres individuos base distintos
@@ -238,7 +242,9 @@ constexpr int POBLACION_MINIMA = 4;
 constexpr int DIMENSION_MINIMA = 1;
 constexpr int GENERACIONES_MINIMAS = 1;
 
-// Longitud de las cinco semillas warm start escritas a mano.
+// Longitud de las cinco semillas warm start escritas a mano. Desde el issue
+// #64 no coincide con la dimension por defecto (30), asi que el warm start
+// solo se activa pidiendo ODE_DIM=20 (ver resolver_config).
 constexpr int DIMENSION_SEMILLAS = 20;
 
 // ConfigBusqueda: los parametros de la corrida en una estructura en vez de
@@ -304,9 +310,9 @@ ConfigBusqueda resolver_config(const char* pop_env, const char* dim_env,
 }
 
 // vector_population: un individuo aleatorio de exactamente `tam` tokens.
-// La longitud la manda la configuracion (dimension del paper: 20) porque
-// Mutation()/Recombination() emparejan genes por posicion: longitudes
-// dispares leian fuera de rango (B5 de REVIEW.md). En Python seria
+// La longitud la manda la configuracion (dimension por defecto: 30, issue
+// #64) porque Mutation()/Recombination() emparejan genes por posicion:
+// longitudes dispares leian fuera de rango (B5 de REVIEW.md). En Python seria
 // `[random.randint(TOKEN_MIN, TOKEN_MAX) for _ in range(tam)]`; en C++
 // `random_token()` concentra esa regla en token.h.
 vector<long double> vector_population(int tam){

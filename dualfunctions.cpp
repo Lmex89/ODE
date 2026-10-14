@@ -11,6 +11,13 @@ typedef long long int llint;
 typedef  long double ldouble;
 typedef string  str;
 
+// Valores de las constantes matematicas pi y e (issue #64). acos(-1) y exp(1)
+// son identidades de libm, asi que no hay literales que puedan quedar mal
+// escritos; en Python seria `PI = math.acos(-1)` y `E = math.exp(1)`. El
+// `const` de ambito de archivo es como una constante privada del modulo.
+const ldouble VALOR_PI = acos(-1.0L);
+const ldouble VALOR_E = exp(1.0L);
+
 vector<ldouble> sin2dual(vector<ldouble>& xval){
 
 	vector<ldouble> f = {NAN,NAN,NAN};;
@@ -430,6 +437,11 @@ vector<ldouble> OperF(ldouble x, vector<ldouble>& xval){
 		vector<ldouble> cuadrado = prod2dual(xval, xval);
 		f_result = prod2dual(xval, cuadrado);
 	}
+	// Constantes matematicas (issue #64): pi y e son hojas de valor fijo con
+	// derivadas cero; el resultado no depende de la entrada dual. En Python
+	// seria `if token == TOKEN_PI: resultado = [math.pi, 0.0, 0.0]`.
+	if (x == TOKEN_PI) f_result = {VALOR_PI, 0.0L, 0.0L};
+	if (x == TOKEN_E) f_result = {VALOR_E, 0.0L, 0.0L};
 
 	return f_result;
 }
@@ -479,6 +491,19 @@ vector<ldouble> parsv(vector<ldouble> x, vector<ldouble> xval){
 		// hoja x. En Python seria
 		// `if token in (TOKEN_X2, TOKEN_X3): auxv[:, k] = OperF(token, xval)`.
 		if(x[k] == TOKEN_X2 || x[k] == TOKEN_X3){
+			vector<ldouble> hoja = OperF(x[k], xval);
+			auxv[0][k] = hoja[0];
+			auxv[1][k] = hoja[1];
+			auxv[2][k] = hoja[2];
+		}
+
+		// Constantes pi y e (issue #64): aridad 0 y valor fijo, pero a
+		// diferencia de las constantes 1.0-10.0 su valor no es el codigo del
+		// token; se inicializan evaluando OperF, igual que las hojas
+		// polinomiales, para no duplicar VALOR_PI/VALOR_E en este consumidor.
+		// En Python seria
+		// `if token in (TOKEN_PI, TOKEN_E): auxv[:, k] = OperF(token, xval)`.
+		if(x[k] == TOKEN_PI || x[k] == TOKEN_E){
 			vector<ldouble> hoja = OperF(x[k], xval);
 			auxv[0][k] = hoja[0];
 			auxv[1][k] = hoja[1];

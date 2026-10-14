@@ -277,6 +277,11 @@ per-generation probability.
 > warm start (`ODE_WARM_START=1`) on top of the uniform random initialisation.
 > The code references above describe the reviewed (pre-fix) revision.
 
+> Status (issue #27): C2–C4 are fixed — `fitness()` now evaluates the paper's
+> functional (eq. (4)): squared residuals and initial-condition penalties,
+> `lambda1 = lambda2 = 10` and the `dx` integration factor over the 100-point
+> grid. Independently computed expected values are pinned in `test_grid.cpp`.
+
 Additional details worth knowing:
 
 * The grid point `[0,1,0]` is equivalent to the paper's dual variable `x̃ = {x,1,0}`

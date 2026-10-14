@@ -76,8 +76,8 @@ static void check_bool(const std::string& caso, bool condicion) {
 
 // Slice 1: los nombres publicos anclan los codigos que el alfabeto ya usa en
 // los arboles en notacion prefija. Los literales son la fuente independiente
-// de verdad: la tabla historica de tokens del proyecto (25 con las
-// hiperbolicas del issue #61).
+// de verdad: la tabla historica de tokens del proyecto (27 con las
+// hojas polinomiales del #63).
 static void test_constantes_y_rangos() {
     check_int("constant_1", TOKEN_CONST1, 1);
     check_int("constant_2", TOKEN_CONST2, 2);
@@ -100,13 +100,15 @@ static void test_constantes_y_rangos() {
     check_int("unary_sinh", TOKEN_SINH, 23);
     check_int("unary_cosh", TOKEN_COSH, 24);
     check_int("unary_tanh", TOKEN_TANH, 25);
+    check_int("leaf_x2", TOKEN_X2, 26);
+    check_int("leaf_x3", TOKEN_X3, 27);
     check_int("binary_add", TOKEN_ADD, 18);
     check_int("binary_mul", TOKEN_MUL, 19);
     check_int("binary_div", TOKEN_DIV, 20);
     check_int("binary_pow", TOKEN_POW, 21);
     check_int("minimum", TOKEN_MIN, 1);
-    check_int("maximum", TOKEN_MAX, 25);
-    check_int("alphabet_size", TOKENS_ALFABETO, 25);
+    check_int("maximum", TOKEN_MAX, 27);
+    check_int("alphabet_size", TOKENS_ALFABETO, 27);
 }
 
 // Slice 2: la aridad publica sigue la gramatica prefija: hojas sin operandos,
@@ -134,6 +136,8 @@ static void test_aridad_de_todo_el_alfabeto() {
     check_int("arity_unary_sinh", arity(TOKEN_SINH), 1);
     check_int("arity_unary_cosh", arity(TOKEN_COSH), 1);
     check_int("arity_unary_tanh", arity(TOKEN_TANH), 1);
+    check_int("arity_leaf_x2", arity(TOKEN_X2), 0);
+    check_int("arity_leaf_x3", arity(TOKEN_X3), 0);
     check_int("arity_binary_add", arity(TOKEN_ADD), 2);
     check_int("arity_binary_mul", arity(TOKEN_MUL), 2);
     check_int("arity_binary_div", arity(TOKEN_DIV), 2);
@@ -166,6 +170,8 @@ static void test_render_de_todo_el_alfabeto() {
     check_str("render_unary_sinh", render(TOKEN_SINH), "sinh()");
     check_str("render_unary_cosh", render(TOKEN_COSH), "cosh()");
     check_str("render_unary_tanh", render(TOKEN_TANH), "tanh()");
+    check_str("render_leaf_x2", render(TOKEN_X2), "x^2");
+    check_str("render_leaf_x3", render(TOKEN_X3), "x^3");
     check_str("render_binary_add", render(TOKEN_ADD), "()+()");
     check_str("render_binary_mul", render(TOKEN_MUL), "()*()");
     check_str("render_binary_div", render(TOKEN_DIV), "()/()");
@@ -190,11 +196,13 @@ static void test_categorias_particionan_el_alfabeto() {
     for (int token = TOKEN_MIN; token <= TOKEN_MAX; ++token) {
         const bool esperado_constante = token >= 1 && token <= 10;
         const bool esperado_variable = token == 11;
-        // Los literales (12-17 y 22-25 unarias; 18-21 binarias) son la tabla
-        // publicada, no una llamada a las funciones bajo prueba.
+        // Los literales (12-17 y 22-25 unarias; 18-21 binarias; 26-27 hojas
+        // polinomiales) son la tabla publicada, no una llamada a las funciones
+        // bajo prueba.
         const bool esperado_unario = (token >= 12 && token <= 17)
                                    || (token >= 22 && token <= 25);
         const bool esperado_binario = token >= 18 && token <= 21;
+        const bool esperado_polinomio = token == 26 || token == 27;
 
         check_bool("category_constant_" + std::to_string(token),
                    is_constant(token) == esperado_constante);
@@ -204,13 +212,29 @@ static void test_categorias_particionan_el_alfabeto() {
                    is_unary(token) == esperado_unario);
         check_bool("category_binary_" + std::to_string(token),
                    is_binary(token) == esperado_binario);
+        check_bool("category_polynomial_" + std::to_string(token),
+                   is_polynomial(token) == esperado_polinomio);
 
         const int categorias = static_cast<int>(is_constant(token))
                              + static_cast<int>(is_variable(token))
                              + static_cast<int>(is_unary(token))
-                             + static_cast<int>(is_binary(token));
+                             + static_cast<int>(is_binary(token))
+                             + static_cast<int>(is_polynomial(token));
         check_int("category_partition_" + std::to_string(token), categorias, 1);
     }
+}
+
+// Slice issue #63: is_x_dependent responde si una hoja hace que la expresion
+// dependa de x (la variable o una hoja polinomial); fitness() usa la misma
+// pregunta para descartar los arboles constantes. Los literales 11/26/27 son
+// la tabla publicada.
+static void test_dependencia_de_x() {
+    check_bool("x_dependent_variable", is_x_dependent(TOKEN_X));
+    check_bool("x_dependent_leaf_x2", is_x_dependent(TOKEN_X2));
+    check_bool("x_dependent_leaf_x3", is_x_dependent(TOKEN_X3));
+    check_bool("constant_1_no_depende_de_x", !is_x_dependent(TOKEN_CONST1));
+    check_bool("unary_sin_no_depende_de_x", !is_x_dependent(TOKEN_SIN));
+    check_bool("binary_add_no_depende_de_x", !is_x_dependent(TOKEN_ADD));
 }
 
 // Slice 6: el sorteo no fija una secuencia concreta porque `rand()` depende de
@@ -234,6 +258,7 @@ int main() {
     test_render_de_todo_el_alfabeto();
     test_validacion_del_alfabeto();
     test_categorias_particionan_el_alfabeto();
+    test_dependencia_de_x();
     test_sorteo_permanece_en_el_alfabeto();
 
     if (g_fallos == 0) {

@@ -60,11 +60,12 @@ static void check_int(const std::string& nombre, int got, int esperado) {
 }
 
 // -------------------------------------------------------------------------
-// Slice 1 (issue #11): todo individuo del semillero mide lo mismo — 20 tokens.
-// B5 de REVIEW.md: el seed `dos` tenia 21 y `Mutation()` leia fuera de rango
-// cuando ese individuo entraba como operando x. La invariante de diseno es que
-// la poblacion inicial es uniforme: los 5 individuos escritos a mano y los
-// aleatorios de vector_population(20) miden 20 tokens.
+// Slice 1 (issue #11): todo individuo del semillero mide lo mismo — la
+// dimension efectiva de la configuracion (30 por defecto desde el issue #64).
+// B5 de REVIEW.md: el seed `dos` tenia 21 tokens y `Mutation()` leia fuera de
+// rango cuando ese individuo entraba como operando x. La invariante de diseno
+// es que la poblacion inicial es uniforme: cada aleatorio de
+// vector_population(dim) mide dim.
 // -------------------------------------------------------------------------
 
 static void test_createPopulation_tamano_uniforme() {
@@ -73,7 +74,8 @@ static void test_createPopulation_tamano_uniforme() {
     // `random.seed(20261013)`), igual que en los tests de mutacion/cruce.
     srand(20261013);
 
-    // Configuracion por defecto del Caso 1 del paper (issue #28): dimension 20.
+    // Configuracion por defecto del Caso 1 del paper (issue #28) con la
+    // dimension ampliada a 30 (issue #64).
     ConfigBusqueda config;
     config.poblacion = 10;
 
@@ -86,11 +88,11 @@ static void test_createPopulation_tamano_uniforme() {
 
     // vecvalue() es la via publica de lectura; _vecval es privado (Python no
     // tiene esta distincion: todo seria publico).
-    bool todos_20 = true;
+    bool todos_30 = true;
     for (size_t i = 0; i < poblacion.size(); i++) {
-        if (poblacion[i].vecvalue().size() != 20) todos_20 = false;
+        if (poblacion[i].vecvalue().size() != 30) todos_30 = false;
     }
-    check_bool("todos los individuos tienen 20 tokens (dimension del paper)", todos_20);
+    check_bool("todos los individuos tienen 30 tokens (dimension por defecto)", todos_30);
 }
 
 // -------------------------------------------------------------------------
@@ -148,7 +150,8 @@ static void test_createPopulation_respeta_la_dimension() {
 // -------------------------------------------------------------------------
 // Slice 4 (issue #28): el warm start es opt-in. Por defecto la poblacion es
 // aleatoria uniforme (ecuacion (6) del paper, REVIEW D6); con
-// ODE_WARM_START=1 entran las cinco expresiones escritas a mano del prototipo.
+// ODE_WARM_START=1 y la dimension de las semillas (20) entran las cinco
+// expresiones escritas a mano del prototipo.
 // -------------------------------------------------------------------------
 
 static void test_warm_start_opt_in() {
@@ -163,10 +166,13 @@ static void test_warm_start_opt_in() {
     }
     check_bool("cada semilla mide la dimension del paper (20)", miden_20);
 
-    // Con warm start, las semillas van al frente de la poblacion.
+    // Con warm start, las semillas van al frente de la poblacion. La
+    // dimension debe ser la de las semillas (20): con la default (30, issue
+    // #64) createPopulation no las usaria y este slice no probaria nada.
     srand(20261013);
     ConfigBusqueda caliente;
     caliente.poblacion = 10;
+    caliente.dimension = 20;
     caliente.warm_start = true;
     vector<FunbObj> con_semillas;
     createPopulation(con_semillas, caliente, 0);
@@ -231,9 +237,11 @@ static void test_createPopulation_reproducible() {
 // -------------------------------------------------------------------------
 // Slice 6 (issue #28): configuracion de la busqueda. Sin variables de
 // entorno, los valores por defecto son los del Caso 1 del paper (REVIEW
-// C5-C7): 100 individuos, dimension 20 y 5000 generaciones. En Python esto
-// seria un `@dataclass` con defaults, construido por una funcion pura que
-// recibe los `os.environ.get(...)` ya leidos.
+// C5-C7): 100 individuos y 5000 generaciones; la dimension por defecto es 30
+// (issue #64), ampliada desde los 20 originales para dar espacio al alfabeto
+// de 29 tokens. En Python esto seria un `@dataclass` con defaults,
+// construido por una funcion pura que recibe los `os.environ.get(...)` ya
+// leidos.
 // -------------------------------------------------------------------------
 
 static void test_config_defaults() {
@@ -242,10 +250,10 @@ static void test_config_defaults() {
     // entorno del proceso.
     ConfigBusqueda config = resolver_config(nullptr, nullptr, nullptr, nullptr);
 
-    // Los literales 100/20/5000 vienen del paper (Caso 1), no de la
-    // implementacion: son la fuente de verdad independiente del test.
+    // Los literales 100/5000 vienen del paper (Caso 1); 30 es la dimension
+    // pedida por el issue #64, no un valor copiado de la implementacion.
     check_int("poblacion por defecto = 100 (Caso 1 del paper)", config.poblacion, 100);
-    check_int("dimension por defecto = 20 (Caso 1 del paper)", config.dimension, 20);
+    check_int("dimension por defecto = 30 (issue #64)", config.dimension, 30);
     check_int("generaciones por defecto = 5000 (Caso 1 del paper)",
               config.max_generaciones, 5000);
     check_bool("warm start desactivado por defecto", !config.warm_start);
@@ -261,9 +269,10 @@ static void test_config_overrides() {
     check_int("ODE_GEN=77 sobreescribe las generaciones", config.max_generaciones, 77);
     check_bool("ODE_WARM_START=0 desactiva el warm start", !config.warm_start);
 
-    // Con la dimension por defecto (20) el warm start si se acepta.
-    ConfigBusqueda caliente = resolver_config(nullptr, nullptr, nullptr, "1");
-    check_bool("ODE_WARM_START=1 activa el warm start con dimension 20",
+    // Con ODE_DIM=20 (la dimension de las semillas) el warm start si se
+    // acepta; con la dimension default (30, issue #64) quedaria apagado.
+    ConfigBusqueda caliente = resolver_config(nullptr, "20", nullptr, "1");
+    check_bool("ODE_WARM_START=1 activa el warm start con ODE_DIM=20",
                caliente.warm_start);
 }
 
@@ -274,7 +283,7 @@ static void test_config_invalida_usa_respaldo() {
     ConfigBusqueda config = resolver_config("abc", "", "0", "tal vez");
 
     check_int("ODE_POP invalida usa el default 100", config.poblacion, 100);
-    check_int("ODE_DIM invalida usa el default 20", config.dimension, 20);
+    check_int("ODE_DIM invalida usa el default 30 (issue #64)", config.dimension, 30);
     check_int("ODE_GEN invalida usa el default 5000", config.max_generaciones, 5000);
     check_bool("ODE_WARM_START invalida usa el default (apagado)",
                !config.warm_start);
@@ -295,15 +304,21 @@ static void test_config_warm_start_requiere_dimension_20() {
     // Las cinco semillas warm start miden 20 tokens: con otra dimension no son
     // individuos validos para el emparejamiento gen a gen de
     // Mutation()/Recombination(), asi que la peticion se ignora (el valor
-    // efectivo queda registrado en la linea de arranque).
+    // efectivo queda registrado en la linea de arranque). Desde el issue #64
+    // la dimension por defecto es 30, asi que el warm start solo se activa
+    // pidiendo ODE_DIM=20 explicitamente.
     ConfigBusqueda config = resolver_config(nullptr, "30", nullptr, "1");
 
     check_int("la dimension pedida se conserva (30)", config.dimension, 30);
     check_bool("ODE_WARM_START=1 se ignora con ODE_DIM=30", !config.warm_start);
+
+    ConfigBusqueda defecto = resolver_config(nullptr, nullptr, nullptr, "1");
+    check_bool("con la dimension por defecto (30) el warm start se ignora",
+               !defecto.warm_start);
 }
 
 int main() {
-    std::cout << "== test_population: issues #11 y #28 (semillero y configuracion) ==\n";
+    std::cout << "== test_population: issues #11, #28 y #64 (semillero y configuracion) ==\n";
     test_createPopulation_tamano_uniforme();
     test_createPopulation_cantidad_exacta();
     test_createPopulation_respeta_la_dimension();

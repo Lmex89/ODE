@@ -425,6 +425,48 @@ static void test_parsv_polinomios_finite_difference() {
 }
 
 // -------------------------------------------------------------------------
+// Slice issue #64: constantes pi (TOKEN_PI) y e (TOKEN_E) como hojas de valor
+// fijo. Se integran por las mismas costuras publicas que usa el solver
+// (parse_tree, narg, OperF y parsv), como en los slices de tan (#60), las
+// hiperbolicas (#61) y los polinomios (#63). Los esperados de pi y e salen de
+// libm (acos(-1) y exp(1)), no de copiar la implementacion.
+// -------------------------------------------------------------------------
+
+static void test_token_constantes_integracion() {
+    long double pi = std::acos(-1.0L);   // pi = math.acos(-1) en Python
+    long double e  = std::exp(1.0L);     // e  = math.exp(1) en Python
+
+    // Render y aridad: dos hojas mas del alfabeto, sin huecos "()".
+    std::vector<long double> solo_pi  = {TOKEN_PI};
+    std::vector<long double> solo_e   = {TOKEN_E};
+    std::vector<long double> pi_mas_x = {TOKEN_ADD, TOKEN_PI, TOKEN_X};
+    check_str("parse_tree([TOKEN_PI]) = pi", parse_tree(solo_pi), "pi");
+    check_str("parse_tree([TOKEN_E]) = e", parse_tree(solo_e), "e");
+    check_str("parse_tree([TOKEN_ADD,TOKEN_PI,TOKEN_X]) = (pi)+(x)",
+              parse_tree(pi_mas_x), "(pi)+(x)");
+    check_int("narg(TOKEN_PI) = 0 (hoja)", narg(TOKEN_PI), 0);
+    check_int("narg(TOKEN_E) = 0 (hoja)", narg(TOKEN_E), 0);
+
+    // Entrada dual con componentes no triviales: una hoja constante debe
+    // ignorarlas (sus derivadas son cero), no confundirlas con su valor.
+    std::vector<long double> xval = {0.5L, 2.0L, 1.0L};
+    check_vec("OperF(TOKEN_PI) = [pi,0,0]", OperF(TOKEN_PI, xval), {pi, 0.0L, 0.0L});
+    check_vec("OperF(TOKEN_E) = [e,0,0]", OperF(TOKEN_E, xval), {e, 0.0L, 0.0L});
+
+    // parsv es la costura que usa el solver: pi*x en x=2 -> [2*pi, pi, 0]
+    // (regla del producto), e*x en x=0.5 -> [e/2, e, 0] y pi+e -> [pi+e, 0, 0].
+    std::vector<long double> pi_por_x = {TOKEN_MUL, TOKEN_PI, TOKEN_X};
+    std::vector<long double> e_por_x  = {TOKEN_MUL, TOKEN_E, TOKEN_X};
+    std::vector<long double> pi_mas_e = {TOKEN_ADD, TOKEN_PI, TOKEN_E};
+    check_vec("parsv(pi*x) en x=2", parsv(pi_por_x, {2.0L, 1.0L, 0.0L}),
+              {2.0L * pi, pi, 0.0L});
+    check_vec("parsv(e*x) en x=0.5", parsv(e_por_x, {0.5L, 1.0L, 0.0L}),
+              {0.5L * e, e, 0.0L});
+    check_vec("parsv(pi+e)", parsv(pi_mas_e, {2.0L, 1.0L, 0.0L}),
+              {pi + e, 0.0L, 0.0L});
+}
+
+// -------------------------------------------------------------------------
 // Slice 4: locks de regresion. Estos casos ya daban bien antes de los
 // arreglos; quedan fijados aqui para que un cambio futuro no los rompa.
 // Cubren el criterio 5 ("sin(x) en x=0 -> [0,1,0]") y el resto de funciones
@@ -847,6 +889,7 @@ int main() {
     test_token_hiperbolicas_integracion();
     test_token_polinomios_integracion();
     test_parsv_polinomios_finite_difference();
+    test_token_constantes_integracion();
     test_narg_tabla();
     test_narg_codigo_invalido();
     test_parsv_funciones_conocidas();

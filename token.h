@@ -39,6 +39,11 @@ constexpr int TOKEN_TAN{22};
 constexpr int TOKEN_SINH{23};
 constexpr int TOKEN_COSH{24};
 constexpr int TOKEN_TANH{25};
+// Hojas polinomiales (issue #63): x^2 y x^3 se evaluan como x*x y x*x*x, con
+// aridad 0 (no consumen operandos del arbol). En Python serian dos entradas
+// mas del registro de hojas cuyo valor depende de x.
+constexpr int TOKEN_X2{26};
+constexpr int TOKEN_X3{27};
 
 // Operaciones de dos operandos; en notacion prefija anteceden sus dos hijos.
 constexpr int TOKEN_ADD{18};
@@ -49,7 +54,7 @@ constexpr int TOKEN_POW{21};
 // TOKENS_ALFABETO es la cantidad de codigos contiguos disponibles. En Python
 // equivale a `len(range(TOKEN_MIN, TOKEN_MAX + 1))`; agregar un token nuevo
 // solo requiere ampliar este contador y su implementacion.
-constexpr int TOKENS_ALFABETO{25};
+constexpr int TOKENS_ALFABETO{27};
 constexpr int TOKEN_MIN{TOKEN_CONST1};
 constexpr int TOKEN_MAX{TOKEN_MIN + TOKENS_ALFABETO - 1};
 
@@ -67,6 +72,20 @@ inline bool is_constant(int token) {
 
 inline bool is_variable(int token) {
     return token == TOKEN_X;
+}
+
+// is_polynomial reconoce las hojas de potencia fija de x (x^2, x^3): su valor
+// es una potencia de x, pero no son la variable x. En Python seria
+// `token in (TOKEN_X2, TOKEN_X3)`.
+inline bool is_polynomial(int token) {
+    return token == TOKEN_X2 || token == TOKEN_X3;
+}
+
+// is_x_dependent responde la pregunta que le importa a fitness(): si el token
+// es una hoja cuyo valor depende de x (la variable o una hoja polinomial). En
+// Python seria `is_variable(token) or is_polynomial(token)`.
+inline bool is_x_dependent(int token) {
+    return is_variable(token) || is_polynomial(token);
 }
 
 inline bool is_unary(int token) {
@@ -91,6 +110,12 @@ inline int random_token() {
 // codigo fuera del alfabeto, que no pertenece a ninguna regla gramatical.
 inline int arity(int token) {
     if (token >= TOKEN_CONST1 && token <= TOKEN_X) {
+        return 0;
+    }
+    // Las hojas polinomiales (issue #63) tambien son hojas: no consumen hijos
+    // aunque su valor se calcule a partir de x. En Python seria ampliar la
+    // primera condicion con `or is_polynomial(token)`.
+    if (is_polynomial(token)) {
         return 0;
     }
     if ((token >= TOKEN_NEG && token <= TOKEN_SQRT) ||
@@ -150,6 +175,12 @@ inline std::string render(int token) {
             return "cosh()";
         case TOKEN_TANH:
             return "tanh()";
+        // Hojas polinomiales (issue #63): se renderizan como la potencia fija
+        // de x que representan. No llevan huecos "()" porque no tienen hijos.
+        case TOKEN_X2:
+            return "x^2";
+        case TOKEN_X3:
+            return "x^3";
         case TOKEN_ADD:
             return "()+()";
         case TOKEN_MUL:

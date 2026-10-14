@@ -376,6 +376,55 @@ static void test_token_hiperbolicas_integracion() {
 }
 
 // -------------------------------------------------------------------------
+// Slice issue #63: hojas polinomiales x^2 (TOKEN_X2) y x^3 (TOKEN_X3). Se
+// integran por las mismas costuras publicas que usa el solver (parse_tree,
+// narg, OperF y parsv), como en los slices de tan (#60) y las hiperbolicas
+// (#61). Los esperados salen de la regla de la potencia, no de reimplementar
+// la evaluacion.
+// -------------------------------------------------------------------------
+
+static void test_token_polinomios_integracion() {
+    std::vector<long double> solo_x2 = {TOKEN_X2};
+    std::vector<long double> solo_x3 = {TOKEN_X3};
+    check_str("parse_tree([TOKEN_X2]) = x^2", parse_tree(solo_x2), "x^2");
+    check_str("parse_tree([TOKEN_X3]) = x^3", parse_tree(solo_x3), "x^3");
+    check_int("narg(TOKEN_X2) = 0 (hoja)", narg(TOKEN_X2), 0);
+    check_int("narg(TOKEN_X3) = 0 (hoja)", narg(TOKEN_X3), 0);
+
+    // Varios x (0, positivo, negativo) para que una regla que solo funcione en
+    // x=1 o que ignore el signo falle aqui. Los esperados son la regla de la
+    // potencia: x^2 -> [x^2, 2x, 2]; x^3 -> [x^3, 3x^2, 6x].
+    std::vector<long double> puntos = {0.0L, 0.5L, 2.0L, -1.5L};
+    for (long double x : puntos) {
+        std::ostringstream caso;
+        caso << " en x=" << static_cast<double>(x);
+        std::vector<long double> xval = {x, 1.0L, 0.0L};
+        long double x2 = x * x;
+        long double x3 = x2 * x;
+        check_vec("OperF(TOKEN_X2)" + caso.str(),
+                  OperF(TOKEN_X2, xval), {x2, 2.0L * x, 2.0L});
+        check_vec("OperF(TOKEN_X3)" + caso.str(),
+                  OperF(TOKEN_X3, xval), {x3, 3.0L * x2, 6.0L * x});
+        // parsv es la costura que usa el solver: el arbol de una sola hoja
+        // debe dar el mismo triple que OperF.
+        check_vec("parsv(TOKEN_X2)" + caso.str(),
+                  parsv({TOKEN_X2}, xval), {x2, 2.0L * x, 2.0L});
+        check_vec("parsv(TOKEN_X3)" + caso.str(),
+                  parsv({TOKEN_X3}, xval), {x3, 3.0L * x2, 6.0L * x});
+    }
+}
+
+// Las hojas polinomiales tambien se validan contra diferencias finitas
+// centrales: es una fuente independiente de la regla dual. x^3+x^2 prueba
+// ademas que las dos hojas se evaluan por separado (ninguna consume a la otra).
+static void test_parsv_polinomios_finite_difference() {
+    std::vector<long double> puntos = {0.25L, 0.5L, 0.75L};
+    check_parsv_case("parsv(x^2)", {TOKEN_X2}, puntos);
+    check_parsv_case("parsv(x^3)", {TOKEN_X3}, puntos);
+    check_parsv_case("parsv(x^3+x^2)", {TOKEN_ADD, TOKEN_X3, TOKEN_X2}, puntos);
+}
+
+// -------------------------------------------------------------------------
 // Slice 4: locks de regresion. Estos casos ya daban bien antes de los
 // arreglos; quedan fijados aqui para que un cambio futuro no los rompa.
 // Cubren el criterio 5 ("sin(x) en x=0 -> [0,1,0]") y el resto de funciones
@@ -796,6 +845,8 @@ int main() {
     test_cosh2dual_derivadas();
     test_tanh2dual_derivadas();
     test_token_hiperbolicas_integracion();
+    test_token_polinomios_integracion();
+    test_parsv_polinomios_finite_difference();
     test_narg_tabla();
     test_narg_codigo_invalido();
     test_parsv_funciones_conocidas();

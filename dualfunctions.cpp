@@ -419,6 +419,17 @@ vector<ldouble> OperF(ldouble x, vector<ldouble>& xval){
 	if (x == TOKEN_SINH) f_result = sinh2dual(xval);
 	if (x == TOKEN_COSH) f_result = cosh2dual(xval);
 	if (x == TOKEN_TANH) f_result = tanh2dual(xval);
+	// Hojas polinomiales (issue #63): x^2 y x^3 se evaluan aplicando la regla
+	// dual del producto sobre la entrada [x, 1, 0]. En Python seria
+	// `if token == TOKEN_X2: resultado = prod2dual(xval, xval)`. prod2dual
+	// recibe referencias no-const, asi que el cuadrado de x^3 se guarda en una
+	// variable local antes de multiplicarlo otra vez por x (un temporal no
+	// puede pasarse como referencia no-const; en Python no existe esa regla).
+	if (x == TOKEN_X2) f_result = prod2dual(xval, xval);
+	if (x == TOKEN_X3) {
+		vector<ldouble> cuadrado = prod2dual(xval, xval);
+		f_result = prod2dual(xval, cuadrado);
+	}
 
 	return f_result;
 }
@@ -460,6 +471,18 @@ vector<ldouble> parsv(vector<ldouble> x, vector<ldouble> xval){
 			auxv[0][k]= xval[0];
 			auxv[1][k]= xval[1];
 			auxv[2][k]= xval[2];
+		}
+
+		// Hojas polinomiales (issue #63): x^2 y x^3 tienen aridad 0 (no
+		// consumen operandos del arbol), pero su valor no es constante: se
+		// calculan evaluando OperF con la entrada dual [x, 1, 0], igual que la
+		// hoja x. En Python seria
+		// `if token in (TOKEN_X2, TOKEN_X3): auxv[:, k] = OperF(token, xval)`.
+		if(x[k] == TOKEN_X2 || x[k] == TOKEN_X3){
+			vector<ldouble> hoja = OperF(x[k], xval);
+			auxv[0][k] = hoja[0];
+			auxv[1][k] = hoja[1];
+			auxv[2][k] = hoja[2];
 		}
 
 		// Token 12 (negacion): NO se inicializa aqui. Es una funcion de un

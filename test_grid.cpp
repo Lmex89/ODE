@@ -231,6 +231,24 @@ static void test_fitness_sin_x_no_muta_el_individuo() {
     check_bool("fitness() repetido devuelve lo mismo", r2 == r1);
 }
 
+// -------------------------------------------------------------------------
+// Slice issue #63: las hojas polinomiales x^2/x^3 (tokens 26/27) dependen de
+// x igual que el token 11, asi que un arbol compacto como x^2+2 ya no puede
+// rechazarse como "sin x". fitness() pregunta por cualquier hoja
+// x-dependiente (is_x_dependent), no solo por la variable.
+// -------------------------------------------------------------------------
+
+static void test_fitness_hojas_polinomicas_dependen_de_x() {
+    // x^2 en prefijo: {26}. Antes daba INFINITY por no contener el token 11.
+    FunbObj f_x2({TOKEN_X2}, 0.0L, 1.0L);
+    check_bool("fitness() de x^2 (solo token 26) es finita",
+               !std::isinf(f_x2.fitness()));
+    // x^3+x^2 compacta: {18, 27, 26}. Tampoco contiene el token 11.
+    FunbObj f_suma({TOKEN_ADD, TOKEN_X3, TOKEN_X2}, 0.0L, 1.0L);
+    check_bool("fitness() de x^3+x^2 (sin token 11) es finita",
+               !std::isinf(f_suma.fitness()));
+}
+
 static void test_fitness_valido_es_estable() {
     // sin(x) (tokens 13,11): fitness finita, y dos llamadas deben devolver
     // exactamente lo mismo (la cache no cambia el resultado).
@@ -317,6 +335,7 @@ int main() {
     test_fitness_caso2_condiciones_iniciales();
     test_fitness_arbol_incompleto_es_infinita();
     test_fitness_sin_x_no_muta_el_individuo();
+    test_fitness_hojas_polinomicas_dependen_de_x();
     test_fitness_valido_es_estable();
     test_fitness_nan_interior_es_infinita();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "

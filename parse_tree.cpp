@@ -116,13 +116,17 @@ class FunbObj{
 			_cache_valido = true;
 			return _fresult ;
 			}
-	std::vector<ldouble>::iterator it = std::find(_vecval.begin(), _vecval.end(),
-	                                              static_cast<ldouble>(TOKEN_X));
-	if (it == _vecval.end()){
-		// Sin token x la expresion no es funcion de x: INFINITY sin
-		// tocar el vector. Antes se escribian 11s al azar y luego se devolvia
-		// INFINITY igual: la evaluacion mutaba al individuo y una segunda
-		// llamada podia devolver otra cosa (B6 de REVIEW.md). Los productores
+	// La expresion debe depender de x: basta cualquier hoja x-dependiente (la
+	// variable x o las hojas polinomiales x^2/x^3 del issue #63), no solo el
+	// token 11. En Python seria
+	// `if not any(is_x_dependent(int(t)) for t in self._vecval):`.
+	bool depende_de_x = std::any_of(_vecval.begin(), _vecval.end(),
+	                                [](ldouble t){ return is_x_dependent((int) t); });
+	if (!depende_de_x){
+		// Una expresion constante no es funcion de x: INFINITY sin tocar el
+		// vector. Antes se escribian 11s al azar y luego se devolvia INFINITY
+		// igual: la evaluacion mutaba al individuo y una segunda llamada
+		// podia devolver otra cosa (B6 de REVIEW.md). Los productores
 		// (vector_population, Mutation, Recombination) ya garantizan un token
 		// x, asi que aqui solo se penaliza.
 		_fresult  = INFINITY;
@@ -314,10 +318,12 @@ vector<long double> vector_population(int tam){
 		ans.push_back(random_token());
 	}
 
-	// La fitness descarta los arboles sin token x: si el sorteo no saco
-	// ninguno, se escribe x en dos posiciones al azar de todo el vector. Antes
-	// el indice se limitaba a [0, tam-4] (resto del tamano de poblacion de la
-	// version vieja) y las ultimas posiciones nunca se reparaban.
+	// La fitness exige alguna hoja que dependa de x (la variable o x^2/x^3,
+	// issue #63): si el sorteo no saco el token x, se escribe en dos
+	// posiciones al azar de todo el vector (forzarlo sigue siendo una
+	// reparacion valida). Antes el indice se limitaba a [0, tam-4] (resto del
+	// tamano de poblacion de la version vieja) y las ultimas posiciones nunca
+	// se reparaban.
 	if (!ans.empty() && std::find(ans.begin(), ans.end(), TOKEN_X) == ans.end()){
 		for (int i = 0; i < 2; i++){
 			ans[rand() % tam] = TOKEN_X;
@@ -489,10 +495,11 @@ vector<ldouble> Mutation(vector<ldouble>x, vector<ldouble> y,vector<ldouble>z){
 		res[i] = token_valido(mutacion_rand1(x[i], y[i], z[i], F));
 	}
 
-	// Reparacion heredada: la fitness descarta los arboles sin token x,
-	// asi que si la mutacion los borro todos se fuerza uno en una posicion al
-	// azar (un solo token; antes se intentaban 3 posiciones con un rango
-	// dudoso). Es una regla propia de este prototipo, no del paper.
+	// Reparacion heredada: la fitness exige alguna hoja que dependa de x
+	// (variable o polinomial, issue #63), asi que si la mutacion borro el
+	// token x se fuerza uno en una posicion al azar (un solo token; antes se
+	// intentaban 3 posiciones con un rango dudoso). Es una regla propia de
+	// este prototipo, no del paper.
 	if (res.size() > 0 && std::find(res.begin(), res.end(),
 	                                static_cast<ldouble>(TOKEN_X)) == res.end()){
 		res[rand() % res.size()] = TOKEN_X;
@@ -555,10 +562,10 @@ vector<ldouble> Recombination(const vector<ldouble>& objetivo, const vector<ldou
 		}
 	}
 
-	// Reparacion heredada (igual que en Mutation()): la fitness descarta los
-	// arboles sin token x, asi que si el cruce los borro todos se fuerza
-	// uno en una posicion al azar. Es una regla propia de este prototipo, no
-	// del paper.
+	// Reparacion heredada (igual que en Mutation()): la fitness exige alguna
+	// hoja que dependa de x (variable o polinomial, issue #63), asi que si el
+	// cruce borro el token x se fuerza uno en una posicion al azar. Es una
+	// regla propia de este prototipo, no del paper.
 	if (trial.size() > 0 && std::find(trial.begin(), trial.end(),
 	                                  static_cast<ldouble>(TOKEN_X)) == trial.end()){
 		trial[rand() % trial.size()] = TOKEN_X;

@@ -134,6 +134,28 @@ The fixed seed controls the pseudo-random population and DE decisions. The
 timestamp and CPU duration are excluded from the reproducibility comparison
 because they measure the current machine, not the algorithmic result.
 
+For comparison, the same fixed seed and paper population/dimension were run
+with the full default generation cap:
+
+```bash
+ODE_CASE=1 ODE_SEED=42 ODE_POP=100 ODE_DIM=20 ODE_GEN=5000 ./main.exe
+```
+
+That run completed all 5,000 generations and produced:
+
+```text
+status=max_generations
+generations=5000
+best=8.952882e-05
+expr=(x)*(cos((-1.0*(x))/(3.0)))
+vector=[19,11,14,20,12,11,3,21,14,8,5,15,12,11,15,17,18,7,14,11]
+```
+
+The full-cap run also remained above `1e-5`. The result is therefore useful
+negative evidence about this seed and search budget: the paper approximation
+is a valid candidate under the implemented functional, but the stochastic
+search did not rediscover it in this end-to-end run.
+
 ## Deliberate remaining divergences
 
 The following differences must remain visible when interpreting the evidence:

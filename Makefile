@@ -19,7 +19,7 @@ OBJS   := $(SRCS:.cpp=.o)
 # parse_tree_bckp.cpp NO se compila: es una copia de referencia que tambien
 # define main(), y enlazarla daria un error de simbolo duplicado.
 
-.PHONY: all clean run test sage-test
+.PHONY: all clean run test sage-test test_token
 
 # `all` es la regla por defecto: `make` a secas construye el ejecutable.
 all: $(TARGET)
@@ -48,15 +48,16 @@ semilla.o: semilla.cpp semilla.h
 run: $(TARGET)
 	./$(TARGET)
 
-# `make test`: compila y corre los seis binarios de tests: dual numbers
+# `make test`: compila y corre los siete binarios de tests: dual numbers
 # (issue #2), control de semilla (issue #4), la mutacion DE/rand/1/bin
 # (issue #5), el cruce binomial (issue #6), la rejilla de evaluacion
-# (issue #7), el semillero de la poblacion (issue #11) y el validador Python
-# de notebook (issue #18). Cada binario enlaza solo lo que necesita;
+# (issue #7), el semillero de la poblacion (issue #11), el validador Python
+# de notebook (issue #18) y el alfabeto de tokens (issue #31). Cada binario
+# enlaza solo lo que necesita;
 # test_mutation, test_crossover, test_grid y test_population necesitan
 # parse_tree.cpp con -DODE_NO_MAIN (ver abajo).
 # En Python seria como correr `pytest`: exit code != 0 si algun assert falla.
-TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe test_grid.exe test_population.exe
+TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe test_grid.exe test_population.exe test_token.exe
 
 test: $(TESTBINS)
 	./test_dual.exe
@@ -65,6 +66,7 @@ test: $(TESTBINS)
 	./test_crossover.exe
 	./test_grid.exe
 	./test_population.exe
+	./test_token.exe
 	python3 scripts/check_dual_validation.py
 
 # `make sage-test` ejecuta el notebook completo dentro de un kernel SageMath
@@ -92,6 +94,15 @@ test_mutation.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_mutation.cp
 # archivo enlaza. Con -DODE_NO_MAIN el unico main() del binario es el del test.
 test_crossover.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_crossover.cpp semilla.h dualfunctions.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp parse_tree.cpp test_crossover.cpp -o $@
+
+# test_token prueba solo token.h, pero se compila igual que test_mutation por
+# el contrato del issue: parse_tree.cpp exige tambien dualfunctions.cpp y
+# semilla.cpp. En Python no haria falta enlazar estos modulos para importar un
+# header, pero C++ resuelve los simbolos de todas las unidades incluidas.
+test_token: test_token.exe
+
+test_token.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_token.cpp semilla.h dualfunctions.h token.h
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp parse_tree.cpp test_token.cpp -o $@
 
 # test_grid es el unico test que incluye parse_tree.cpp desde su propio .cpp
 # (FunbObj no tiene header): por eso parse_tree.cpp aparece como dependencia

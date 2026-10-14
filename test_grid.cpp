@@ -1,4 +1,5 @@
-// test_grid.cpp — tests de la rejilla de evaluacion (issue #7).
+// test_grid.cpp — tests de la rejilla de evaluacion (issue #7) y del funcional
+// de fitness del paper (issue #27).
 //
 // Para un desarrollador Python: este archivo es como un modulo `test_*.py` de
 // pytest, pero sin framework: cada `test_*()` imprime PASS/FAIL y `main()` al
@@ -128,60 +129,75 @@ static void test_x_rango_triple_dual() {
 }
 
 // -------------------------------------------------------------------------
-// Slice 2: la configuracion de uso — FunbObj evalua la fitness sobre la
-// rejilla de 100 puntos del paper, no sobre la historica de 11. Ejemplo
-// trabajado con la expresion mas simple, `x` (token 11):
-//     parsv([11], [x,1,0]) = [x,1,0]  =>  residuo (y''+y)^4 = (0+x)^4 = x^4
-//     fitness(x) = 300*(0-1)^4 + 700*(1-1)^4 + sum_i (x_i)^4
-//                = 300 + sum_{i=0}^{99} (i/99)^4
-// El valor esperado se calcula aqui por su cuenta (300 y la suma), sin usar la
-// implementacion; los pesos 300/700 y el exponente 4 son los de fitness().
+// Slice 2 (issue #27): el funcional de fitness del paper (ec. (4)):
+//     R = lambda1*h1^2 + lambda2*h2^2 + integral(f^2 dx)
+// evaluado en los 100 puntos igualmente espaciados de [0,1] con
+// lambda1 = lambda2 = 10 (paper, seccion 5) y el factor de integracion
+// Delta x = (stop-start)/(npoints-1) = 1/99 de la suma de Riemann.
+// Antes de #27 el codigo sumaba potencias cuartas con pesos 300/700 y sin
+// Delta x. Ejemplo trabajado con `x` (token 11), caso 0 (y''+y=0, y(0)=1,
+// y'(0)=1):
+//     parsv([11], [x,1,0]) = [x,1,0]  =>  residuo (y''+y)^2 = (0+x)^2 = x^2
+//     fitness(x) = 10*(0-1)^2 + 10*(1-1)^2 + (1/99)*sum_i (i/99)^2
+//                = 10 + (1/99) * sum_{i=0}^{99} (i/99)^2
+// La suma se calcula con la formula cerrada sum i^2 = n(n+1)(2n+1)/6 para
+// n=99 (99*100*199/6 = 328350) y 99^3 = 970299: un valor analitico
+// independiente, no un bucle que repita el de la implementacion.
 // -------------------------------------------------------------------------
 
-static void test_fitness_usa_la_rejilla_de_100_puntos() {
+static void test_fitness_potencias_y_pesos_del_paper() {
+    // sin(x): residuo nulo en toda la rejilla; y(0)=0, y'(0)=1 =>
+    // R = 10*(0-1)^2 + 10*(1-1)^2 = 10. En Python seria `assert f.fitness() == 10`.
+    FunbObj f_sin({13, 11}, 0.0L, 1.0L);
+    check_ld("fitness(sin(x)) caso 0 = 10 (lambda=10, cuadrados)",
+             f_sin.fitness(), 10.0L);
+    // cos(x): residuo nulo; y(0)=1, y'(0)=0 => R = 10*(1-1)^2 + 10*(0-1)^2 = 10.
+    FunbObj f_cos({14, 11}, 0.0L, 1.0L);
+    check_ld("fitness(cos(x)) caso 0 = 10 (lambda=10, cuadrados)",
+             f_cos.fitness(), 10.0L);
+    // cos(x)+sin(x): residuo nulo y ambas condiciones exactas => R = 0.
+    FunbObj f_sol({18, 14, 11, 13, 11}, 0.0L, 1.0L);
+    check_ld("fitness(cos(x)+sin(x)) caso 0 = 0 (solucion exacta)",
+             f_sol.fitness(), 0.0L);
+}
+
+static void test_fitness_x_caso0_incluye_factor_deltax() {
+    // Esperado analitico: 10 + 328350/970299 = 10.338400843451348...
+    // En Python: `10 + 328350/970299`.
     FunbObj f({11}, 0.0L, 1.0L);
-    long double esperado = 300.0L;  // penalizacion de y(0)=0: 300*(0-1)^4
-    for (int i = 0; i < 100; i++) {
-        long double x = (long double) i / 99.0L;
-        esperado += std::pow(x, 4);  // (y''+y)^4 con y=x: x^4
-    }
-    check_ld("fitness(x) suma la rejilla de 100 puntos", f.fitness(), esperado, 1e-6L);
+    check_ld("fitness(x) caso 0 = 10 + Delta x*sum x_i^2",
+             f.fitness(), 10.0L + 328350.0L / 970299.0L, 1e-12L);
 }
 
 // -------------------------------------------------------------------------
-// Slice 3: el Caso 1 del paper (ODE_CASE=1). La fitness usa el residuo de la
-// ecuacion (18), x*y'' + y' - cos(x) = 0 (la forma multiplicada de (16) que
-// el paper minimiza) y las condiciones iniciales y(0)=0, y'(0)=1.
+// Slice 3 (issue #27): el Caso 1 del paper (ODE_CASE=1). La fitness usa el
+// residuo de la ecuacion (18), x*y'' + y' - cos(x) = 0 (la forma multiplicada
+// de (16) que el paper minimiza), las condiciones iniciales y(0)=0, y'(0)=1 y
+// el mismo funcional (4) del slice 2. Los valores esperados son literales
+// calculados por separado (Python), no repitiendo el bucle de fitness().
 // -------------------------------------------------------------------------
 
 static void test_fitness_caso1_residuo_del_paper() {
     // Ejemplo trabajado con `x` (token 11): parsv([11], [x,1,0]) = [x,1,0] =>
     //     residuo = x*0 + 1 - cos(x) = 1 - cos(x)
-    //     penalizaciones = 300*(0-0)^4 + 700*(1-1)^4 = 0
-    // El valor esperado se calcula aqui por su cuenta (la suma), sin usar la
-    // implementacion.
+    //     penalizaciones = 10*(0-0)^2 + 10*(1-1)^2 = 0
+    //     R = (1/99) * sum_i (1-cos(i/99))^2 = 0.04545624767792866
+    // (literal calculado aparte con Python; el sumando no tiene una primitiva
+    // discreta cerrada, pero si la integral exacta, que fija la escala).
     FunbObj f({11}, 0.0L, 1.0L, 1);
-    long double esperado = 0.0L;
-    for (int i = 0; i < 100; i++) {
-        long double x = (long double) i / 99.0L;
-        esperado += std::pow(1.0L - std::cos(x), 4);
-    }
-    check_ld("fitness_caso1(x) usa x*y''+y'-cos(x)", f.fitness(), esperado, 1e-6L);
+    check_ld("fitness_caso1(x) = Delta x*sum (1-cos x_i)^2",
+             f.fitness(), 0.04545624767792866L, 1e-12L);
 }
 
 static void test_fitness_caso1_funcion_unaria() {
     // Segunda comprobacion con una funcion unaria, `sin(x)` (tokens 13,11):
     //     parsv(sin(x)) = [sin(x), cos(x), -sin(x)]
     //     residuo = x*(-sin(x)) + cos(x) - cos(x) = -x*sin(x)
-    //     penalizaciones = 300*(sin 0 - 0)^4 + 700*(cos 0 - 1)^4 = 0
-    // Pedir y(0)=0 hace que `sin(x)` sea una semilla natural del caso 1.
+    //     penalizaciones = 10*(sin 0 - 0)^2 + 10*(cos 0 - 1)^2 = 0
+    //     R = (1/99) * sum_i (x_i*sin x_i)^2 = 0.1606370980396136 (Python).
     FunbObj f({13, 11}, 0.0L, 1.0L, 1);
-    long double esperado = 0.0L;
-    for (int i = 0; i < 100; i++) {
-        long double x = (long double) i / 99.0L;
-        esperado += std::pow(-x * std::sin(x), 4);
-    }
-    check_ld("fitness_caso1(sin(x)) usa los pesos del caso 1", f.fitness(), esperado, 1e-6L);
+    check_ld("fitness_caso1(sin(x)) = Delta x*sum (x_i sin x_i)^2",
+             f.fitness(), 0.1606370980396136L, 1e-12L);
 }
 
 // -------------------------------------------------------------------------
@@ -190,6 +206,14 @@ static void test_fitness_caso1_funcion_unaria() {
 // dentro de fitness() y la primera llamada devolvia INFINITY mientras una
 // segunda podia devolver otro valor: la evaluacion cambiaba al individuo.
 // -------------------------------------------------------------------------
+
+// Vector que no renderiza un arbol completo: `*` (19) con un solo operando
+// deja el hueco "()" en el render, y fitness() debe rechazarlo con INFINITY.
+static void test_fitness_arbol_incompleto_es_infinita() {
+    FunbObj f({19, 11}, 0.0L, 1.0L);   // en Python: tokens = [19, 11] -> "(x)*()"
+    check_bool("fitness() de un arbol incompleto es INFINITY",
+               std::isinf(f.fitness()));
+}
 
 static void test_fitness_sin_x_no_muta_el_individuo() {
     // 20 constantes (misma longitud que un individuo real), sin token x (11).
@@ -229,25 +253,38 @@ static void test_fitness_nan_interior_es_infinita() {
                std::isinf(f.fitness()));
 }
 
-// NOTA (#10, REVIEW B1): la solucion aproximada del paper para el Caso 1,
+// -------------------------------------------------------------------------
+// Slice 5 (issues #10 y #27): la solucion aproximada del paper para el Caso 1,
 //     y_s(x) = x*cos(x/(5*cos(cos 9)))   (ec. (20))
-// en prefijo es {19,11,14,20,11,19,5,14,14,9}, y su fitness con este residuo
-// es ~1.5e-8 (< 1e-5), asi que el caso es alcanzable CON ESTE ALFABETO. Hoy
-// no se puede comprobar en un test: parsv() todavia no consume operandos
-// (issue #10), y esa expresion se evalua mal (p. ej. `x/2` da NaN y
-// `x*cos(x/5)` da el valor de `x*x`). Cuando #10 se cierre, el test natural
-// es `check_bool("ec. (20) converge (<1e-5)", f.fitness() < 1e-5L)` sobre
-// esos 10 tokens.
+// en prefijo es {19,11,14,20,11,19,5,14,14,9}. Con el funcional (4) su valor
+// es R = (1/99) * sum_i f_i^2 = 7.546733118983904e-06 (literal calculado
+// aparte con Python), por debajo del umbral de convergencia 1e-5: el Caso 1
+// es alcanzable con este alfabeto. Sin el factor Delta x valdria ~7.5e-4 y no
+// convergeria; sin los cuadrados, ~1e-10, asi que el test fija ambas cosas.
+// -------------------------------------------------------------------------
+
+static void test_fitness_caso1_aprox_del_paper() {
+    // y_s cumple y(0)=0 e y'(0)=1 exactamente => las penalizaciones son 0 y
+    // toda la fitness viene de la integral del residuo al cuadrado.
+    FunbObj f({19, 11, 14, 20, 11, 19, 5, 14, 14, 9}, 0.0L, 1.0L, 1);
+    check_ld("fitness_caso1(ec. (20)) = 7.546733118983904e-06",
+             f.fitness(), 7.546733118983904e-06L, 1e-12L);
+    check_bool("la aproximacion del paper converge (<1e-5)",
+               f.fitness() < 1e-5L);
+}
 
 int main() {
-    std::cout << "== test_grid: issue #7 (rejilla de evaluacion) ==\n";
+    std::cout << "== test_grid: issues #7 (rejilla) y #27 (funcional de fitness) ==\n";
     test_x_rango_cantidad_de_puntos();
     test_x_rango_extremos_incluidos();
     test_x_rango_espaciado_uniforme();
     test_x_rango_triple_dual();
-    test_fitness_usa_la_rejilla_de_100_puntos();
+    test_fitness_potencias_y_pesos_del_paper();
+    test_fitness_x_caso0_incluye_factor_deltax();
     test_fitness_caso1_residuo_del_paper();
     test_fitness_caso1_funcion_unaria();
+    test_fitness_caso1_aprox_del_paper();
+    test_fitness_arbol_incompleto_es_infinita();
     test_fitness_sin_x_no_muta_el_individuo();
     test_fitness_valido_es_estable();
     test_fitness_nan_interior_es_infinita();

@@ -56,6 +56,12 @@ class FunbObj{
 	bool _cache_valido = false;
 	vector<vector<ldouble>> _xrange;
 	vector<long double> _xinitials = {0.0,1.0,0.0};
+	// Factor de integracion Delta x de la suma de Riemann de la ec. (4):
+	// con los 100 puntos igualmente espaciados de [0,1] y ambos extremos
+	// incluidos, el paso es (stop-start)/(npoints-1) = 1/99. En Python seria
+	// `self._dx = (stop - start) / (len(self._xrange) - 1)`; long double no
+	// tiene equivalente exacto en Python (es mas ancho que float).
+	long double _dx;
 	// Caso del problema que mide esta fitness (lo elige ODE_CASE en main()):
 	//   0 = juguete historico del prototipo: y'' + y = 0, y(0)=1, y'(0)=1
 	//   1 = Caso 1 del paper, ecuacion (18): x*y'' + y' - cos(x) = 0,
@@ -78,6 +84,10 @@ class FunbObj{
 		_xrange[0] = _xinitials;
 		_vecval = vecval;
 		_caso = caso;
+		// Delta x de la suma de Riemann que aproxima integral(f^2 dx) en la
+		// ec. (4) del paper (seccion 5). x_rango siempre devuelve 100 puntos,
+		// asi que el divisor (npoints-1) nunca es cero.
+		_dx = (stop - start) / (long double)(_xrange.size() - 1);
 	}
 	string represant(){
 		return _repre;
@@ -149,24 +159,31 @@ class FunbObj{
 			return _fresult;
 		}
 
-		// Residuo de la ODE en el punto de la rejilla, elevado a la cuarta,
-		// segun el caso (ver _caso). En Python seria `res += r**4`.
+		// Residuo de la ODE en el punto de la rejilla, elevado al cuadrado,
+		// segun el caso (ver _caso). En Python seria `res += r**2`; la ec. (4)
+		// del paper usa cuadrados, no potencias cuartas.
 		if (_caso == 1){
 			// Caso 1 del paper: x*y'' + y' - cos(x) = 0. Se evita
 			// dividir por x=0, que es el primer punto de la rejilla.
 			ldouble x = _xrange[i][0];
-			res +=pow(x*fitnessval[2] + fitnessval[1] - cos(x),4) ;
+			res +=pow(x*fitnessval[2] + fitnessval[1] - cos(x),2) ;
 		} else {
 			// Caso 0 (juguete del prototipo): y'' + y = 0.
-			res +=pow(fitnessval[2] + fitnessval[0],4) ;
+			res +=pow(fitnessval[2] + fitnessval[0],2) ;
 		}
 		}
-			// Condiciones iniciales del caso. Caso 0: y(0)=1, y'(0)=1 (la
-			// solucion esperada es cos(x)+sin(x)); Caso 1 del paper: y(0)=0,
-			// y'(0)=1. Mismos pesos y exponente que el caso 0 para que la
-			// magnitud de la fitness siga siendo comparable.
+			// Integral de la ec. (4): los residuos al cuadrado suman una suma
+			// de Riemann y el factor Delta x la convierte en la aproximacion
+			// de integral(f^2 dx). Las penalizaciones de abajo quedan FUERA
+			// de la integral. En Python seria `res *= self._dx`.
+			res *= _dx;
+			// Condiciones iniciales del caso, como terminos lambda*h^2 de la
+			// ec. (4): Caso 0 y(0)=1, y'(0)=1 (solucion esperada
+			// cos(x)+sin(x)); Caso 1 del paper y(0)=0, y'(0)=1. El paper fija
+			// lambda1 = lambda2 = 10 (seccion 5) y h al cuadrado; antes se
+			// usaban pesos 300/700 y potencias cuartas.
 			ldouble y0_objetivo = (_caso == 1) ? 0.0L : 1.0L;
-			res +=300*pow((a_start[0] - y0_objetivo),4) + 700*pow((a_start[1] - 1),4);
+			res +=10*pow((a_start[0] - y0_objetivo),2) + 10*pow((a_start[1] - 1),2);
 		// cout << "imprimimos res " << endl;
 		// cout << res << endl;
 		// cin.get();

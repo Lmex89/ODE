@@ -35,11 +35,11 @@ $(TARGET): $(OBJS)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# parse_tree.cpp incluye dualfunctions.h y semilla.h: si algun header cambia,
+# parse_tree.cpp incluye dualfunctions.h, semilla.h y token.h: si algun header cambia,
 # hay que recompilar ese .o. dualfunctions.cpp tambien incluye token.h, asi que
 # la dependencia explicita mantiene el equivalente de recompilar un modulo
 # Python cuando cambia una importacion.
-parse_tree.o: parse_tree.cpp dualfunctions.h semilla.h
+parse_tree.o: parse_tree.cpp dualfunctions.h semilla.h token.h
 dualfunctions.o: dualfunctions.cpp token.h
 
 semilla.o: semilla.cpp semilla.h

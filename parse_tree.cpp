@@ -14,6 +14,7 @@
 #include <iomanip>
 #include "dualfunctions.h"
 #include "semilla.h"
+#include "token.h"
 
 using namespace std;
 using namespace std::complex_literals;
@@ -112,9 +113,10 @@ class FunbObj{
 			_cache_valido = true;
 			return _fresult ;
 			}
-	std::vector<ldouble>::iterator it = std::find(_vecval.begin(),_vecval.end(),11.0);
+	std::vector<ldouble>::iterator it = std::find(_vecval.begin(), _vecval.end(),
+	                                              static_cast<ldouble>(TOKEN_X));
 	if (it == _vecval.end()){
-		// Sin token x (11) la expresion no es funcion de x: INFINITY sin
+		// Sin token x la expresion no es funcion de x: INFINITY sin
 		// tocar el vector. Antes se escribian 11s al azar y luego se devolvia
 		// INFINITY igual: la evaluacion mutaba al individuo y una segunda
 		// llamada podia devolver otra cosa (B6 de REVIEW.md). Los productores
@@ -223,14 +225,6 @@ constexpr int POBLACION_MINIMA = 4;
 constexpr int DIMENSION_MINIMA = 1;
 constexpr int GENERACIONES_MINIMAS = 1;
 
-// El alfabeto de tokens llega hasta 21 (README.md). Este numero esta
-// duplicado en parse_tree()/narg()/OperF()/OperF2() de dualfunctions.cpp: si
-// cambia el alfabeto hay que mantener las copias en sincronia (AGENTS.md).
-constexpr int TOKENS_ALFABETO = 21;
-
-// Token de la variable x en el alfabeto (11).
-constexpr ldouble TOKEN_X = 11.0L;
-
 // Longitud de las cinco semillas warm start escritas a mano.
 constexpr int DIMENSION_SEMILLAS = 20;
 
@@ -300,16 +294,18 @@ ConfigBusqueda resolver_config(const char* pop_env, const char* dim_env,
 // La longitud la manda la configuracion (dimension del paper: 20) porque
 // Mutation()/Recombination() emparejan genes por posicion: longitudes
 // dispares leian fuera de rango (B5 de REVIEW.md). En Python seria
-// `[random.randint(1, 21) for _ in range(tam)]`.
+// `[random.randint(TOKEN_MIN, TOKEN_MAX) for _ in range(tam)]`; en C++
+// `random_token()` concentra esa regla en token.h.
 vector<long double> vector_population(int tam){
 	vector<ldouble> ans;
 
-	// rand()%21+1 da un entero uniforme en 1..21, el alfabeto completo.
+	// random_token() aplica el rango definido en token.h; asi este consumidor no
+	// duplica el tamano ni los extremos del alfabeto.
 	for (int i = 0; i < tam; i++){
-		ans.push_back(rand() % TOKENS_ALFABETO + 1);
+		ans.push_back(random_token());
 	}
 
-	// La fitness descarta los arboles sin token x (11): si el sorteo no saco
+	// La fitness descarta los arboles sin token x: si el sorteo no saco
 	// ninguno, se escribe x en dos posiciones al azar de todo el vector. Antes
 	// el indice se limitaba a [0, tam-4] (resto del tamano de poblacion de la
 	// version vieja) y las ultimas posiciones nunca se reparaban.
@@ -330,12 +326,29 @@ vector<long double> vector_population(int tam){
 const vector<vector<ldouble>>& semillas_warm_start(){
 	// `static const` se construye una sola vez, como una constante de modulo
 	// en Python, y vive mientras dure el proceso.
+	// Los nombres de token.h son constantes de modulo legibles, equivalentes a
+	// constantes enteras de Python, y evitan repetir los codigos del alfabeto.
 	static const vector<vector<ldouble>> semillas = {
-		{18,13,17,11,14,14,11,14,14,14,13,14,14,14,14,14,14,14,14,11},  // uno
-		{18,14,13,17,11,14,20,1,5,1,1,1,1,1,1,1,1,1,1,1},               // dos
-		{18,13,11,13,13,14,14,14,11,1,1,1,1,1,1,1,1,1,1,1},             // tres
-		{18,14,11,13,13,11,1,1,1,1,1,1,1,1,1,1,1,1,1,1},                // cuatro
-		{18,13,13,13,11,13,11,11,1,1,1,1,1,1,1,1,1,1,1,1}               // c5
+		{TOKEN_ADD, TOKEN_SIN, TOKEN_SQRT, TOKEN_X, TOKEN_COS, TOKEN_COS,
+		 TOKEN_X, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_SIN, TOKEN_COS,
+		 TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS,
+		 TOKEN_COS, TOKEN_X},                                             // uno
+		{TOKEN_ADD, TOKEN_COS, TOKEN_SIN, TOKEN_SQRT, TOKEN_X, TOKEN_COS,
+		 TOKEN_DIV, TOKEN_CONST1, TOKEN_CONST5, TOKEN_CONST1, TOKEN_CONST1,
+		 TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+		 TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // dos
+		{TOKEN_ADD, TOKEN_SIN, TOKEN_X, TOKEN_SIN, TOKEN_SIN, TOKEN_COS,
+		 TOKEN_COS, TOKEN_COS, TOKEN_X, TOKEN_CONST1, TOKEN_CONST1,
+		 TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+		 TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // tres
+		{TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_SIN, TOKEN_SIN, TOKEN_X,
+		 TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+		 TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+		 TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // cuatro
+		{TOKEN_ADD, TOKEN_SIN, TOKEN_SIN, TOKEN_SIN, TOKEN_X, TOKEN_SIN,
+		 TOKEN_X, TOKEN_X, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+		 TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+		 TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1}           // c5
 	};
 	return semillas;
 }
@@ -391,18 +404,19 @@ ldouble mutacion_rand1(ldouble r1, ldouble r2, ldouble r3, ldouble F){
 }
 
 // token_valido: pasa el valor real de la ecuacion (7) a un token entero del
-// alfabeto (1..21). Redondea al entero mas cercano y recorta los extremos.
+// alfabeto. Redondea al entero mas cercano y recorta entre TOKEN_MIN y
+// TOKEN_MAX, los limites que define token.h.
 //
 // Detalle C++ sin equivalente directo en Python: se devuelve `int` y no
 // `long double` porque un token es un codigo, no una cantidad; el redondeo se
 // hace con floor(v + 0.5) (equivalente a round() pero sin la ambiguedad de
 // round() con los .5 negativos) y el recorte con dos `if` en vez de min/max
 // para que quede explicito. En Python seria:
-//     def token_valido(v): return min(21, max(1, floor(v + 0.5)))
+//     def token_valido(v): return min(TOKEN_MAX, max(TOKEN_MIN, floor(v + 0.5)))
 int token_valido(ldouble v){
 	ldouble redondeado = floor(v + 0.5L);
-	if (redondeado < 1.0L) return 1;
-	if (redondeado > 21.0L) return 21;
+	if (redondeado < TOKEN_MIN) return TOKEN_MIN;
+	if (redondeado > TOKEN_MAX) return TOKEN_MAX;
 	return (int) redondeado;
 }
 
@@ -465,12 +479,13 @@ vector<ldouble> Mutation(vector<ldouble>x, vector<ldouble> y,vector<ldouble>z){
 		res[i] = token_valido(mutacion_rand1(x[i], y[i], z[i], F));
 	}
 
-	// Reparacion heredada: la fitness descarta los arboles sin token x (11),
+	// Reparacion heredada: la fitness descarta los arboles sin token x,
 	// asi que si la mutacion los borro todos se fuerza uno en una posicion al
 	// azar (un solo token; antes se intentaban 3 posiciones con un rango
 	// dudoso). Es una regla propia de este prototipo, no del paper.
-	if (res.size() > 0 && std::find(res.begin(), res.end(), 11.0) == res.end()){
-		res[rand() % res.size()] = 11;
+	if (res.size() > 0 && std::find(res.begin(), res.end(),
+	                                static_cast<ldouble>(TOKEN_X)) == res.end()){
+		res[rand() % res.size()] = TOKEN_X;
 	}
 
 	return res;
@@ -503,8 +518,7 @@ ldouble gen_binomial(ldouble objetivo, ldouble mutante, ldouble r, ldouble Cr){
 // genes "in place" entre dos vectores.
 vector<ldouble> Recombination(const vector<ldouble>& objetivo, const vector<ldouble>& mutante, ldouble Cr){
 
-	// Se recorre hasta el menor de los dos tamanos (los individuos semilla
-	// tienen 21 tokens y el resto 20): leer mutante[i] de mas seria una
+	// Se recorre hasta el menor de los dos tamanos: leer mutante[i] de mas seria
 	// lectura fuera de rango. En Python seria
 	// `n = min(len(objetivo), len(mutante))`.
 	int n = (int) min(objetivo.size(), mutante.size());
@@ -532,11 +546,12 @@ vector<ldouble> Recombination(const vector<ldouble>& objetivo, const vector<ldou
 	}
 
 	// Reparacion heredada (igual que en Mutation()): la fitness descarta los
-	// arboles sin token x (11), asi que si el cruce los borro todos se fuerza
+	// arboles sin token x, asi que si el cruce los borro todos se fuerza
 	// uno en una posicion al azar. Es una regla propia de este prototipo, no
 	// del paper.
-	if (trial.size() > 0 && std::find(trial.begin(), trial.end(), 11.0) == trial.end()){
-		trial[rand() % trial.size()] = 11;
+	if (trial.size() > 0 && std::find(trial.begin(), trial.end(),
+	                                  static_cast<ldouble>(TOKEN_X)) == trial.end()){
+		trial[rand() % trial.size()] = TOKEN_X;
 	}
 
 	return trial;
@@ -624,7 +639,7 @@ string fmt_vector(const vector<ldouble>& v){
 	os << "[";
 	for (size_t i = 0; i < v.size(); i++){
 		if (i > 0) os << ",";
-		os << (long long) v[i];  // los tokens son enteros 1..21
+		os << (long long) v[i];  // los tokens son enteros TOKEN_MIN..TOKEN_MAX
 	}
 	os << "]";
 	return os.str();

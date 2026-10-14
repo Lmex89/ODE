@@ -36,9 +36,11 @@ $(TARGET): $(OBJS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # parse_tree.cpp incluye dualfunctions.h y semilla.h: si algun header cambia,
-# hay que recompilar ese .o. (dualfunctions.cpp no incluye headers, por eso no
-# aparece aqui.)
+# hay que recompilar ese .o. dualfunctions.cpp tambien incluye token.h, asi que
+# la dependencia explicita mantiene el equivalente de recompilar un modulo
+# Python cuando cambia una importacion.
 parse_tree.o: parse_tree.cpp dualfunctions.h semilla.h
+dualfunctions.o: dualfunctions.cpp token.h
 
 semilla.o: semilla.cpp semilla.h
 
@@ -75,7 +77,7 @@ test: $(TESTBINS)
 sage-test:
 	scripts/run_sage_dual_validation.sh
 
-test_dual.exe: dualfunctions.cpp test_dual.cpp dualfunctions.h
+test_dual.exe: dualfunctions.cpp test_dual.cpp dualfunctions.h token.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) dualfunctions.cpp test_dual.cpp -o $@
 
 test_semilla.exe: semilla.cpp test_semilla.cpp semilla.h
@@ -86,13 +88,13 @@ test_semilla.exe: semilla.cpp test_semilla.cpp semilla.h
 # main() se apaga el del programa con -DODE_NO_MAIN: el preprocesador descarta
 # ese bloque y el unico main() del binario es el del test. En Python no hace
 # falta nada parecido porque los tests solo importan las funciones.
-test_mutation.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_mutation.cpp semilla.h dualfunctions.h
+test_mutation.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_mutation.cpp semilla.h dualfunctions.h token.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp parse_tree.cpp test_mutation.cpp -o $@
 
 # test_crossover necesita lo mismo que test_mutation: parse_tree.cpp (ahi viven
 # Recombination y su nucleo gen_binomial) y el resto de dependencias que ese
 # archivo enlaza. Con -DODE_NO_MAIN el unico main() del binario es el del test.
-test_crossover.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_crossover.cpp semilla.h dualfunctions.h
+test_crossover.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_crossover.cpp semilla.h dualfunctions.h token.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp parse_tree.cpp test_crossover.cpp -o $@
 
 # test_token prueba solo token.h, pero se compila igual que test_mutation por
@@ -108,14 +110,14 @@ test_token.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_token.cpp semi
 # (FunbObj no tiene header): por eso parse_tree.cpp aparece como dependencia
 # pero NO se compila aparte, o habria simbolos duplicados. -DODE_NO_MAIN apaga
 # el main() del programa y deja el main() del test.
-test_grid.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_grid.cpp semilla.h dualfunctions.h
+test_grid.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_grid.cpp semilla.h dualfunctions.h token.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp test_grid.cpp -o $@
 
 # test_population sigue el mismo patron que test_grid: incluye parse_tree.cpp
 # desde su propio .cpp para probar createPopulation; parse_tree.cpp es
 # dependencia pero NO se compila aparte (simbolos duplicados). -DODE_NO_MAIN
 # deja el main() del test como unico punto de entrada.
-test_population.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_population.cpp semilla.h dualfunctions.h
+test_population.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_population.cpp semilla.h dualfunctions.h token.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp test_population.cpp -o $@
 
 clean:

@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "token.h"
+
 using namespace std;
 typedef long long int llint;
 typedef  long double ldouble;
@@ -202,57 +204,15 @@ str parse_tree( vector<ldouble>& v){
  * crea el arbol para que visualmente se pueda ver la funcion
 */
 	vector<string> fun;
-	str tmp ;
 	string f_string ="";
 
 	int n = v.size();
 
 	for (int i = 0; i< n ; i++){
-	    if (v[i]==1) {
-            tmp="1.0";
-		}
-        else if (v[i]==2)
-            tmp="2.0";
-        else if (v[i]==3)
-            tmp="3.0";
-        else if (v[i]==4)
-            tmp="4.0";
-        else if (v[i]==5)
-            tmp="5.0";
-        else if (v[i]==6)
-            tmp="6.0";
-        else if(v[i]==7)
-            tmp="7.0";
-        else if (v[i]==8)
-            tmp="8.0";
-        else if (v[i]==9)
-            tmp="9.0";
-        else if (v[i]==10)
-            tmp="10.0";
-        else if (v[i]==11)
-            tmp='x';
-        else if (v[i]==12)
-            tmp="-1.0*()";
-        else if (v[i]==13)
-            tmp="sin()";
-        else if (v[i]==14)
-            tmp="cos()";
-        else if (v[i]==15)
-            tmp="exp()";
-        else if (v[i]==16)
-            tmp="log()";
-		else if (v[i]==17)
-            tmp="()**(1/2)";
-        else if (v[i]==18)
-            tmp="()+()";
-        else if (v[i]==19)
-            tmp="()*()";
-        else if (v[i]==20)
-			tmp="()/()";
-		else if (v[i]==21)
-			tmp="()**()";
-
-		fun.push_back(tmp)  ;
+		// `ldouble` no tiene equivalente exacto en Python; se convierte al
+		// entero que identifica el token antes de consultar la plantilla comun.
+		// En Python seria `fun.append(render(int(v[i])))`.
+		fun.push_back(render(static_cast<int>(v[i])));
 	}
 		f_string = fun[0];
 
@@ -276,15 +236,11 @@ int narg(ldouble x){
 * Funciona como la tabla de aridad de la gramatica: 0 = hoja, 1 = funcion
 * unaria, 2 = operador binario.
 */
-	int f_result ;
-	// Constantes 1-10 y x (11) son hojas: 0 argumentos.
-	// El token 12 (negacion) es una funcion unaria: 1 argumento. Antes caia
-	// en el rango 0 junto con x, pero OperF() lo trataba como funcion de un
-	// argumento: esa inconsistencia hacia que parsv() nunca lo evaluara.
-	if (x >=  1 && x <= 11) f_result = 0;
-	if (x >= 12 && x <= 17) f_result = 1;
-	if (x >= 18 && x <= 21) f_result = 2;
-	return f_result;
+	// `ldouble` no tiene equivalente exacto en Python: aqui el codigo llega
+	// como long double y se convierte al `int` que usa la tabla de tokens.
+	// En Python seria `return arity(int(x))`; la funcion compartida evita
+	// duplicar los rangos del alfabeto en este consumidor.
+	return arity(static_cast<int>(x));
 }
 
 vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval, int inicio) {
@@ -341,14 +297,16 @@ vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval, int inicio
 	// Solo se opera si se encontraron dos operandos; si no, f_result queda
 	// todo NaN (expresion incompleta, sin dos subarboles que comer).
 	if (cont == 2){
-	if (x == 18){
+	// Cada rama usa el nombre del token, como un `if token == TOKEN_ADD` de
+	// Python; asi el dispatch permanece sincronizado con token.h.
+	if (x == TOKEN_ADD){
 
 		f_result[0]    = auxiliar[0][0] + auxiliar[0][1];
 		f_result[1]    = auxiliar[1][0] + auxiliar[1][1];
 		f_result[2]    = auxiliar[2][0] + auxiliar[2][1];
 	}
 
-	if (x == 19) {
+	if (x == TOKEN_MUL) {
 		vector<ldouble> x1(3),y(3);
 
 		for (int h = 0; h < 3; h++){
@@ -359,7 +317,7 @@ vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval, int inicio
 		f_result = prod2dual(x1,y);
 	}
 
-	if (x == 20) {
+	if (x == TOKEN_DIV) {
 		vector<ldouble> x1(3),y(3);
 		for (int h = 0; h < 3; h++){
 			x1[h]=auxiliar[h][0];
@@ -368,7 +326,7 @@ vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval, int inicio
 
 		f_result = division2dual(x1,y);
 	}
-	if (x == 21) {
+	if (x == TOKEN_POW) {
 		vector<ldouble> x1(3),y(3);
 		for (int h = 0; h < 3; h++){
 			x1[h]=auxiliar[h][0];
@@ -391,22 +349,24 @@ vector<ldouble> OperF(ldouble x, vector<ldouble>& xval){
  */
 	vector<ldouble> f_result  = {NAN,NAN,NAN};
 
-	if (x == 11){
+	// Los nombres del alfabeto son constantes de modulo; en Python seria
+	// comparar contra `TOKEN_X`, `TOKEN_NEG`, etc., sin repetir sus enteros.
+	if (x == TOKEN_X){
 		f_result[0] = xval[0] ;
 		f_result[1] = xval[1] ;
 		f_result[2] = xval[2] ;
 	}
 
-	if (x == 12) {
+	if (x == TOKEN_NEG) {
 		f_result[0] = -1.0*xval[0] ;
 		f_result[1] = -1.0*xval[1] ;
 		f_result[2] = -1.0*xval[2] ;
 	}
-	if (x == 13) f_result = sin2dual(xval);
-	if (x == 14) f_result = cos2dual(xval);
-	if (x == 15) f_result = exp2dual(xval);
-	if (x == 16) f_result = log2dual(xval);
-	if (x == 17) f_result = sqrt2dual((xval));
+	if (x == TOKEN_SIN) f_result = sin2dual(xval);
+	if (x == TOKEN_COS) f_result = cos2dual(xval);
+	if (x == TOKEN_EXP) f_result = exp2dual(xval);
+	if (x == TOKEN_LOG) f_result = log2dual(xval);
+	if (x == TOKEN_SQRT) f_result = sqrt2dual((xval));
 
 	return f_result;
 }

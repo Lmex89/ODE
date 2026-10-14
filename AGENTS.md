@@ -48,10 +48,15 @@ and do not re-open those files to "verify" it.
   the seed (printed as `seed=N` in the startup log line) and makes runs
   reproducible; `ODE_CASE=1` switches to the paper's Case 1
   (`x*y'' + y' - cos(x) = 0`, `y(0)=0`, `y'(0)=1`) instead of the default toy
-  ODE (the same startup line carries `case=N`). It usually converges in seconds
-  but can run to 100000 generations with very verbose stdout (the committed
-  `out` file is a 3.4 MB captured run). Prefer `timeout 60 ./main.exe | tail -30`
-  over running bare.
+  ODE (the same startup line carries `case=N`). The search configuration
+  defaults to the paper's Case 1 values — population 100, dimension 20, 5000
+  generations — and `ODE_POP` / `ODE_DIM` / `ODE_GEN` override them with the
+  same invalid-value-falls-back rule as `ODE_SEED`; `ODE_WARM_START=1` prepends
+  the five hand-written prototype seeds (ignored when `ODE_DIM` is not 20).
+  `ODE_GEN=200` keeps a full run short. It usually converges in seconds but can
+  run to the generation cap with very verbose stdout (the committed `out` file
+  is a 3.4 MB captured run). Prefer `timeout 60 ./main.exe | tail -30` over
+  running bare.
 - `scripts/ab_experiment.sh` runs the pre-fix revision and `HEAD` with the same
   `ODE_SEED` values; its results live in `docs/ab-experiment.md`.
 
@@ -83,12 +88,16 @@ and do not re-open those files to "verify" it.
   the trial replaces its target only when its fitness is lower. There is no
   second population, no cross-pollination and no sort-based elitism.
 - An individual is a `vector<long double>` of integer token codes in **prefix
-  notation**, 20 tokens long: `createPopulation()` seeds five hand-written
-  expressions and fills the rest with `vector_population(20)`; that uniform
-  length is what keeps `Mutation()`/`Recombination()` gene pairing in bounds
-  (B5 of REVIEW.md). Alphabet (decoded in `parse_tree()`, arity in `narg()`):
-  `1`-`10` constants 1.0-10.0, `11` x, `12` negation, `13` sin, `14` cos,
-  `15` exp, `16` log, `17` sqrt, `18` +, `19` *, `20` /, `21` ^.
+  notation**, 20 tokens long (`ConfigBusqueda::dimension`, issue #28):
+  `createPopulation()` fills exactly `config.poblacion` individuals with
+  `vector_population(config.dimension)`; that uniform length is what keeps
+  `Mutation()`/`Recombination()` gene pairing in bounds (B5 of REVIEW.md). The
+  default initialisation is the paper's uniform random draw (eq. (6), REVIEW
+  D6); the five hand-written expressions live in `semillas_warm_start()` and
+  only enter with `ODE_WARM_START=1`. Alphabet (decoded in `parse_tree()`,
+  arity in `narg()`): `1`-`10` constants 1.0-10.0, `11` x, `12` negation,
+  `13` sin, `14` cos, `15` exp, `16` log, `17` sqrt, `18` +, `19` *, `20` /,
+  `21` ^.
 - Token codes are duplicated in `parse_tree`, `narg`, `OperF`, `OperF2`, and
   `vector_population` (`rand()%21+1`); keep them in sync when changing the
   alphabet.

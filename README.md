@@ -41,10 +41,10 @@ The default fitness sums `(y'' + y)⁴` over a grid of 100 equally spaced points
 
 Single-population DE/rand/1/bin:
 
-1. Initialise a random population
+1. Initialise 100 random individuals of 20 tokens each — the population size, dimension and generation limit default to the paper's Case 1 configuration (`ODE_POP`, `ODE_DIM` and `ODE_GEN` override them). `ODE_WARM_START=1` starts from the five hand-written expressions of the prototype instead of drawing the whole population at random (ignored when the dimension is not 20, since those seeds are 20 tokens long)
 2. For each target individual: pick three distinct random individuals as base vectors, form the mutant `v = x_r1 + F*(x_r2 - x_r3)` (one random `F` in `[0,1]` per mutation), build the trial by binomial crossover with `Cr = 0.2` (one forced index always comes from the mutant), and keep the trial only if its fitness is lower than the target's (greedy one-to-one selection)
 3. Track the best individual of the generation
-4. Repeat until convergence (fitness < 1e-5) or generation limit
+4. Repeat until convergence (fitness < 1e-5) or the generation limit (5000 generations for Case 1, `ODE_GEN` override)
 
 The expected solution for the default ODE `y'' + y = 0` with `y(0) = y'(0) = 1` is `y = cos(x) + sin(x)`.
 
@@ -80,6 +80,9 @@ compiler is available.
 ./main.exe                  # stochastic: seed from the clock
 ODE_SEED=42 ./main.exe      # reproducible: fixed seed, identical run
 ODE_CASE=1 ODE_SEED=42 ./main.exe   # paper's Case 1 instead of the default ODE
+ODE_POP=200 ODE_GEN=1000 ./main.exe # override population size / generation cap
+ODE_DIM=30 ./main.exe               # override the individual dimension
+ODE_WARM_START=1 ODE_SEED=42 ./main.exe  # start from the five prototype seeds
 ```
 
 `ODE_SEED` fixes the `srand()` seed and the chosen value is printed in the
@@ -88,11 +91,20 @@ the clock is used, as before. `ODE_CASE` selects the problem (`0` or unset:
 default toy ODE; `1`: paper's Case 1, `x·y'' + y' − cos(x) = 0` with `y(0)=0`,
 `y'(0)=1`); the same line carries `case=N`.
 
+The search configuration defaults to the paper's Case 1 values — `population=100`,
+`dimension=20`, `max_generations=5000` — and each one can be overridden with
+`ODE_POP`, `ODE_DIM` and `ODE_GEN`. Values that are missing, non-numeric, or
+below their minimum (4 individuals, 1 token, 1 generation) fall back to the
+default, the same rule `ODE_SEED` uses. `ODE_WARM_START=1` seeds the population
+with the five hand-written prototype expressions (they are 20 tokens long, so
+the flag is ignored when `ODE_DIM` is not 20). The startup line reports the
+effective configuration (`population=`, `dimension=`, `warm_start=`).
+
 The program logs one structured line per event (`[  0.12s] [INFO ] gen=1
 best=... best_ever=... expr=...`), plus `new_best` records, a final `solution`
 line and a `de_run_end` summary. It typically converges in seconds but may run
-up to 100,000 generations. Output can be very verbose — consider piping through
-`tail`:
+up to the generation cap (`max_generations=5000` by default). Output can be
+very verbose — consider piping through `tail`:
 
 ```bash
 ./main.exe | tail -30
@@ -104,7 +116,7 @@ up to 100,000 generations. Output can be very verbose — consider piping throug
 make test
 ```
 
-`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included, `FunbObj::fitness()` sums the paper's 100 points, and the Case 1 (`ODE_CASE=1`) residual/weights). They link only the modules under test and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp` and `test_grid.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp` includes `parse_tree.cpp` directly to reach the header-less `FunbObj`).
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()` derivatives). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..21`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_population.cpp` asserts the initial population (exact size, per-individual dimension, tokens inside the 1–21 alphabet, opt-in warm start, fixed-seed determinism) and the search-configuration resolver (Case 1 defaults, `ODE_POP`/`ODE_DIM`/`ODE_GEN` overrides, invalid-value fallback, warm-start/dimension coupling). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included, `FunbObj::fitness()` sums the paper's 100 points, and the Case 1 (`ODE_CASE=1`) residual/weights). They link only the modules under test and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp` and `test_grid.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp` includes `parse_tree.cpp` directly to reach the header-less `FunbObj`).
 
 The SageMath notebook validation is a separate target because it needs a real
 SageMath kernel:
@@ -155,7 +167,8 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 ## Caveats
 
 - Search is stochastic by default (`srand(time(NULL))`); set `ODE_SEED=N` for reproducible runs and `ODE_CASE=1` for the paper's Case 1
-- No CI; dual-number, seed, mutation, crossover and grid tests run with `make test`
+- Search defaults follow the paper's Case 1 (100 individuals, dimension 20, 5000 generations); `ODE_POP`, `ODE_DIM` and `ODE_GEN` override them and `ODE_WARM_START=1` restores the five prototype seeds
+- No CI; dual-number, seed, mutation, crossover, population/configuration and grid tests run with `make test`
 - Code comments are in Spanish
 - `dualfunctions.h` requires STL headers (`vector`, `string`) to be included before it
 - The SageMath notebook's fitness formula is stale; the C++ code is the source of truth

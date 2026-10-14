@@ -19,6 +19,7 @@
 #include <cmath>
 
 #include "dualfunctions.h"
+#include "token.h"
 
 static int g_checks = 0;   // asserts ejecutados (como el contador de pytest)
 static int g_fallos = 0;   // asserts fallidos
@@ -243,6 +244,15 @@ static void test_narg_tabla() {
     check_int("narg(21) = 2 (potencia)", narg(21.0L), 2);
 }
 
+// Slice TDD del issue #32: un codigo fuera del alfabeto no tiene aridad.
+// El resultado -1 es el contrato de `arity()` en token.h; en Python seria
+// como obtener un sentinel explicito de una tabla en vez de leer una variable
+// sin inicializar (que no tiene equivalente seguro en Python).
+static void test_narg_codigo_invalido() {
+    check_int("narg(0) devuelve -1 fuera del alfabeto", narg(0.0L), -1);
+    check_int("narg(22) devuelve -1 fuera del alfabeto", narg(22.0L), -1);
+}
+
 static void test_parsv_funciones_conocidas() {
     // x en x=0: [x, dx/dx, 0] = [0, 1, 0].
     std::vector<long double> e0 = {0.0L, 1.0L, 0.0L};
@@ -281,6 +291,15 @@ static void test_parse_tree_token12() {
     // Bonus: el ganador esperado del DE, cos(x)+sin(x).
     std::vector<long double> suma = {18, 14, 11, 13, 11};  // +(cos(x), sin(x))
     check_str("parse_tree([18,14,11,13,11])", parse_tree(suma), "(cos(x))+(sin(x))");
+}
+
+// Slice TDD del renderizador: un token invalido usa la plantilla vacia del
+// alfabeto. En Python seria como insertar `render(token)` y obtener `""` para
+// un codigo desconocido, no reutilizar por accidente el token anterior.
+static void test_parse_tree_codigo_invalido() {
+    std::vector<long double> tokens = {TOKEN_ADD, TOKEN_CONST1, 0};
+    check_str("parse_tree conserva el hueco de un token invalido",
+              parse_tree(tokens), "(1.0)+()");
 }
 
 // -------------------------------------------------------------------------
@@ -624,8 +643,10 @@ int main() {
     test_parsv_expresion_incompleta_es_nan();
     test_tan2dual_primera_derivada();
     test_narg_tabla();
+    test_narg_codigo_invalido();
     test_parsv_funciones_conocidas();
     test_parse_tree_token12();
+    test_parse_tree_codigo_invalido();
     test_operf2_consumo_en_sitio();
     test_operf2_salta_huecos_nan();
     test_operf2_inicio();

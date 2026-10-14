@@ -76,8 +76,8 @@ static void check_bool(const std::string& caso, bool condicion) {
 
 // Slice 1: los nombres publicos anclan los codigos que el alfabeto ya usa en
 // los arboles en notacion prefija. Los literales son la fuente independiente
-// de verdad: la tabla historica de tokens del proyecto (27 con las
-// hojas polinomiales del #63).
+// de verdad: la tabla historica de tokens del proyecto (29 con las hojas
+// polinomiales del #63 y las constantes pi/e del #64).
 static void test_constantes_y_rangos() {
     check_int("constant_1", TOKEN_CONST1, 1);
     check_int("constant_2", TOKEN_CONST2, 2);
@@ -102,13 +102,15 @@ static void test_constantes_y_rangos() {
     check_int("unary_tanh", TOKEN_TANH, 25);
     check_int("leaf_x2", TOKEN_X2, 26);
     check_int("leaf_x3", TOKEN_X3, 27);
+    check_int("leaf_pi", TOKEN_PI, 28);
+    check_int("leaf_e", TOKEN_E, 29);
     check_int("binary_add", TOKEN_ADD, 18);
     check_int("binary_mul", TOKEN_MUL, 19);
     check_int("binary_div", TOKEN_DIV, 20);
     check_int("binary_pow", TOKEN_POW, 21);
     check_int("minimum", TOKEN_MIN, 1);
-    check_int("maximum", TOKEN_MAX, 27);
-    check_int("alphabet_size", TOKENS_ALFABETO, 27);
+    check_int("maximum", TOKEN_MAX, 29);
+    check_int("alphabet_size", TOKENS_ALFABETO, 29);
 }
 
 // Slice 2: la aridad publica sigue la gramatica prefija: hojas sin operandos,
@@ -138,6 +140,8 @@ static void test_aridad_de_todo_el_alfabeto() {
     check_int("arity_unary_tanh", arity(TOKEN_TANH), 1);
     check_int("arity_leaf_x2", arity(TOKEN_X2), 0);
     check_int("arity_leaf_x3", arity(TOKEN_X3), 0);
+    check_int("arity_leaf_pi", arity(TOKEN_PI), 0);
+    check_int("arity_leaf_e", arity(TOKEN_E), 0);
     check_int("arity_binary_add", arity(TOKEN_ADD), 2);
     check_int("arity_binary_mul", arity(TOKEN_MUL), 2);
     check_int("arity_binary_div", arity(TOKEN_DIV), 2);
@@ -172,6 +176,8 @@ static void test_render_de_todo_el_alfabeto() {
     check_str("render_unary_tanh", render(TOKEN_TANH), "tanh()");
     check_str("render_leaf_x2", render(TOKEN_X2), "x^2");
     check_str("render_leaf_x3", render(TOKEN_X3), "x^3");
+    check_str("render_leaf_pi", render(TOKEN_PI), "pi");
+    check_str("render_leaf_e", render(TOKEN_E), "e");
     check_str("render_binary_add", render(TOKEN_ADD), "()+()");
     check_str("render_binary_mul", render(TOKEN_MUL), "()*()");
     check_str("render_binary_div", render(TOKEN_DIV), "()/()");
@@ -194,7 +200,10 @@ static void test_validacion_del_alfabeto() {
 // la tabla publicada, no una llamada a las funciones bajo prueba.
 static void test_categorias_particionan_el_alfabeto() {
     for (int token = TOKEN_MIN; token <= TOKEN_MAX; ++token) {
-        const bool esperado_constante = token >= 1 && token <= 10;
+        // pi/e (28-29) entran en la categoria de constantes: son hojas de
+        // valor fijo, igual que los literales 1.0-10.0; no dependen de x.
+        const bool esperado_constante = (token >= 1 && token <= 10)
+                                      || token == 28 || token == 29;
         const bool esperado_variable = token == 11;
         // Los literales (12-17 y 22-25 unarias; 18-21 binarias; 26-27 hojas
         // polinomiales) son la tabla publicada, no una llamada a las funciones
@@ -233,6 +242,8 @@ static void test_dependencia_de_x() {
     check_bool("x_dependent_leaf_x2", is_x_dependent(TOKEN_X2));
     check_bool("x_dependent_leaf_x3", is_x_dependent(TOKEN_X3));
     check_bool("constant_1_no_depende_de_x", !is_x_dependent(TOKEN_CONST1));
+    check_bool("constant_pi_no_depende_de_x", !is_x_dependent(TOKEN_PI));
+    check_bool("constant_e_no_depende_de_x", !is_x_dependent(TOKEN_E));
     check_bool("unary_sin_no_depende_de_x", !is_x_dependent(TOKEN_SIN));
     check_bool("binary_add_no_depende_de_x", !is_x_dependent(TOKEN_ADD));
 }

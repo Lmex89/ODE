@@ -44,6 +44,11 @@ constexpr int TOKEN_TANH{25};
 // mas del registro de hojas cuyo valor depende de x.
 constexpr int TOKEN_X2{26};
 constexpr int TOKEN_X3{27};
+// Constantes matematicas (issue #64): pi y e son hojas de valor fijo (aridad
+// 0, cero derivadas) que amplian las constantes numericas 1.0-10.0. En Python
+// serian dos entradas mas del registro de hojas, aqui sin depender de x.
+constexpr int TOKEN_PI{28};
+constexpr int TOKEN_E{29};
 
 // Operaciones de dos operandos; en notacion prefija anteceden sus dos hijos.
 constexpr int TOKEN_ADD{18};
@@ -54,7 +59,7 @@ constexpr int TOKEN_POW{21};
 // TOKENS_ALFABETO es la cantidad de codigos contiguos disponibles. En Python
 // equivale a `len(range(TOKEN_MIN, TOKEN_MAX + 1))`; agregar un token nuevo
 // solo requiere ampliar este contador y su implementacion.
-constexpr int TOKENS_ALFABETO{27};
+constexpr int TOKENS_ALFABETO{29};
 constexpr int TOKEN_MIN{TOKEN_CONST1};
 constexpr int TOKEN_MAX{TOKEN_MIN + TOKENS_ALFABETO - 1};
 
@@ -67,7 +72,11 @@ inline bool is_valid(int token) {
 // Estos predicados separan las cuatro clases del alfabeto, como funciones
 // booleanas Python que clasifican un entero sin modificarlo.
 inline bool is_constant(int token) {
-    return token >= TOKEN_CONST1 && token <= TOKEN_CONST10;
+    // Constantes del alfabeto: los literales numericos 1.0-10.0 y las hojas
+    // pi/e (issue #64). En Python seria
+    // `token in range(TOKEN_CONST1, TOKEN_CONST10 + 1) or token in (TOKEN_PI, TOKEN_E)`.
+    return (token >= TOKEN_CONST1 && token <= TOKEN_CONST10) ||
+           token == TOKEN_PI || token == TOKEN_E;
 }
 
 inline bool is_variable(int token) {
@@ -109,7 +118,10 @@ inline int random_token() {
 // Es el equivalente a consultar un `dict` de aridades en Python; -1 indica un
 // codigo fuera del alfabeto, que no pertenece a ninguna regla gramatical.
 inline int arity(int token) {
-    if (token >= TOKEN_CONST1 && token <= TOKEN_X) {
+    // Hojas de valor fijo: los literales 1.0-10.0, la variable x y las
+    // constantes pi/e (issue #64). En Python seria
+    // `if is_constant(token) or is_variable(token): return 0`.
+    if (is_constant(token) || is_variable(token)) {
         return 0;
     }
     // Las hojas polinomiales (issue #63) tambien son hojas: no consumen hijos
@@ -181,6 +193,12 @@ inline std::string render(int token) {
             return "x^2";
         case TOKEN_X3:
             return "x^3";
+        // Constantes matematicas (issue #64): el simbolo de la constante,
+        // tambien sin huecos "()" por ser hojas.
+        case TOKEN_PI:
+            return "pi";
+        case TOKEN_E:
+            return "e";
         case TOKEN_ADD:
             return "()+()";
         case TOKEN_MUL:

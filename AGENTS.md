@@ -1,228 +1,71 @@
-# AGENTS.md
+# ODE agent notes
 
-C++ research prototype that searches for symbolic solutions of 2nd-order ODEs
-using a Differential Evolution / genetic-programming loop (paper linked in
-`README.md`). No CI, no package manager; tests run with `make test`.
+## Code navigation
 
-## Mandatory: codegraph first
+- This repository has a `.codegraph/` index. Before investigating or changing
+  code, use `codegraph_explore` (or `codegraph explore`) rather than manually
+  searching source. Use `Read`/`Grep` only for unindexed files such as this
+  file, `Makefile`, `README.md`, notebooks, or files CodeGraph flags as stale.
+- Read `GLOSSARY.md` before work that uses domain terminology. The current token
+  alphabet is defined by `token.h`; `GLOSSARY.md` still describes the former
+  21-token alphabet, while the executable source supports tokens `1..29`.
 
-**MANDATORY RULE.** This repo is indexed (`.codegraph/`). For any question about
-the code, or any edit to it, `codegraph_explore` is your **FIRST** tool call —
-before your own `Read`, `Grep`, `glob` or search-based shell calls. One call
-returns the verbatim line-numbered source of every relevant symbol **plus** the
-call path between them and the blast radius: treat that output as already `Read`
-and do not re-open those files to "verify" it.
+## Build, test, and run
 
-- Query it with symbol/file names (`parse_tree narg OperF2 FunbObj`), or with a
-  natural-language question. Re-query with narrower names when you need more —
-  a second `codegraph_explore` beats a grep loop.
-- Name the endpoints when the question is a flow ("how does a token vector
-  become `[y, y', y'']`"): it surfaces the path, including hops grep can't follow.
-- Reach for `Read`/`Grep` only for what codegraph does not index — `Makefile`,
-  `README.md`, `Untitled.ipynb`, `AGENTS.md` itself, plain text in `out` — or
-  when its output flags a file as changed since the last sync (index lags ~1s).
-- Prefer the MCP tool; `codegraph explore "<names or question>"` on the shell
-  gives the same output.
+- Use `make` rather than compiling individual production sources: it builds
+  `main.exe` with `g++`, C++17, `-Wall`, and `-O3`. Override with
+  `make CXX=icpc` when needed. Never add `parse_tree_bckp.cpp` to a build: it
+  also defines `main()`.
+- `make test` builds and runs seven C++ test executables plus
+  `python3 scripts/check_dual_validation.py`. For a focused test, use, for
+  example, `make test_mutation.exe && ./test_mutation.exe`.
+- `make sage-test` is separate: it executes the entire Sage notebook, using a
+  local `sage` installation or Docker with the pinned image. It is appropriate
+  for changes to dual-number math or `Untitled.ipynb`.
+- The search is stochastic and its default 5,000 generations can be noisy.
+  Use a fixed seed and a short cap for a reproducible smoke run:
+  `ODE_SEED=42 ODE_GEN=200 timeout 60 ./main.exe | tail -30`.
+  `ODE_CASE=1` selects the paper case; `ODE_CASE=2` selects the hyperbolic case.
+  `ODE_POP`, `ODE_DIM`, `ODE_GEN`, and `ODE_WARM_START=1` override the search
+  configuration (warm start is ignored unless the dimension is 20).
+- There is no CI. For behaviorally neutral DE changes, compare fixed-seed runs
+  with `scripts/ab_experiment.sh --seed 42 --timeout 300`.
 
-## Build & run
+## Architecture and invariants
 
-- `Makefile` builds with `g++` by default (`CXX ?= g++`, so `make CXX=icpc`
-  still works where Intel's `icpc` exists). `make` only builds `main.exe`;
-  `make run` compiles if needed and executes it; `make test` compiles and runs
-  the six test binaries: `test_dual.cpp` (dual-number tests; links
-  `dualfunctions.cpp`), `test_semilla.cpp` (seed resolution; links
-  `semilla.cpp`), `test_mutation.cpp` (DE/rand/1/bin mutation tests),
-  `test_crossover.cpp` (binomial crossover tests), `test_grid.cpp`
-  (evaluation-grid tests) and `test_population.cpp` (uniform seed lengths,
-  issue #11); the last four need `parse_tree.cpp` and are built with
-  `-DODE_NO_MAIN` so the test's `main()` wins (`test_grid.cpp` and
-  `test_population.cpp` include `parse_tree.cpp` itself, since `FunbObj` has no
-  header); `make clean` removes the objects and binaries. Flags:
-  `-std=c++17 -Wall -O3`.
-- Never add `parse_tree_bckp.cpp` to a build: it is a reference backup that also defines `main()` (duplicate symbol). The Makefile does not compile it.
-- `.vscode/` is gitignored. Always use `make` to build — the project requires compiling multiple translation units together.
-- `dualfunctions.h` is not self-contained: it uses `vector`/`string` without
-  including them. Include STL headers before it (as `parse_tree.cpp` does) or
-  it fails to compile alone.
-- The search is stochastic by default (`srand(time(NULL))`); `ODE_SEED=N` fixes
-  the seed (printed as `seed=N` in the startup log line) and makes runs
-  reproducible; `ODE_CASE=1` switches to the paper's Case 1
-  (`x*y'' + y' - cos(x) = 0`, `y(0)=0`, `y'(0)=1`) and `ODE_CASE=2` selects the
-  hyperbolic case (`y'' - y = 0`, `y(0)=1`, `y'(0)=0`, solution `cosh(x)`)
-  instead of the default toy ODE (the same startup line carries `case=N`). The
-  search configuration defaults to the paper's Case 1 values — population 100,
-  dimension 20, 5000
-  generations — and `ODE_POP` / `ODE_DIM` / `ODE_GEN` override them with the
-  same invalid-value-falls-back rule as `ODE_SEED`; `ODE_WARM_START=1` prepends
-  the five hand-written prototype seeds (ignored when `ODE_DIM` is not 20).
-  `ODE_GEN=200` keeps a full run short. It usually converges in seconds but can
-  run to the generation cap with very verbose stdout (the committed `out` file
-  is a 3.4 MB captured run). Prefer `timeout 60 ./main.exe | tail -30` over
-  running bare.
-- `scripts/ab_experiment.sh` runs the pre-fix revision and `HEAD` with the same
-  `ODE_SEED` values; its results live in `docs/ab-experiment.md`.
+- `parse_tree.cpp` owns `main()`, the DE loop, `FunbObj` fitness, mutation, and
+  crossover. `dualfunctions.{h,cpp}` interprets prefix token vectors as
+  `[y, y', y'']`; `semilla.{h,cpp}` resolves `ODE_SEED`; `token.h` is the token
+  vocabulary, arity, rendering, and random-token source of truth.
+- `test_grid.cpp` and `test_population.cpp` include `parse_tree.cpp` directly
+  because `FunbObj` has no header. Their Makefile rules intentionally compile
+  with `-DODE_NO_MAIN`; do not “simplify” this into compiling that source twice.
+- Interpreter operand blanking to `NAN` is deliberate. Invalid/incomplete or
+  x-independent trees receive `INFINITY` fitness rather than throwing. Preserve
+  that numerical-error contract and keep the hot fitness loop free of output.
+- When extending tokens, update the `token.h` grammar/rendering helpers, the
+  evaluator dispatch in `dualfunctions.cpp`, and focused token/dual/population
+  tests. Use named token constants and `random_token()` rather than literal
+  bounds.
+- `dualfunctions.h` is currently not self-contained: include `<vector>` and
+  `<string>` before it in a new translation unit until that header is fixed.
 
-## How it works
+## C++ and output conventions
 
-- `parse_tree.cpp` — `main()` and the DE loop (single population, mutation,
-  binomial crossover, greedy selection). `dualfunctions.{h,cpp}` — token
-  interpreter and 2nd-order dual-number ("2dual") arithmetic; `parsv()`
-  evaluates a tree to `[y(x), y'(x), y''(x)]`, consuming operands in place
-  (blanking them to NaN) and stopping at the first NaN operation, per the
-  paper's Algorithm 1; `OperF2` takes the full `auxv` matrix plus the start
-  index so that blanking lands in the tree. `semilla.{h,cpp}` — resolves
-  `ODE_SEED` for reproducible runs.
-- `Mutation()` implements DE/rand/1/bin with dither (paper eq. (7)):
-  `v = x_r1 + F*(x_r2 - x_r3)` with one `F` random in `[0,1]` per call, the
-  result rounded/clamped to a token in `1..21` by `token_valido()`, and the
-  three distinct base individuals chosen by `indices_distintos()`. The helper
-  `mutacion_rand1()` is the pure formula (no randomness) and is covered by
-  `test_mutation.cpp`; its loop walks up to `min(x.size(), y.size(), z.size())`
-  tokens, so a size mismatch cannot read out of range (B5 of REVIEW.md). A
-  legacy repair still forces one `x` token when the mutation removes them all.
-- `Recombination()` implements the paper's binomial crossover (eq. (8)) with
-  `Cr = 0.2`: each trial gene comes from the mutant with probability `Cr` and
-  from the target otherwise, plus one forced `j_rand` index taken from the
-  mutant (REVIEW D2). The pure per-gene core `gen_binomial()` is covered by
-  `test_crossover.cpp`, and the same legacy repair forces an `x` token when the
-  crossover removes them all.
-- The DE loop evolves a single population with greedy one-to-one selection:
-  the trial replaces its target only when its fitness is lower. There is no
-  second population, no cross-pollination and no sort-based elitism.
-- An individual is a `vector<long double>` of integer token codes in **prefix
-  notation**, 20 tokens long (`ConfigBusqueda::dimension`, issue #28):
-  `createPopulation()` fills exactly `config.poblacion` individuals with
-  `vector_population(config.dimension)`; that uniform length is what keeps
-  `Mutation()`/`Recombination()` gene pairing in bounds (B5 of REVIEW.md). The
-  default initialisation is the paper's uniform random draw (eq. (6), REVIEW
-  D6); the five hand-written expressions live in `semillas_warm_start()` and
-  only enter with `ODE_WARM_START=1`. Alphabet (decoded in `parse_tree()`,
-  arity in `narg()`): `1`-`10` constants 1.0-10.0, `11` x, `12` negation,
-  `13` sin, `14` cos, `15` exp, `16` log, `17` sqrt, `18` +, `19` *, `20` /,
-  `21` ^.
-- Token codes are duplicated in `parse_tree`, `narg`, `OperF`, `OperF2`, and
-  `vector_population` (`rand()%21+1`); keep them in sync when changing the
-  alphabet.
-- `FunbObj::fitness()` implements the paper's functional (eq. (4)),
-  `R = lambda1*h1^2 + lambda2*h2^2 + dx*sum(f^2)`, over `x_rango(0, 1, 100)` —
-  100 equally spaced points in `[0,1]`, step `1/99 ≈ 0.0101` (paper §5) — with
-  `lambda1 = lambda2 = 10` (issue #27), squared residuals and penalties, and
-  the `dx = 1/99` integration factor; trees that do not fully parse or contain
-  no `x` get `INFINITY`. Fitness < 1e-5 stops the run; the expected winner
-  renders like `(cos(x))+(sin(x))` (solution of `y'' + y = 0` with
-  `y(0) = y'(0) = 1`). With `ODE_CASE=1` the residual and conditions switch to
-  the paper's Case 1 (`x*y'' + y' - cos(x)`, `y(0)=0`, `y'(0)=1`, exact
-  solution `Si(x)`): the candidate constructor takes the case as a defaulted
-  4th argument, so `test_grid.cpp` still builds `FunbObj` with 3. Issue #10
-  (REVIEW B1) fixed operand consumption in `parsv`/`OperF2`, so the parser
-  now evaluates the expressions Case 1 needs (`x/2`, `x*cos(x/5)`) correctly.
-- `Untitled.ipynb` is a SageMath scratchpad for the reference ODE/solution, not
-  part of the C++ build; its fitness formula is stale — the C++ code is the
-  source of truth.
+- Apply `docs/cpp-standards.md` to new and modified C++ only; do not perform
+  unrelated cleanup of legacy code. In particular, use 4-space indentation,
+  `underscore_style` for new names, `const` references for nontrivial inputs,
+  RAII (no raw owning pointers), and small pure helpers for testable logic.
+- C++ comments are Spanish and explain non-obvious C++ idioms for a backend
+  Python developer, including a Python equivalent—or explicitly saying when
+  none exists. Add or update them with C++ changes.
+- Search-run output must use `log_info()`/`log_warn()` and the structured
+  `[<cpu>s] [LEVEL] event | key=value` format. Keep the `seed`, `gen`,
+  `generations`, `best`, `expr`, `vector`, `status`, and `elapsed_cpu_s` keys:
+  `scripts/ab_experiment.sh` parses them. Use explicit formatting, `\n` plus
+  `flush()`, and no raw `cout` in production numerical code.
 
-## Mandatory: comments for Python developers
+## Commits
 
-**MANDATORY RULE.** Whenever you add or modify C++ code in this repo (`*.cpp`,
-`*.h`), you MUST add comments explaining it for a backend Python developer.
-This is not optional and applies to every new symbol, non-obvious line, and
-block — do not wait to be asked.
-
-- Write the comments as Python equivalences wherever one exists, in the form
-  `// equivalente a ... en Python`, e.g.:
-  - `vector<long double>` → `list[float]` (but `long double` has no Python
-    equivalent; it is ~80-bit, closer to `decimal` than to `float`)
-  - `srand(time(NULL))` → `random.seed()`
-  - `rand()%21+1` → `random.randint(1, 21)`
-  - `map`/`unordered_map` → `dict`; `sort` with a lambda →
-    `sorted(..., key=lambda ...)`; `push_back` → `.append`
-  - raw pointers / references → no direct equivalent; explain ownership instead
-- When there is NO Python equivalent (header/`.cpp` split, templates, manual
-  memory, `long double`, pass-by-reference, undefined behaviour on
-  div-by-zero/`NaN`), say so explicitly and explain what the C++ construct
-  does instead, in plain terms.
-- Keep the surrounding comment language consistent with the file: existing
-  comments are in Spanish, so new ones should be Spanish too, with the Python
-  snippet/spelling kept as-is (`# como en Python: ...`).
-- Comments must explain the *idiom*, not restate the syntax: say why the code
-  uses a reference parameter, what the prefix-notation walk does, etc.
-
-## Mandatory: professional logs
-
-**MANDATORY RULE.** Every line the program prints must follow the logging
-conventions below. They are the C++ logging best practices checked against
-Context7 on 2026-10-12 (spdlog README/wiki + C++ Core Guidelines) applied to
-this repo; treat them as the reference for any new output.
-
-- One event per line, spdlog-style pattern `[<t>s] [NIVEL] evento | clave=valor
-  ...`, using the helpers in `parse_tree.cpp` (`log_info()`, `log_warn()`,
-  `fmt_ciencia()`, ...) instead of raw `cout`. Level tags are 5 chars wide
-  (`[INFO ]`, `[WARN ]`) so columns align; `INFO` is configuration/progress/
-  results, `WARN` a run that ended without converging.
-- Structured fields: stable, lower-case `key=value` names and values with no
-  spaces (`vector=[21,11,14]`, not `[21, 11, 14]`) so a script can split the
-  line. The keys `seed`, `gen`, `generations`, `best`, `expr`, `vector`,
-  `status` and `elapsed_cpu_s` are a contract with
-  `scripts/ab_experiment.sh` — renaming one means updating that awk too.
-- The timestamp is CPU seconds since start (`fmt_segundos`), not wall clock:
-  runs must stay reproducible under a fixed `ODE_SEED`.
-- Numbers are formatted explicitly with `ostringstream` + `<iomanip>`
-  (`scientific`/`setprecision(6)` for fitness, 2 decimals for times), never
-  `cout`'s default 6-significant-digit output, and the formatting flags must
-  not leak into `cout` for the next caller.
-- `'\n'` plus an explicit `cout.flush()` instead of `std::endl` (Core
-  Guidelines F.3). Flushing every event line is deliberate: output is consumed
-  live (`tail`) and a `timeout` can kill the process mid-run (same as spdlog's
-  console sink). Inside hot loops (the fitness evaluation) print nothing.
-- No decoration (banners, `::::`, `====`): the run header and footer are single
-  structured lines. No external logging libraries (spdlog/fmt) either — the
-  repo has no package manager and builds with plain `g++`; spdlog is the
-  reference, not a dependency.
-
-## Repo notes
-
-- `.gitignore` excludes `.codegraph/`, compiled artifacts (`main.exe`, `*.o`), run outputs (`out`, `out.txt`), and tool noise (`.inteopt.txt`, `.ipynb_checkpoints/`). Don't re-add them.
-- Code comments are in Spanish.
-- Verification is manual: build, run, inspect the printed best fit and fitness.
-
-## Commit conventions
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/) and the
-commitlint `@commitlint/config-conventional` best practices:
-
-- Shape: `type(scope): subject`, blank line, optional body, optional footers;
-  scope is optional (`fix(parse-tree): ...`).
-- Types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`,
-  `revert`, `style`, `test`.
-- Subject: lower-case type, imperative mood, no sentence/pascal/upper case, no
-  trailing full stop; header at most 100 characters.
-- Body: explain what and why (not how), one blank line after the subject, lines
-  at most 100 characters (URLs exempt).
-- Footers: issue refs (`Refs: #123`, `Closes #123`) and breaking changes
-  (`BREAKING CHANGE: ...`, or `!` after the type/scope).
-- Keep one logical change per commit and review `git diff --cached` before
-  committing; never sweep in unrelated edits.
-
-```text
-docs: document make targets in AGENTS.md
-fix(parse-tree): reject expressions with no free x
-```
-
-## Agent skills
-
-### Issue tracker
-
-Issues are tracked in GitHub via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Five canonical triage roles using default label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context layout: `GLOSSARY.md` at root + `docs/adr/`. See `docs/agents/domain.md`.
-
-### C++ standards
-
-Mandatory rules for new or changed C++ (interfaces, RAII, errors, style,
-performance), checked against Context7 (C++ Core Guidelines) on 2026-10-13 and
-adapted to this repo. See `docs/cpp-standards.md`.
+- Use Conventional Commits (`type(scope): imperative subject`); keep a commit
+  to one logical change and do not include generated binaries or run output.

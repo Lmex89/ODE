@@ -46,6 +46,49 @@ vector<ldouble> tan2dual(vector<ldouble>& xval){
 	return f;
 }
 
+// sinh2dual: version de segundo orden de sinh(u). En Python seria
+// `[math.sinh(u), math.cosh(u)*du, math.sinh(u)*du**2 + math.cosh(u)*ddu]`;
+// xval[1] y xval[2] son u' y u'' (la regla de la cadena), no la parte real.
+vector<ldouble> sinh2dual(vector<ldouble>& xval){
+
+	vector<ldouble> f = {NAN,NAN,NAN};
+
+	f[0] = sinh(xval[0]);
+	f[1] = cosh(xval[0])*xval[1];
+	f[2] = sinh(xval[0])*pow(xval[1],2) + cosh(xval[0])*xval[2];
+
+	return f;
+}
+
+// cosh2dual: version de segundo orden de cosh(u). En Python seria
+// `[math.cosh(u), math.sinh(u)*du, math.cosh(u)*du**2 + math.sinh(u)*ddu]`.
+vector<ldouble> cosh2dual(vector<ldouble>& xval){
+
+	vector<ldouble> f = {NAN,NAN,NAN};
+
+	f[0] = cosh(xval[0]);
+	f[1] = sinh(xval[0])*xval[1];
+	f[2] = cosh(xval[0])*pow(xval[1],2) + sinh(xval[0])*xval[2];
+
+	return f;
+}
+
+// tanh2dual: version de segundo orden de tanh(u). En Python seria
+// `[math.tanh(u), du/math.cosh(u)**2,
+//   (ddu*math.cosh(u)**2 - 2*du**2*math.sinh(u)*math.cosh(u))/math.cosh(u)**4]`;
+// el denominador cosh^4(u) sale de derivar 1/cosh^2(u) por la regla del
+// cociente, no de la parte real.
+vector<ldouble> tanh2dual(vector<ldouble>& xval){
+
+	vector<ldouble> f = {NAN,NAN,NAN};
+
+	f[0] = tanh(xval[0]);
+	f[1] = xval[1]/pow(cosh(xval[0]),2);
+	f[2] = (xval[2]*pow(cosh(xval[0]),2) - 2.0*pow(xval[1],2)*sinh(xval[0])*cosh(xval[0]))/pow(cosh(xval[0]),4);
+
+	return f;
+}
+
 vector<ldouble> exp2dual(vector<ldouble>& xval){
 
 	vector<ldouble> f(3);
@@ -370,6 +413,12 @@ vector<ldouble> OperF(ldouble x, vector<ldouble>& xval){
 	// Despacha el token 22 hacia la regla dual ya existente; en Python seria
 	// `if token == TOKEN_TAN: resultado = tan2dual(xval)`.
 	if (x == TOKEN_TAN) f_result = tan2dual(xval);
+	// Hiperbolicas del issue #61: mismo despacho por nombre de token; en
+	// Python seria `if token == TOKEN_SINH: resultado = sinh2dual(xval)` y
+	// analogamente para cosh y tanh.
+	if (x == TOKEN_SINH) f_result = sinh2dual(xval);
+	if (x == TOKEN_COSH) f_result = cosh2dual(xval);
+	if (x == TOKEN_TANH) f_result = tanh2dual(xval);
 
 	return f_result;
 }

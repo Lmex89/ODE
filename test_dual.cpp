@@ -143,6 +143,11 @@ static void test_parsv_finite_difference_bateria() {
     check_parsv_case("parsv(x^x)", {21, 11, 11}, puntos);
     check_parsv_case("parsv(sin(x^2+cos(x)))",
                      {13, 18, 21, 11, 2, 14, 11}, puntos);
+    // Hiperbolicas (issue #61): la cadena completa pasa por parsv y las
+    // derivadas se contrastan con diferencias finitas independientes.
+    check_parsv_case("parsv(sinh(x))", {TOKEN_SINH, TOKEN_X}, puntos);
+    check_parsv_case("parsv(cosh(x))", {TOKEN_COSH, TOKEN_X}, puntos);
+    check_parsv_case("parsv(tanh(x))", {TOKEN_TANH, TOKEN_X}, puntos);
 }
 
 // check_int: igual que `assert narg(12) == 1` en pytest.
@@ -246,6 +251,128 @@ static void test_token_tan_integracion() {
     check_int("narg(TOKEN_TAN) = 1", narg(TOKEN_TAN), 1);
     check_vec("OperF(TOKEN_TAN) calcula el dual de tan", OperF(TOKEN_TAN, xval), esperado);
     check_vec("parsv([TOKEN_TAN,TOKEN_X]) calcula tan(x)", parsv(tokens, xval), esperado);
+}
+
+// -------------------------------------------------------------------------
+// Slice issue #61: reglas duales de las funciones hiperbolicas. Los valores
+// esperados salen de las definiciones de sinh/cosh/tanh y de la regla de la
+// cadena, no de volver a evaluar la implementacion. En Python seria comprobar
+// `sinh2dual([0.5, 2, 1]) == [math.sinh(0.5), math.cosh(0.5)*2, ...]`.
+// -------------------------------------------------------------------------
+
+// check_dual_finite_difference: valida las derivadas de una regla dual contra
+// diferencias centrales de su propia componente de valor. Es el mismo criterio
+// de check_parsv_finite_difference, pero en la costura directa de la funcion
+// dual; `fn` es un puntero a funcion (en Python seria pasar la funcion como
+// objeto de primera clase, p. ej. `fn = sinh2dual`).
+static void check_dual_finite_difference(
+        const std::string& nombre,
+        std::vector<long double> (*fn)(std::vector<long double>&),
+        long double x, long double tol) {
+    const long double h = 1e-5L;
+    std::vector<long double> centro_in = {x, 1.0L, 0.0L};
+    std::vector<long double> mas_in    = {x + h, 1.0L, 0.0L};
+    std::vector<long double> menos_in  = {x - h, 1.0L, 0.0L};
+    std::vector<long double> centro = fn(centro_in);
+    std::vector<long double> mas    = fn(mas_in);
+    std::vector<long double> menos  = fn(menos_in);
+    long double primera = (mas[0] - menos[0]) / (2.0L * h);
+    long double segunda = (mas[0] - 2.0L * centro[0] + menos[0]) / (h * h);
+    check_vec(nombre, {centro[1], centro[2]}, {primera, segunda}, tol);
+}
+
+static void test_sinh2dual_derivadas() {
+    // [u, u', u''] = [0.5, 2, 1]: la regla es
+    //   sinh(u)' = cosh(u)*u',  sinh(u)'' = sinh(u)*u'^2 + cosh(u)*u''.
+    // u'=2 y u''=1 no triviales delatan una implementacion que confunda las
+    // componentes duales con la real (el bug historico de tan, issue #2).
+    std::vector<long double> xval = {0.5L, 2.0L, 1.0L};
+    long double sh = std::sinh(0.5L);
+    long double ch = std::cosh(0.5L);
+    std::vector<long double> esperado = {sh, ch * 2.0L, sh * 4.0L + ch};
+    check_vec("sinh2dual([0.5,2,1]) usa u' y u'' en la regla de la cadena",
+              sinh2dual(xval), esperado);
+    // Diferencia finita con u'=1, u''=0: derivada central de sinh(x).
+    check_dual_finite_difference("sinh2dual(x) coincide con diferencias finitas",
+                                 sinh2dual, 0.5L, 1e-6L);
+}
+
+static void test_cosh2dual_derivadas() {
+    // cosh(u)' = sinh(u)*u',  cosh(u)'' = cosh(u)*u'^2 + sinh(u)*u''.
+    std::vector<long double> xval = {0.5L, 2.0L, 1.0L};
+    long double sh = std::sinh(0.5L);
+    long double ch = std::cosh(0.5L);
+    std::vector<long double> esperado = {ch, sh * 2.0L, ch * 4.0L + sh};
+    check_vec("cosh2dual([0.5,2,1]) usa u' y u'' en la regla de la cadena",
+              cosh2dual(xval), esperado);
+    check_dual_finite_difference("cosh2dual(x) coincide con diferencias finitas",
+                                 cosh2dual, 0.5L, 1e-6L);
+}
+
+static void test_tanh2dual_derivadas() {
+    // tanh(u)' = u'/cosh^2(u);
+    // tanh(u)'' = (u''*cosh^2(u) - 2*u'^2*sinh(u)*cosh(u))/cosh^4(u)
+    // (formula del issue #61, regla del cociente sobre sinh(u)/cosh(u)).
+    std::vector<long double> xval = {0.5L, 2.0L, 1.0L};
+    long double sh = std::sinh(0.5L);
+    long double ch = std::cosh(0.5L);
+    long double ch2 = ch * ch;
+    std::vector<long double> esperado = {
+        std::tanh(0.5L),
+        2.0L / ch2,
+        (1.0L * ch2 - 2.0L * 4.0L * sh * ch) / (ch2 * ch2)
+    };
+    check_vec("tanh2dual([0.5,2,1]) usa u' y u'' en la regla del cociente",
+              tanh2dual(xval), esperado);
+    check_dual_finite_difference("tanh2dual(x) coincide con diferencias finitas",
+                                 tanh2dual, 0.5L, 1e-6L);
+}
+
+// Slice issue #61: las hiperbolicas se integran por las mismas costuras
+// publicas que usa el solver (parse_tree, narg, OperF y parsv), como en el
+// slice de tan del issue #60. En x=0.5 con xval=[x,1,0] los esperados son las
+// derivadas cerradas de libm:
+//   sinh(x) -> [sinh, cosh, sinh]
+//   cosh(x) -> [cosh, sinh, cosh]
+//   tanh(x) -> [tanh, 1/cosh^2, -2*sinh/cosh^3]
+static void test_token_hiperbolicas_integracion() {
+    std::vector<long double> xval = {0.5L, 1.0L, 0.0L};
+    long double sh = std::sinh(0.5L);
+    long double ch = std::cosh(0.5L);
+    long double th = std::tanh(0.5L);
+    long double sech2 = 1.0L / (ch * ch);
+
+    // sinh: se comprueba cada costura por separado para localizar el fallo.
+    std::vector<long double> tokens_sinh = {TOKEN_SINH, TOKEN_X};
+    check_str("parse_tree([TOKEN_SINH,TOKEN_X]) = sinh(x)",
+              parse_tree(tokens_sinh), "sinh(x)");
+    check_int("narg(TOKEN_SINH) = 1", narg(TOKEN_SINH), 1);
+    check_vec("OperF(TOKEN_SINH) calcula el dual de sinh",
+              OperF(TOKEN_SINH, xval), {sh, ch, sh});
+    check_vec("parsv([TOKEN_SINH,TOKEN_X]) calcula sinh(x)",
+              parsv(tokens_sinh, xval), {sh, ch, sh});
+
+    // cosh: la segunda derivada repite el valor (cosh'' = cosh) y la primera
+    // toma sinh, de modo que un intercambio sinh<->cosh no pasa desapercibido.
+    std::vector<long double> tokens_cosh = {TOKEN_COSH, TOKEN_X};
+    check_str("parse_tree([TOKEN_COSH,TOKEN_X]) = cosh(x)",
+              parse_tree(tokens_cosh), "cosh(x)");
+    check_int("narg(TOKEN_COSH) = 1", narg(TOKEN_COSH), 1);
+    check_vec("OperF(TOKEN_COSH) calcula el dual de cosh",
+              OperF(TOKEN_COSH, xval), {ch, sh, ch});
+    check_vec("parsv([TOKEN_COSH,TOKEN_X]) calcula cosh(x)",
+              parsv(tokens_cosh, xval), {ch, sh, ch});
+
+    // tanh: derivadas del cociente; en x=0.5 no son la unidad, asi que una
+    // implementacion que ignore u' o u'' falla aqui.
+    std::vector<long double> tokens_tanh = {TOKEN_TANH, TOKEN_X};
+    check_str("parse_tree([TOKEN_TANH,TOKEN_X]) = tanh(x)",
+              parse_tree(tokens_tanh), "tanh(x)");
+    check_int("narg(TOKEN_TANH) = 1", narg(TOKEN_TANH), 1);
+    check_vec("OperF(TOKEN_TANH) calcula el dual de tanh",
+              OperF(TOKEN_TANH, xval), {th, sech2, -2.0L * sh / (ch * ch * ch)});
+    check_vec("parsv([TOKEN_TANH,TOKEN_X]) calcula tanh(x)",
+              parsv(tokens_tanh, xval), {th, sech2, -2.0L * sh / (ch * ch * ch)});
 }
 
 // -------------------------------------------------------------------------
@@ -665,6 +792,10 @@ int main() {
     test_parsv_expresion_incompleta_es_nan();
     test_tan2dual_primera_derivada();
     test_token_tan_integracion();
+    test_sinh2dual_derivadas();
+    test_cosh2dual_derivadas();
+    test_tanh2dual_derivadas();
+    test_token_hiperbolicas_integracion();
     test_narg_tabla();
     test_narg_codigo_invalido();
     test_parsv_funciones_conocidas();

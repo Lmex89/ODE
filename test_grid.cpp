@@ -273,6 +273,35 @@ static void test_fitness_caso1_aprox_del_paper() {
                f.fitness() < 1e-5L);
 }
 
+// -------------------------------------------------------------------------
+// Slice 6 (issue #61): el caso hiperbolico y'' - y = 0 con y(0)=1, y'(0)=0,
+// cuya solucion exacta es cosh(x). Existe para que el solver pueda mostrar
+// convergencia sobre una solucion hiperbolica (criterio de aceptacion del
+// issue); los valores esperados son analiticos y salen de evaluar la ODE a
+// mano, no de la implementacion.
+// -------------------------------------------------------------------------
+
+static void test_fitness_caso2_solucion_exacta() {
+    // cosh(x) en prefijo: tokens {24, 11}. Residuo y''-y = cosh-cosh = 0 en
+    // los 100 puntos de la rejilla y penalizaciones 10*(1-1)^2 + 10*(0-0)^2,
+    // asi que R = 0 exacto. En Python seria `assert f.fitness() == 0`.
+    FunbObj f({24, 11}, 0.0L, 1.0L, 2);
+    check_ld("fitness_caso2(cosh(x)) = 0 (solucion exacta)",
+             f.fitness(), 0.0L);
+    check_bool("la solucion exacta del caso 2 converge (<1e-5)",
+               f.fitness() < 1e-5L);
+}
+
+static void test_fitness_caso2_condiciones_iniciales() {
+    // sinh(x) = tokens {23, 11}: cumple la ODE (sinh''-sinh = 0) pero no las
+    // condiciones y(0)=1, y'(0)=0; cada una falla por 1, asi que
+    // R = 10*1^2 + 10*1^2 = 20. Sin el caso 2 esta prueba valdria otra cosa,
+    // de modo que fija la ecuacion y ambas condiciones a la vez.
+    FunbObj f({23, 11}, 0.0L, 1.0L, 2);
+    check_ld("fitness_caso2(sinh(x)) = 20 (falla ambas condiciones)",
+             f.fitness(), 20.0L, 1e-12L);
+}
+
 int main() {
     std::cout << "== test_grid: issues #7 (rejilla) y #27 (funcional de fitness) ==\n";
     test_x_rango_cantidad_de_puntos();
@@ -284,6 +313,8 @@ int main() {
     test_fitness_caso1_residuo_del_paper();
     test_fitness_caso1_funcion_unaria();
     test_fitness_caso1_aprox_del_paper();
+    test_fitness_caso2_solucion_exacta();
+    test_fitness_caso2_condiciones_iniciales();
     test_fitness_arbol_incompleto_es_infinita();
     test_fitness_sin_x_no_muta_el_individuo();
     test_fitness_valido_es_estable();

@@ -19,6 +19,7 @@
 #include <cstdlib>
 
 #include "dualfunctions.h"  // necesita <vector>/<string> antes (header no autocontenido)
+#include "token.h"          // expone el contrato publico del rango del alfabeto
 
 // En vez de declarar prototipos sueltos, este test incluye parse_tree.cpp
 // entero: createPopulation y FunbObj viven ahi sin header. En Python seria
@@ -117,7 +118,8 @@ static void test_createPopulation_cantidad_exacta() {
 // -------------------------------------------------------------------------
 // Slice 3 (issue #28): la dimension sale de la configuracion, no de un 20
 // fijo. Con ODE_DIM=12 la poblacion entera debe medir 12 tokens y seguir
-// usando solo el alfabeto 1..21 (el criterio de "individuos validos" de #28).
+// usando solo el alfabeto TOKEN_MIN..TOKENS_ALFABETO (el criterio de
+// "individuos validos" de #28).
 // -------------------------------------------------------------------------
 static void test_createPopulation_respeta_la_dimension() {
     srand(20261013);
@@ -135,11 +137,12 @@ static void test_createPopulation_respeta_la_dimension() {
         const vector<ldouble>& v = poblacion[i].vecvalue();
         if (v.size() != 12) todos_12 = false;
         for (size_t j = 0; j < v.size(); j++) {
-            if (v[j] < 1 || v[j] > 21) tokens_validos = false;
+            if (v[j] < TOKEN_MIN || v[j] > TOKENS_ALFABETO) tokens_validos = false;
         }
     }
     check_bool("cada individuo mide la dimension pedida (12)", todos_12);
-    check_bool("todos los tokens estan en el alfabeto 1..21", tokens_validos);
+    check_bool("todos los tokens estan en el alfabeto TOKEN_MIN..TOKENS_ALFABETO",
+               tokens_validos);
 }
 
 // -------------------------------------------------------------------------

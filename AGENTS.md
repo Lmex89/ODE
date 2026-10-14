@@ -47,9 +47,11 @@ and do not re-open those files to "verify" it.
 - The search is stochastic by default (`srand(time(NULL))`); `ODE_SEED=N` fixes
   the seed (printed as `seed=N` in the startup log line) and makes runs
   reproducible; `ODE_CASE=1` switches to the paper's Case 1
-  (`x*y'' + y' - cos(x) = 0`, `y(0)=0`, `y'(0)=1`) instead of the default toy
-  ODE (the same startup line carries `case=N`). The search configuration
-  defaults to the paper's Case 1 values — population 100, dimension 20, 5000
+  (`x*y'' + y' - cos(x) = 0`, `y(0)=0`, `y'(0)=1`) and `ODE_CASE=2` selects the
+  hyperbolic case (`y'' - y = 0`, `y(0)=1`, `y'(0)=0`, solution `cosh(x)`)
+  instead of the default toy ODE (the same startup line carries `case=N`). The
+  search configuration defaults to the paper's Case 1 values — population 100,
+  dimension 20, 5000
   generations — and `ODE_POP` / `ODE_DIM` / `ODE_GEN` override them with the
   same invalid-value-falls-back rule as `ODE_SEED`; `ODE_WARM_START=1` prepends
   the five hand-written prototype seeds (ignored when `ODE_DIM` is not 20).

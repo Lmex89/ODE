@@ -28,6 +28,17 @@ constexpr int TOKEN_COS{14};
 constexpr int TOKEN_EXP{15};
 constexpr int TOKEN_LOG{16};
 constexpr int TOKEN_SQRT{17};
+// TOKEN_TAN abre el bloque de funciones unarias nuevas al final del alfabeto
+// (tan, sinh, cosh, tanh); el rango contiguo puede ampliarse incrementando
+// TOKENS_ALFABETO. En Python seria agregar `tan` al registro de funciones y a
+// su tabla de aridades.
+constexpr int TOKEN_TAN{22};
+// Las funciones hiperbolicas (issue #61) continuan el rango contiguo de
+// unarias: sinh, cosh y tanh. En Python seria agregarlas al mismo registro de
+// funciones y a su tabla de aridades.
+constexpr int TOKEN_SINH{23};
+constexpr int TOKEN_COSH{24};
+constexpr int TOKEN_TANH{25};
 
 // Operaciones de dos operandos; en notacion prefija anteceden sus dos hijos.
 constexpr int TOKEN_ADD{18};
@@ -35,11 +46,12 @@ constexpr int TOKEN_MUL{19};
 constexpr int TOKEN_DIV{20};
 constexpr int TOKEN_POW{21};
 
-// Estos limites describen el alfabeto contiguo. En Python serian los extremos
-// de `range(TOKEN_MIN, TOKEN_MAX + 1)` y su cantidad total.
+// TOKENS_ALFABETO es la cantidad de codigos contiguos disponibles. En Python
+// equivale a `len(range(TOKEN_MIN, TOKEN_MAX + 1))`; agregar un token nuevo
+// solo requiere ampliar este contador y su implementacion.
+constexpr int TOKENS_ALFABETO{25};
 constexpr int TOKEN_MIN{TOKEN_CONST1};
-constexpr int TOKEN_MAX{TOKEN_POW};
-constexpr int NUM_TOKENS{TOKEN_MAX - TOKEN_MIN + 1};
+constexpr int TOKEN_MAX{TOKEN_MIN + TOKENS_ALFABETO - 1};
 
 // is_valid comprueba pertenencia al alfabeto contiguo, igual que `TOKEN_MIN <=
 // token <= TOKEN_MAX` en Python. No necesita tabla ni asignacion dinamica.
@@ -58,7 +70,8 @@ inline bool is_variable(int token) {
 }
 
 inline bool is_unary(int token) {
-    return token >= TOKEN_NEG && token <= TOKEN_SQRT;
+    return (token >= TOKEN_NEG && token <= TOKEN_SQRT) ||
+           (token >= TOKEN_TAN && token <= TOKEN_TANH);
 }
 
 inline bool is_binary(int token) {
@@ -66,10 +79,11 @@ inline bool is_binary(int token) {
 }
 
 // random_token convierte el resultado no negativo de `std::rand()` en un
-// desplazamiento del alfabeto. Es el equivalente a `random.randint(1, 21)` en
-// Python; la semilla se controla externamente con `std::srand()`.
+// desplazamiento del alfabeto. Es el equivalente a
+// `random.randint(TOKEN_MIN, TOKEN_MAX)` en Python; la semilla se controla
+// externamente con `std::srand()`.
 inline int random_token() {
-    return TOKEN_MIN + (std::rand() % NUM_TOKENS);
+    return TOKEN_MIN + (std::rand() % TOKENS_ALFABETO);
 }
 
 // arity traduce un token a la cantidad de hijos que requiere un arbol prefijo.
@@ -79,7 +93,8 @@ inline int arity(int token) {
     if (token >= TOKEN_CONST1 && token <= TOKEN_X) {
         return 0;
     }
-    if (token >= TOKEN_NEG && token <= TOKEN_SQRT) {
+    if ((token >= TOKEN_NEG && token <= TOKEN_SQRT) ||
+        (token >= TOKEN_TAN && token <= TOKEN_TANH)) {
         return 1;
     }
     if (token >= TOKEN_ADD && token <= TOKEN_POW) {
@@ -127,6 +142,14 @@ inline std::string render(int token) {
             return "log()";
         case TOKEN_SQRT:
             return "()**(1/2)";
+        case TOKEN_TAN:
+            return "tan()";
+        case TOKEN_SINH:
+            return "sinh()";
+        case TOKEN_COSH:
+            return "cosh()";
+        case TOKEN_TANH:
+            return "tanh()";
         case TOKEN_ADD:
             return "()+()";
         case TOKEN_MUL:

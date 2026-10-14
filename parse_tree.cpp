@@ -405,18 +405,19 @@ ldouble mutacion_rand1(ldouble r1, ldouble r2, ldouble r3, ldouble F){
 
 // token_valido: pasa el valor real de la ecuacion (7) a un token entero del
 // alfabeto. Redondea al entero mas cercano y recorta entre TOKEN_MIN y
-// TOKEN_MAX, los limites que define token.h.
+// TOKENS_ALFABETO, cuyo valor superior coincide con TOKEN_MAX porque el
+// alfabeto empieza en 1.
 //
 // Detalle C++ sin equivalente directo en Python: se devuelve `int` y no
 // `long double` porque un token es un codigo, no una cantidad; el redondeo se
 // hace con floor(v + 0.5) (equivalente a round() pero sin la ambiguedad de
 // round() con los .5 negativos) y el recorte con dos `if` en vez de min/max
 // para que quede explicito. En Python seria:
-//     def token_valido(v): return min(TOKEN_MAX, max(TOKEN_MIN, floor(v + 0.5)))
+//     def token_valido(v): return min(TOKENS_ALFABETO, max(TOKEN_MIN, floor(v + 0.5)))
 int token_valido(ldouble v){
 	ldouble redondeado = floor(v + 0.5L);
 	if (redondeado < TOKEN_MIN) return TOKEN_MIN;
-	if (redondeado > TOKEN_MAX) return TOKEN_MAX;
+	if (redondeado > TOKENS_ALFABETO) return TOKENS_ALFABETO;
 	return (int) redondeado;
 }
 

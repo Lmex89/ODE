@@ -27,8 +27,8 @@
   `ODE_SEED=42 ODE_GEN=200 timeout 60 ./main.exe | tail -30`.
   `ODE_CASE=1` selects the paper case; `ODE_CASE=2` selects the hyperbolic case.
   `ODE_POP`, `ODE_DIM`, `ODE_GEN`, and `ODE_WARM_START=1` override the search
-  configuration; the dimension default is 30 since issue #64, and warm start
-  (20-token seeds) only activates with `ODE_DIM=20`.
+  configuration; the dimension default is 20 (the paper's Case 1), and warm
+  start (20-token seeds) activates when the dimension is 20.
 - There is no CI. For behaviorally neutral DE changes, compare fixed-seed runs
   with `scripts/ab_experiment.sh --seed 42 --timeout 300`.
 

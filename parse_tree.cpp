@@ -67,6 +67,9 @@ class FunbObj{
 	//   0 = juguete historico del prototipo: y'' + y = 0, y(0)=1, y'(0)=1
 	//   1 = Caso 1 del paper, ecuacion (18): x*y'' + y' - cos(x) = 0,
 	//       y(0)=0, y'(0)=1, con solucion exacta la integral del seno Si(x)
+	//   2 = caso hiperbolico (issue #61): y'' - y = 0, y(0)=1, y'(0)=0,
+	//       con solucion exacta cosh(x); la busqueda solo puede alcanzarlo
+	//       desde que existe TOKEN_COSH.
 	// Es el mismo patron que ODE_SEED: un numero de caso en vez de una bandera
 	// por problema. En Python seria `self._caso = caso`.
 	int _caso;
@@ -169,6 +172,10 @@ class FunbObj{
 			// dividir por x=0, que es el primer punto de la rejilla.
 			ldouble x = _xrange[i][0];
 			res +=pow(x*fitnessval[2] + fitnessval[1] - cos(x),2) ;
+		} else if (_caso == 2){
+			// Caso 2 (issue #61): y'' - y = 0, la ecuacion hiperbolica. En
+			// Python seria `res += (y2 - y)**2`.
+			res +=pow(fitnessval[2] - fitnessval[0],2) ;
 		} else {
 			// Caso 0 (juguete del prototipo): y'' + y = 0.
 			res +=pow(fitnessval[2] + fitnessval[0],2) ;
@@ -181,11 +188,13 @@ class FunbObj{
 			res *= _dx;
 			// Condiciones iniciales del caso, como terminos lambda*h^2 de la
 			// ec. (4): Caso 0 y(0)=1, y'(0)=1 (solucion esperada
-			// cos(x)+sin(x)); Caso 1 del paper y(0)=0, y'(0)=1. El paper fija
+			// cos(x)+sin(x)); Caso 1 del paper y(0)=0, y'(0)=1; Caso 2
+			// y(0)=1, y'(0)=0 (solucion cosh(x)). El paper fija
 			// lambda1 = lambda2 = 10 (seccion 5) y h al cuadrado; antes se
 			// usaban pesos 300/700 y potencias cuartas.
-			ldouble y0_objetivo = (_caso == 1) ? 0.0L : 1.0L;
-			res +=10*pow((a_start[0] - y0_objetivo),2) + 10*pow((a_start[1] - 1),2);
+			ldouble y0_objetivo  = (_caso == 1) ? 0.0L : 1.0L;
+			ldouble dy0_objetivo = (_caso == 2) ? 0.0L : 1.0L;
+			res +=10*pow((a_start[0] - y0_objetivo),2) + 10*pow((a_start[1] - dy0_objetivo),2);
 		// cout << "imprimimos res " << endl;
 		// cout << res << endl;
 		// cin.get();
@@ -688,12 +697,18 @@ int main() {
 	//   0 (o ausente) -> juguete historico y'' + y = 0,  y(0)=y'(0)=1
 	//   1            -> Caso 1 del paper: x*y'' + y' - cos(x) = 0 (ec. (18)),
 	//                   y(0)=0, y'(0)=1, solucion exacta Si(x)
+	//   2            -> caso hiperbolico (issue #61): y'' - y = 0,
+	//                   y(0)=1, y'(0)=0, solucion exacta cosh(x)
 	// En Python seria `caso = int(os.environ.get("ODE_CASE", "0"))` (aqui
-	// atoi() convierte el string del entorno a entero, como int()).
+	// atoi() convierte el string del entorno a entero, como int()); un valor
+	// distinto de 1 o 2 cae de vuelta al caso 0, igual que el resto de ODE_*.
 	int caso = 0;
 	const char* caso_env = getenv("ODE_CASE");
 	if (caso_env != NULL){
-		caso = (atoi(caso_env) == 1) ? 1 : 0;
+		const int caso_pedido = atoi(caso_env);
+		if (caso_pedido == 1 || caso_pedido == 2){
+			caso = caso_pedido;
+		}
 	}
 
 	// Configuracion de la busqueda (issue #28): poblacion, dimension y tope de
@@ -742,6 +757,8 @@ int main() {
 	log_info() << "ode_case | " << caso << ": ";
 	if (caso == 1){
 		cout << "paper, ec. (18): x*y'' + y' - cos(x) = 0, y(0)=0, y'(0)=1";
+	} else if (caso == 2){
+		cout << "hiperbolico (issue #61): y'' - y = 0, y(0)=1, y'(0)=0, solucion cosh(x)";
 	} else {
 		cout << "juguete: y'' + y = 0, y(0)=1, y'(0)=1";
 	}

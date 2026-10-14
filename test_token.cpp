@@ -76,7 +76,8 @@ static void check_bool(const std::string& caso, bool condicion) {
 
 // Slice 1: los nombres publicos anclan los codigos que el alfabeto ya usa en
 // los arboles en notacion prefija. Los literales son la fuente independiente
-// de verdad: la tabla historica de 22 tokens del proyecto.
+// de verdad: la tabla historica de tokens del proyecto (25 con las
+// hiperbolicas del issue #61).
 static void test_constantes_y_rangos() {
     check_int("constant_1", TOKEN_CONST1, 1);
     check_int("constant_2", TOKEN_CONST2, 2);
@@ -96,13 +97,16 @@ static void test_constantes_y_rangos() {
     check_int("unary_log", TOKEN_LOG, 16);
     check_int("unary_sqrt", TOKEN_SQRT, 17);
     check_int("unary_tan", TOKEN_TAN, 22);
+    check_int("unary_sinh", TOKEN_SINH, 23);
+    check_int("unary_cosh", TOKEN_COSH, 24);
+    check_int("unary_tanh", TOKEN_TANH, 25);
     check_int("binary_add", TOKEN_ADD, 18);
     check_int("binary_mul", TOKEN_MUL, 19);
     check_int("binary_div", TOKEN_DIV, 20);
     check_int("binary_pow", TOKEN_POW, 21);
     check_int("minimum", TOKEN_MIN, 1);
-    check_int("maximum", TOKEN_MAX, 22);
-    check_int("alphabet_size", TOKENS_ALFABETO, 22);
+    check_int("maximum", TOKEN_MAX, 25);
+    check_int("alphabet_size", TOKENS_ALFABETO, 25);
 }
 
 // Slice 2: la aridad publica sigue la gramatica prefija: hojas sin operandos,
@@ -127,6 +131,9 @@ static void test_aridad_de_todo_el_alfabeto() {
     check_int("arity_unary_log", arity(TOKEN_LOG), 1);
     check_int("arity_unary_sqrt", arity(TOKEN_SQRT), 1);
     check_int("arity_unary_tan", arity(TOKEN_TAN), 1);
+    check_int("arity_unary_sinh", arity(TOKEN_SINH), 1);
+    check_int("arity_unary_cosh", arity(TOKEN_COSH), 1);
+    check_int("arity_unary_tanh", arity(TOKEN_TANH), 1);
     check_int("arity_binary_add", arity(TOKEN_ADD), 2);
     check_int("arity_binary_mul", arity(TOKEN_MUL), 2);
     check_int("arity_binary_div", arity(TOKEN_DIV), 2);
@@ -156,6 +163,9 @@ static void test_render_de_todo_el_alfabeto() {
     check_str("render_unary_log", render(TOKEN_LOG), "log()");
     check_str("render_unary_sqrt", render(TOKEN_SQRT), "()**(1/2)");
     check_str("render_unary_tan", render(TOKEN_TAN), "tan()");
+    check_str("render_unary_sinh", render(TOKEN_SINH), "sinh()");
+    check_str("render_unary_cosh", render(TOKEN_COSH), "cosh()");
+    check_str("render_unary_tanh", render(TOKEN_TANH), "tanh()");
     check_str("render_binary_add", render(TOKEN_ADD), "()+()");
     check_str("render_binary_mul", render(TOKEN_MUL), "()*()");
     check_str("render_binary_div", render(TOKEN_DIV), "()/()");
@@ -180,9 +190,11 @@ static void test_categorias_particionan_el_alfabeto() {
     for (int token = TOKEN_MIN; token <= TOKEN_MAX; ++token) {
         const bool esperado_constante = token >= 1 && token <= 10;
         const bool esperado_variable = token == 11;
-        const bool esperado_unario = (token >= TOKEN_NEG && token <= TOKEN_SQRT)
-                                   || token == TOKEN_TAN;
-        const bool esperado_binario = token >= TOKEN_ADD && token <= TOKEN_POW;
+        // Los literales (12-17 y 22-25 unarias; 18-21 binarias) son la tabla
+        // publicada, no una llamada a las funciones bajo prueba.
+        const bool esperado_unario = (token >= 12 && token <= 17)
+                                   || (token >= 22 && token <= 25);
+        const bool esperado_binario = token >= 18 && token <= 21;
 
         check_bool("category_constant_" + std::to_string(token),
                    is_constant(token) == esperado_constante);

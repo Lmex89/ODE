@@ -28,10 +28,17 @@ constexpr int TOKEN_COS{14};
 constexpr int TOKEN_EXP{15};
 constexpr int TOKEN_LOG{16};
 constexpr int TOKEN_SQRT{17};
-// TOKEN_TAN es otra funcion unaria; su codigo queda al final para que el
-// rango contiguo pueda ampliarse incrementando TOKENS_ALFABETO. En Python
-// seria agregar `tan` al registro de funciones y a su tabla de aridades.
+// TOKEN_TAN abre el bloque de funciones unarias nuevas al final del alfabeto
+// (tan, sinh, cosh, tanh); el rango contiguo puede ampliarse incrementando
+// TOKENS_ALFABETO. En Python seria agregar `tan` al registro de funciones y a
+// su tabla de aridades.
 constexpr int TOKEN_TAN{22};
+// Las funciones hiperbolicas (issue #61) continuan el rango contiguo de
+// unarias: sinh, cosh y tanh. En Python seria agregarlas al mismo registro de
+// funciones y a su tabla de aridades.
+constexpr int TOKEN_SINH{23};
+constexpr int TOKEN_COSH{24};
+constexpr int TOKEN_TANH{25};
 
 // Operaciones de dos operandos; en notacion prefija anteceden sus dos hijos.
 constexpr int TOKEN_ADD{18};
@@ -42,7 +49,7 @@ constexpr int TOKEN_POW{21};
 // TOKENS_ALFABETO es la cantidad de codigos contiguos disponibles. En Python
 // equivale a `len(range(TOKEN_MIN, TOKEN_MAX + 1))`; agregar un token nuevo
 // solo requiere ampliar este contador y su implementacion.
-constexpr int TOKENS_ALFABETO{22};
+constexpr int TOKENS_ALFABETO{25};
 constexpr int TOKEN_MIN{TOKEN_CONST1};
 constexpr int TOKEN_MAX{TOKEN_MIN + TOKENS_ALFABETO - 1};
 
@@ -63,7 +70,8 @@ inline bool is_variable(int token) {
 }
 
 inline bool is_unary(int token) {
-    return (token >= TOKEN_NEG && token <= TOKEN_SQRT) || token == TOKEN_TAN;
+    return (token >= TOKEN_NEG && token <= TOKEN_SQRT) ||
+           (token >= TOKEN_TAN && token <= TOKEN_TANH);
 }
 
 inline bool is_binary(int token) {
@@ -85,7 +93,8 @@ inline int arity(int token) {
     if (token >= TOKEN_CONST1 && token <= TOKEN_X) {
         return 0;
     }
-    if ((token >= TOKEN_NEG && token <= TOKEN_SQRT) || token == TOKEN_TAN) {
+    if ((token >= TOKEN_NEG && token <= TOKEN_SQRT) ||
+        (token >= TOKEN_TAN && token <= TOKEN_TANH)) {
         return 1;
     }
     if (token >= TOKEN_ADD && token <= TOKEN_POW) {
@@ -135,6 +144,12 @@ inline std::string render(int token) {
             return "()**(1/2)";
         case TOKEN_TAN:
             return "tan()";
+        case TOKEN_SINH:
+            return "sinh()";
+        case TOKEN_COSH:
+            return "cosh()";
+        case TOKEN_TANH:
+            return "tanh()";
         case TOKEN_ADD:
             return "()+()";
         case TOKEN_MUL:

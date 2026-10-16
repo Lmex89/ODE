@@ -47,7 +47,7 @@ static void check_ld(const std::string& nombre, long double got, long double esp
         std::cout << "PASS  " << nombre << "\n";
     } else {
         std::cout << "FAIL  " << nombre << "  (got=" << std::setprecision(17)
-                  << (double)got << " esperado=" << (double)esperado << ")\n";
+                  << static_cast<double>(got) << " esperado=" << static_cast<double>(esperado) << ")\n";
         g_fallos++;
     }
 }
@@ -98,7 +98,7 @@ static void test_vecvalue_const() {
     // Llamar vecvalue() en un objeto const. Si no es const, no compila.
     std::vector<long double> vec = f.vecvalue();
     check_int("vecvalue() devuelve el vector correcto en const",
-              (int)vec.size(), 3);
+              static_cast<int>(vec.size()), 3);
     // Verificar los valores: 11=TOKEN_X, 14=TOKEN_COS, 13=TOKEN_SIN
     check_bool("vecvalue() preserva los tokens originales",
                vec[0] == 11 && vec[1] == 14 && vec[2] == 13);
@@ -160,7 +160,7 @@ static void test_constructor_move_semantics() {
     // Lo importante es que FunbObj tenga los datos correctos.
     std::vector<long double> vec_recuperado = f.vecvalue();
     check_int("FunbObj tiene el vector correcto después de move",
-              (int)vec_recuperado.size(), 3);
+              static_cast<int>(vec_recuperado.size()), 3);
     check_bool("FunbObj preserva los tokens después de move",
                vec_recuperado == vec_copia);
 }

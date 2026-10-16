@@ -6,9 +6,7 @@
 #include <cstring>
 #include <cassert>
 #include <climits>
-#include <complex>
-#include <stdlib.h>     /* srand, rand */
-#include <time.h>
+#include <cstdlib>
 #include <algorithm>
 #include <utility>
 #include <sstream>
@@ -18,8 +16,6 @@
 #include "token.h"
 
 using namespace std;
-using namespace std::complex_literals;
-typedef long long int llint;
 typedef  long double ldouble;
 typedef string  str;
 
@@ -104,7 +100,7 @@ class FunbObj{
 		// Delta x de la suma de Riemann que aproxima integral(f^2 dx) en la
 		// ec. (4) del paper (seccion 5). x_rango siempre devuelve 100 puntos,
 		// asi que el divisor (npoints-1) nunca es cero.
-		_dx = (stop - start) / (long double)(_xrange.size() - 1);
+		_dx = (stop - start) / static_cast<long double>(_xrange.size() - 1);
 	}
 	// represant() es const porque no modifica el estado observable del objeto.
 	// En Python sería @property def represant(self): return self._repre.
@@ -141,7 +137,7 @@ class FunbObj{
 	// token 11. En Python seria
 	// `if not any(is_x_dependent(int(t)) for t in self._vecval):`.
 	bool depende_de_x = std::any_of(_vecval.begin(), _vecval.end(),
-	                                [](ldouble t){ return is_x_dependent((int) t); });
+	                                [](ldouble t){ return is_x_dependent(static_cast<int>(t)); });
 	if (!depende_de_x){
 		// Una expresion constante no es funcion de x: INFINITY sin tocar el
 		// vector. Antes se escribian 11s al azar y luego se devolvia INFINITY
@@ -166,7 +162,9 @@ class FunbObj{
 		return _fresult;
 	}
 
-	for (	int i = 0 ; i < (int)_xrange.size(); i++){
+	// Hoist container size to avoid repeated casts in loop condition
+	const int xrange_size = static_cast<int>(_xrange.size());
+	for (int i = 0; i < xrange_size; i++){
 		vector<ldouble> fitnessval(parsv(_vecval,_xrange[i]));
 		//  cout << parse_tree(_vecval) << endl;
 			
@@ -284,9 +282,9 @@ int config_entera(const char* valor_env, int respaldo, int minimo) {
     // `except ValueError` de Python. La cota superior evita que un valor
     // enorme desborde al convertirlo a int.
     if (fin == valor_env || *fin != '\0') return respaldo;
-    if (valor < (long) minimo || valor > (long) INT_MAX) return respaldo;
+    if (valor < static_cast<long>(minimo) || valor > static_cast<long>(INT_MAX)) return respaldo;
 
-    return (int) valor;
+    return static_cast<int>(valor);
 }
 
 // config_bandera: lee una bandera de entorno: "1" activa, "0" desactiva y
@@ -411,10 +409,11 @@ void createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config,
 	// bandera); aqui se compara contra la longitud real de los datos para que
 	// un cambio de las semillas no reintroduzca el desajuste de B5.
 	const vector<vector<ldouble>>& semillas = semillas_warm_start();
+	const int tam_semilla = static_cast<int>(semillas[0].size());
 	const bool usar_semillas = config.warm_start &&
-	                           config.dimension == (int) semillas[0].size();
+	                           config.dimension == tam_semilla;
 	if (usar_semillas){
-		for (size_t i = 0; i < semillas.size() && (int) Population.size() < config.poblacion; i++){
+		for (size_t i = 0; i < semillas.size() && static_cast<int>(Population.size()) < config.poblacion; i++){
 			// `caso` se propaga a cada FunbObj: los tokens no cambian entre
 			// casos, solo la ODE que mide fitness(). En Python seria
 			// `FunbObj(semilla, 0, 1, caso)`.
@@ -425,7 +424,7 @@ void createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config,
 	// El resto (o la poblacion entera sin warm start) es aleatorio: tantos
 	// individuos nuevos como falten para llegar a config.poblacion, sin el
 	// off-by-one de REVIEW C5.
-	while ((int) Population.size() < config.poblacion){
+	while (static_cast<int>(Population.size()) < config.poblacion){
 		Population.push_back(FunbObj(vector_population(config.dimension), 0, 1, caso));
 	}
 }
@@ -458,7 +457,7 @@ int token_valido(ldouble v){
 	ldouble redondeado = floor(v + 0.5L);
 	if (redondeado < TOKEN_MIN) return TOKEN_MIN;
 	if (redondeado > TOKENS_ALFABETO) return TOKENS_ALFABETO;
-	return (int) redondeado;
+	return static_cast<int>(redondeado);
 }
 
 // indices_distintos: sortea tres indices de poblacion distintos entre si y
@@ -508,7 +507,7 @@ vector<ldouble> Mutation(const vector<ldouble>& x, const vector<ldouble>& y, con
 	// distinto (p. ej. un seed mal escrito, B5 de REVIEW.md), leer y[i]/z[i]
 	// de mas seria una lectura fuera de rango. En Python seria
 	// `n = min(len(x), len(y), len(z))` (aqui `min` es std::min, de <algorithm>).
-	int n = (int) min(x.size(), min(y.size(), z.size()));
+	const int n = static_cast<int>(min(x.size(), min(y.size(), z.size())));
 
 	// Se parte de una copia de x: asi, si x es mas largo que y/z, los tokens
 	// sobrantes sobreviven intactos en vez de quedar indefinidos.
@@ -517,7 +516,7 @@ vector<ldouble> Mutation(const vector<ldouble>& x, const vector<ldouble>& y, con
 	// Dither: un rand() por llamada. rand()/RAND_MAX da un real en [0,1]
 	// (rand() devuelve enteros en [0,RAND_MAX]); en Python seria
 	// `F = random.random()`.
-	ldouble F = (ldouble) rand() / (ldouble) RAND_MAX;
+	ldouble F = static_cast<ldouble>(rand()) / static_cast<ldouble>(RAND_MAX);
 
 	for(int i = 0 ; i < n; i++ ){
 		res[i] = token_valido(mutacion_rand1(x[i], y[i], z[i], F));
@@ -566,7 +565,7 @@ vector<ldouble> Recombination(const vector<ldouble>& objetivo, const vector<ldou
 	// Se recorre hasta el menor de los dos tamanos: leer mutante[i] de mas seria
 	// lectura fuera de rango. En Python seria
 	// `n = min(len(objetivo), len(mutante))`.
-	int n = (int) min(objetivo.size(), mutante.size());
+	const int n = static_cast<int>(min(objetivo.size(), mutante.size()));
 
 	// Se parte de una copia del objetivo: si el objetivo es mas largo que el
 	// mutante, sus tokens sobrantes sobreviven intactos.
@@ -582,7 +581,7 @@ vector<ldouble> Recombination(const vector<ldouble>& objetivo, const vector<ldou
 	for (int i = 0; i < n; i++){
 		// Un rand() por gen, como el `if rand() < Cr` del issue: rand()/RAND_MAX
 		// da un real en [0,1] (random.random()).
-		ldouble r = (ldouble) rand() / (ldouble) RAND_MAX;
+		ldouble r = static_cast<ldouble>(rand()) / static_cast<ldouble>(RAND_MAX);
 		if (i == j_rand){
 			trial[i] = mutante[i];
 		} else {
@@ -684,7 +683,7 @@ string fmt_vector(const vector<ldouble>& v){
 	os << "[";
 	for (size_t i = 0; i < v.size(); i++){
 		if (i > 0) os << ",";
-		os << (long long) v[i];  // los tokens son enteros TOKEN_MIN..TOKEN_MAX
+		os << static_cast<long long>(v[i]);  // los tokens son enteros TOKEN_MIN..TOKEN_MAX
 	}
 	os << "]";
 	return os.str();
@@ -693,7 +692,7 @@ string fmt_vector(const vector<ldouble>& v){
 // segundos_cpu: CPU transcurrida desde g_log_t0 (time.process_time() - t0 en
 // Python). clock() mide tiempo de CPU del proceso, no tiempo de pared.
 ldouble segundos_cpu(){
-	return (ldouble)(clock() - g_log_t0) / CLOCKS_PER_SEC;
+	return static_cast<ldouble>(clock() - g_log_t0) / CLOCKS_PER_SEC;
 }
 
 // log_linea: imprime "[<t>s] [<NIVEL>] " y devuelve cout para que el llamador
@@ -725,8 +724,8 @@ int main() {
 	// corridas salen identicas (mismo fitness, mismo vector), que es lo que
 	// exige el experimento A/B. Sin la variable se usa el reloj, como antes.
 	// En Python seria: random.seed(os.environ.get("ODE_SEED")).
-	long semilla = resolver_semilla(getenv("ODE_SEED"), (long) time(NULL));
-	srand ((unsigned) semilla);
+	long semilla = resolver_semilla(getenv("ODE_SEED"), static_cast<long>(time(nullptr)));
+	srand(static_cast<unsigned>(semilla));
 
 	// Caso del problema, controlado por ODE_CASE (mismo patron que ODE_SEED):
 	//   0 (o ausente) -> juguete historico y'' + y = 0,  y(0)=y'(0)=1
@@ -739,7 +738,7 @@ int main() {
 	// distinto de 1 o 2 cae de vuelta al caso 0, igual que el resto de ODE_*.
 	int caso = 0;
 	const char* caso_env = getenv("ODE_CASE");
-	if (caso_env != NULL){
+	if (caso_env != nullptr){
 		const int caso_pedido = atoi(caso_env);
 		if (caso_pedido == 1 || caso_pedido == 2){
 			caso = caso_pedido;
@@ -764,8 +763,8 @@ int main() {
 	// Cr: probabilidad de heredar el gen del mutante en el cruce binomial
 	// (eq. (8)). Antes era `int Cr = 85`, un umbral comparado contra el tamano
 	// de poblacion; el paper (§5, REVIEW D9) usa 0.2.
-	ldouble Cr = 0.2;
-	long double eps = 0.00001;
+	constexpr ldouble Cr = 0.2;
+	constexpr long double eps = 0.00001;
 	long double Bestfit = INFINITY;
 	vector<ldouble> Bestvect;
 	int gen = 0;
@@ -811,11 +810,12 @@ int main() {
 		// Una generacion de DE/rand/1/bin: por cada individuo objetivo se
 		// sortean los tres individuos base (distintos entre si, eq. (7)), se
 		// muta, se cruza (eq. (8)) y se selecciona el mejor de los dos.
-		for (int j = 0; j < (int) Population.size(); j++){
+		const int tam_poblacion = static_cast<int>(Population.size());
+		for (int j = 0; j < tam_poblacion; j++){
 
 			// Structured binding: desempaqueta el array devuelto por el
 			// sorteo (Python: `r1, r2, r3 = indices_distintos(...)`).
-			auto [r1, r2, r3] = indices_distintos((int) Population.size(), j);
+			auto [r1, r2, r3] = indices_distintos(tam_poblacion, j);
 			vector<ldouble> mutante(Mutation(Population[r1].vecvalue(), Population[r2].vecvalue(), Population[r3].vecvalue()));
 			vector<ldouble> trial(Recombination(Population[j].vecvalue(), mutante, Cr));
 
@@ -833,7 +833,7 @@ int main() {
 		// Mejor individuo de la generacion (la fitness mas baja). Se busca con
 		// un barrido simple en vez de ordenar la poblacion entera.
 		int mejor = 0;
-		for (int j = 1; j < (int) Population.size(); j++){
+		for (int j = 1; j < tam_poblacion; j++){
 			if (Population[j].fitness() < Population[mejor].fitness()){
 				mejor = j;
 			}

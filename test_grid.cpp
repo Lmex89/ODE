@@ -61,7 +61,7 @@ static void check_ld(const std::string& nombre, long double got, long double esp
         std::cout << "PASS  " << nombre << "\n";
     } else {
         std::cout << "FAIL  " << nombre << "  (got=" << std::setprecision(17)
-                  << (double)got << " esperado=" << (double)esperado << ")\n";
+                  << static_cast<double>(got) << " esperado=" << static_cast<double>(esperado) << ")\n";
         g_fallos++;
     }
 }
@@ -89,11 +89,13 @@ static void check_bool(const std::string& nombre, bool cond) {
 static void test_x_rango_cantidad_de_puntos() {
     // El tercer argumento es un conteo: con 100 se obtienen exactamente 100
     // puntos (no 101, como daria un paso fijo de 0.01 en un intervalo cerrado).
+    const vector<vector<long double>> pts100 = x_rango(0.0L, 1.0L, 100);
     check_int("x_rango(0,1,100) produce 100 puntos",
-              (int) x_rango(0.0L, 1.0L, 100).size(), 100);
+              static_cast<int>(pts100.size()), 100);
     // El mismo contrato con otro conteo: la rejilla historica de 11 puntos.
+    const vector<vector<long double>> pts11 = x_rango(0.0L, 1.0L, 11);
     check_int("x_rango(0,1,11) produce 11 puntos",
-              (int) x_rango(0.0L, 1.0L, 11).size(), 11);
+              static_cast<int>(pts11.size()), 11);
 }
 
 static void test_x_rango_extremos_incluidos() {

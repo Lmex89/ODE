@@ -66,7 +66,7 @@ static void check_ld(const std::string& nombre, ldouble got, ldouble esperado,
         std::cout << "PASS  " << nombre << "\n";
     } else {
         std::cout << "FAIL  " << nombre << "  (got=" << std::setprecision(17)
-                  << (double)got << " esperado=" << (double)esperado << ")\n";
+                  << static_cast<double>(got) << " esperado=" << static_cast<double>(esperado) << ")\n";
         g_fallos++;
     }
 }
@@ -115,7 +115,7 @@ static std::string vec_str(const std::vector<long double>& v) {
     std::ostringstream os;
     os << "[";
     for (size_t i = 0; i < v.size(); i++) {
-        os << (double)v[i];
+        os << static_cast<double>(v[i]);
         if (i + 1 < v.size()) os << ", ";
     }
     os << "]";
@@ -212,7 +212,7 @@ static void test_recombination_genes_de_los_padres_y_fraccion_cr() {
 
     check_bool("cada gen del trial sale del objetivo o del mutante",
                solo_de_los_padres);
-    double fraccion = (double)del_mutante / (double)total;
+    double fraccion = static_cast<double>(del_mutante) / static_cast<double>(total);
     check_bool("fraccion de genes del mutante cerca de Cr=0.2 (esperado ~0.24)",
                fraccion > 0.18 && fraccion < 0.30);
 }

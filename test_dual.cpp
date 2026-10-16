@@ -32,7 +32,7 @@ static std::string vec_str(const std::vector<long double>& v) {
     os << "[";
     for (size_t i = 0; i < v.size(); i++) {
         if (std::isnan(v[i])) os << "nan";   // long double sin equivalente en Python
-        else os << (double)v[i];             // cast solo para imprimir mas corto
+        else os << static_cast<double>(v[i]);             // cast solo para imprimir mas corto
         if (i + 1 < v.size()) os << ", ";
     }
     os << "]";

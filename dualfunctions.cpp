@@ -1,13 +1,9 @@
-#include <iostream>
 #include <vector>
-#include <ctime>
 #include <cmath>
-#include <cstring>
 
 #include "token.h"
 
 using namespace std;
-typedef long long int llint;
 typedef  long double ldouble;
 typedef string  str;
 
@@ -20,7 +16,7 @@ const ldouble VALOR_E = exp(1.0L);
 
 vector<ldouble> sin2dual(const vector<ldouble>& xval){
 
-	vector<ldouble> f = {NAN,NAN,NAN};;
+	vector<ldouble> f = {NAN, NAN, NAN};
 
 	f[0] = sin(xval[0]);
 	f[1] = cos(xval[0])*xval[1];
@@ -31,7 +27,7 @@ vector<ldouble> sin2dual(const vector<ldouble>& xval){
 
 vector<ldouble> cos2dual(const vector<ldouble>& xval){
 
-	vector<ldouble> f = {NAN,NAN,NAN}; ;
+	vector<ldouble> f = {NAN, NAN, NAN};
 
 	f[0] = cos(xval[0]);
 	f[1] = -sin(xval[0])*xval[1];
@@ -42,7 +38,7 @@ vector<ldouble> cos2dual(const vector<ldouble>& xval){
 
 vector<ldouble> tan2dual(const vector<ldouble>& xval){
 
-	vector<ldouble> f = {NAN,NAN,NAN}; ;
+	vector<ldouble> f = {NAN, NAN, NAN};
 
 	f[0] = tan(xval[0]);
 	// tan(u)' = u'/cos^2(u): la derivada usa la componente dual xval[1]
@@ -58,7 +54,7 @@ vector<ldouble> tan2dual(const vector<ldouble>& xval){
 // xval[1] y xval[2] son u' y u'' (la regla de la cadena), no la parte real.
 vector<ldouble> sinh2dual(const vector<ldouble>& xval){
 
-	vector<ldouble> f = {NAN,NAN,NAN};
+	vector<ldouble> f = {NAN, NAN, NAN};
 
 	f[0] = sinh(xval[0]);
 	f[1] = cosh(xval[0])*xval[1];
@@ -71,7 +67,7 @@ vector<ldouble> sinh2dual(const vector<ldouble>& xval){
 // `[math.cosh(u), math.sinh(u)*du, math.cosh(u)*du**2 + math.sinh(u)*ddu]`.
 vector<ldouble> cosh2dual(const vector<ldouble>& xval){
 
-	vector<ldouble> f = {NAN,NAN,NAN};
+	vector<ldouble> f = {NAN, NAN, NAN};
 
 	f[0] = cosh(xval[0]);
 	f[1] = sinh(xval[0])*xval[1];
@@ -87,7 +83,7 @@ vector<ldouble> cosh2dual(const vector<ldouble>& xval){
 // cociente, no de la parte real.
 vector<ldouble> tanh2dual(const vector<ldouble>& xval){
 
-	vector<ldouble> f = {NAN,NAN,NAN};
+	vector<ldouble> f = {NAN, NAN, NAN};
 
 	f[0] = tanh(xval[0]);
 	f[1] = xval[1]/pow(cosh(xval[0]),2);
@@ -141,7 +137,8 @@ vector<ldouble> division2dual(const vector<ldouble>&x, const vector<ldouble>& y)
 //             realmente infinita o la potencia indeterminada (0^0)
 //   u < 0  -> real solo con exponente entero y constante; si no, NaN explicito
 // En Python seria la misma cascada de `if/elif` con math.pow/math.log; `NAN`
-// es float("nan") (aqui es el macro NAN de <cmath>).
+// es float("nan") (aqui es el macro NAN de <cmath>), usado consistentemente
+// para el blanking de operandos.
 vector<ldouble> pow2dual(const vector<ldouble>&x, const vector<ldouble>& y){
 
 	// Arranca en NaN: toda rama que no asigne un valor deja NaN, que es la
@@ -262,7 +259,7 @@ str parse_tree(const vector<ldouble>& v){
 // fun es un vector que contiene algo como esto : [()+(),sin(),x,cos(),x]
 // es funcion concatena las funciones, de fun
 
-		for (int i = 1 ; i < (int) fun.size(); i++){
+		for (int i = 1; i < static_cast<int>(fun.size()); i++){
 			std::size_t poss = f_string.find("()");
 			if (poss !=std::string::npos){
 				f_string.insert(poss+1,fun[i]);
@@ -303,10 +300,9 @@ vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval, int inicio
 */
 
 	int cont = 0,dim;
-	const long double NANf = sqrt(-1);
 	vector<ldouble> temp;
-	temp.assign(3,NANf);
-	vector<long double> f_result = {NAN,NAN,NAN};;
+	temp.assign(3,NAN);
+	vector<long double> f_result = {NAN,NAN,NAN};
 	vector<vector<ldouble>> auxiliar;
 	dim=vecval[0].size();
 
@@ -332,7 +328,7 @@ vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval, int inicio
 		// Borrado EN EL SITIO: NaN en la componente real de la columna
 		// consumida, dentro de la matriz compartida con parsv. Asi la
 		// operacion de la izquierda ya no ve este operando.
-		vecval[0][j]=NANf;
+		vecval[0][j]=NAN;
 
 		cont++;
 	}
@@ -452,11 +448,10 @@ vector<ldouble> parsv(vector<ldouble> x, vector<ldouble> xval){
 	vector<ldouble> f_result(3) ;
 	dim = x.size();
 	vector<vector<ldouble>> auxv;
-	const long double NANf = sqrt(-1);
 	vector<ldouble> auxv1(dim);
-	auxv1.assign(dim,NANf);
+	auxv1.assign(dim,NAN);
 
-	for (int m = 0; m <(int) xval.size(); m++){
+	for (int m = 0; m < static_cast<int>(xval.size()); m++){
 		auxv.push_back(auxv1);
 	}
 
@@ -470,9 +465,9 @@ vector<ldouble> parsv(vector<ldouble> x, vector<ldouble> xval){
 		// [13,18] daba sin(18) en lugar de NaN).
 		// En Python seria `if 1 <= x[k] <= 10:`.
 		if(x[k] >= 1 && x[k] <= 10){
-			 auxv[0][k]= (long double) 1.0*x[k];
-			 auxv[1][k]= (long double) 0.0;
-			 auxv[2][k]= (long double) 0.0;
+			 auxv[0][k]= 1.0L * x[k];
+			 auxv[1][k]= 0.0L;
+			 auxv[2][k]= 0.0L;
 		 }
 		if(x[k] == 11){
 			auxv[0][k]= xval[0];
@@ -532,7 +527,7 @@ vector<ldouble> parsv(vector<ldouble> x, vector<ldouble> xval){
 		// paper que pasa `auxv(:,k+1)` por referencia (Algorithm 1). Antes el
 		// original quedaba vivo y el siguiente binario volvia a "comer" esta
 		// misma hoja en lugar de su otro subarbol.
-		auxv[0][k+1] = NANf;
+		auxv[0][k+1] = NAN;
 
 		// Parada temprana (Algorithm 1): si la operacion produjo NaN, el
 		// arbol entero ya no puede dar un valor finito, asi que se corta
@@ -540,7 +535,7 @@ vector<ldouble> parsv(vector<ldouble> x, vector<ldouble> xval){
 		// podrian "saltarse" el NaN y enganchar otros operandos). En Python:
 		// `if math.isnan(temp[0]): return [float("nan")]*3`.
 		if (isnan(temp[0])){
-			return {NANf, NANf, NANf};
+			return {NAN, NAN, NAN};
 		}
 
 		auxv[0][k] = temp[0];
@@ -563,7 +558,7 @@ vector<ldouble> parsv(vector<ldouble> x, vector<ldouble> xval){
 		// Misma parada temprana que en el camino unario: un NaN devuelto
 		// por la operacion corta la evaluacion (Algorithm 1).
 		if (isnan(temp[0])){
-			return {NANf, NANf, NANf};
+			return {NAN, NAN, NAN};
 		}
 
 		auxv[0][k]=temp[0];

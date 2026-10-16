@@ -76,6 +76,10 @@ class FunbObj{
     //   2 = caso hiperbolico (issue #61): y'' - y = 0, y(0)=1, y'(0)=0,
     //       con solucion exacta cosh(x); la busqueda solo puede alcanzarlo
     //       desde que existe TOKEN_COSH.
+    //   3..7 = casos nuevos (issues #103/#104). ODE_CASE ya los acepta
+    //       (issue #102) y las condiciones iniciales por caso (incluidas
+    //       y(0)=-1/2 de Legendre y y(0)=-2 de Hermite) se asignan en el
+    //       switch de fitness(); sus residuales llegan con esos tickets.
     // Es el mismo patron que ODE_SEED: un numero de caso en vez de una bandera
     // por problema. En Python seria `self._caso = caso`.
     int _caso;
@@ -205,13 +209,35 @@ class FunbObj{
             // de la integral. En Python seria `res *= self._dx`.
             res *= _dx;
             // Condiciones iniciales del caso, como terminos lambda*h^2 de la
-            // ec. (4): Caso 0 y(0)=1, y'(0)=1 (solucion esperada
-            // cos(x)+sin(x)); Caso 1 del paper y(0)=0, y'(0)=1; Caso 2
-            // y(0)=1, y'(0)=0 (solucion cosh(x)). El paper fija
-            // lambda1 = lambda2 = 10 (seccion 5) y h al cuadrado; antes se
-            // usaban pesos 300/700 y potencias cuartas.
-            ldouble y0_objetivo  = (_caso == 1) ? 0.0L : 1.0L;
-            ldouble dy0_objetivo = (_caso == 2) ? 0.0L : 1.0L;
+            // ec. (4). El paper fija lambda1 = lambda2 = 10 (seccion 5) y h al
+            // cuadrado; antes se usaban pesos 300/700 y potencias cuartas.
+            // Issue #102: el switch reemplaza los ternarios que solo
+            // distinguian 0.0L/1.0L para que cada caso declare valores
+            // arbitrarios (fraccionarios como -1/2 o negativos como -2). En
+            // Python seria `y0_objetivo, dy0_objetivo = IC_POR_CASO[self._caso]`,
+            // con los valores por defecto del caso 0 si el caso no esta.
+            ldouble y0_objetivo  = 1.0L;   // caso 0: y(0)=1 (solucion cos+sin)
+            ldouble dy0_objetivo = 1.0L;   // caso 0: y'(0)=1
+            switch (_caso){
+                case 1:   // paper, ec. (18): x*y'' + y' - cos(x) = 0
+                    y0_objetivo  = 0.0L;
+                    dy0_objetivo = 1.0L;
+                    break;
+                case 2:   // hiperbolico (issue #61): y'' - y = 0 => cosh(x)
+                    y0_objetivo  = 1.0L;
+                    dy0_objetivo = 0.0L;
+                    break;
+                case 6:   // Legendre (issue #104): y(0) = -1/2, y'(0) = 0
+                    y0_objetivo  = -0.5L;
+                    dy0_objetivo = 0.0L;
+                    break;
+                case 7:   // Hermite (issue #104): y(0) = -2, y'(0) = 0
+                    y0_objetivo  = -2.0L;
+                    dy0_objetivo = 0.0L;
+                    break;
+                default:  // caso 0, y 3-5 (issue #103): conservan (1,1)
+                    break;
+            }
             res +=10*pow((a_start[0] - y0_objetivo),2) + 10*pow((a_start[1] - dy0_objetivo),2);
         // cout << "imprimimos res " << endl;
         // cout << res << endl;
@@ -794,14 +820,18 @@ int main() {
     //                   y(0)=0, y'(0)=1, solucion exacta Si(x)
     //   2            -> caso hiperbolico (issue #61): y'' - y = 0,
     //                   y(0)=1, y'(0)=0, solucion exacta cosh(x)
+    //   3..7         -> casos nuevos (issues #103/#104): el parser ya los
+    //                   acepta (issue #102) y cada uno lleva sus condiciones
+    //                   iniciales en fitness(); sus residuales se implementan
+    //                   en los tickets siguientes.
     // En Python seria `caso = int(os.environ.get("ODE_CASE", "0"))` (aqui
-    // atoi() convierte el string del entorno a entero, como int()); un valor
-    // distinto de 1 o 2 cae de vuelta al caso 0, igual que el resto de ODE_*.
+    // atoi() convierte el string del entorno a entero, como int()); cualquier
+    // valor fuera de 0..7 cae de vuelta al caso 0, igual que el resto de ODE_*.
     int caso = 0;
     const char* caso_env = getenv("ODE_CASE");
     if (caso_env != nullptr){
         const int caso_pedido = atoi(caso_env);
-        if (caso_pedido == 1 || caso_pedido == 2){
+        if (caso_pedido >= 0 && caso_pedido <= 7){
             caso = caso_pedido;
         }
     }

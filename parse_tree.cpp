@@ -482,10 +482,11 @@ void indices_distintos(int tam, int excluir, int& r1, int& r2, int& r3){
 // generacion, no es una constante del algoritmo). El real resultante se
 // convierte a un token valido con token_valido().
 //
-// Nota C++ para un desarrollador Python: los tres parametros entran *por
-// valor* (una copia de cada vector, como una lista copiada en Python) y la
-// funcion devuelve un vector nuevo; nadie muta los padres.
-vector<ldouble> Mutation(vector<ldouble>x, vector<ldouble> y,vector<ldouble>z){
+// Nota C++ para un desarrollador Python: los tres parametros entran por
+// referencia constante (const&: sin copiar el vector, igual que pasar una
+// lista a una funcion en Python) y la funcion devuelve un vector nuevo; el
+// const& declara ademas que los padres son de solo lectura (nadie los muta).
+vector<ldouble> Mutation(const vector<ldouble>& x, const vector<ldouble>& y, const vector<ldouble>& z){
 
 	// Se recorre hasta el menor de los tres tamanos: si dos vectores midieran
 	// distinto (p. ej. un seed mal escrito, B5 de REVIEW.md), leer y[i]/z[i]

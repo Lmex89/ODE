@@ -900,8 +900,14 @@ int main() {
 	           << " elapsed_cpu_s=" << fmt_fijo(segundos_cpu(), 2) << '\n';
 	cout.flush();
 
-	// Firma del autor, conservada del prototipo original.
-	cout << "Por Lmex" << '\n';
+	// Firma del autor (issue #44), conservada del prototipo original pero ahora
+	// como un evento estructurado mas: nivel INFO y flush explicito, para que
+	// el consumidor del log no vea lineas sueltas. `author=` es un campo nuevo
+	// que el awk de scripts/ab_experiment.sh no parsea (solo mira seed, gen,
+	// generations, best, expr, vector, status y elapsed_cpu_s). En Python
+	// seria logging.info("signature | author=Lmex").
+	log_info() << "signature | author=Lmex" << '\n';
+	cout.flush();
 
 	return 0;
 }

@@ -61,7 +61,9 @@ run: $(TARGET)
 # En Python seria como correr `pytest`: exit code != 0 si algun assert falla.
 TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe test_grid.exe test_population.exe test_token.exe test_header_hygiene.exe test_funbobj_const.exe
 
-test: $(TESTBINS)
+# $(TARGET) tambien es prerequisito: el checker del log (issue #44) ejecuta
+# main.exe, asi que `make test` primero lo compila si hace falta.
+test: $(TESTBINS) $(TARGET)
 	./test_dual.exe
 	./test_semilla.exe
 	./test_mutation.exe
@@ -72,6 +74,7 @@ test: $(TESTBINS)
 	./test_header_hygiene.exe
 	./test_funbobj_const.exe
 	python3 scripts/check_dual_validation.py
+	python3 scripts/check_run_log.py
 
 # `make sage-test` ejecuta el notebook completo dentro de un kernel SageMath
 # real. El script usa `sage` si esta instalado y, si no, Docker con una imagen

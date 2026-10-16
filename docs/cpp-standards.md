@@ -163,7 +163,7 @@ There is no CI: verification is manual (AGENTS.md).
   `test_crossover.cpp`) rather than a manual run.
 - Behavioural changes to the DE loop: run with a fixed `ODE_SEED` (and
   `ODE_CASE=1` when relevant) and check the logged best fitness, e.g.
-  `ODE_SEED=42 timeout 60 ./main.exe | tail -30`; compare against the
+  `ODE_SEED=42 timeout 60 ./build/ode-solver | tail -30`; compare against the
   pre-change revision with `scripts/ab_experiment.sh` when the change is
   supposed to be neutral.
 

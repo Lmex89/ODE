@@ -1,10 +1,10 @@
 # SageMath second-order dual-number validation
 
-The validation cell in `Untitled.ipynb` evaluates 16 expressions at the three
-points `x = 0.25, 0.50, 0.75`. For each of the 48 cases it compares the value,
-first derivative, and second derivative carried by the Python 2dual tuple with
-central finite differences. The tolerance is `1e-5`; the domain points avoid
-the non-real or non-finite branches of `log`, `sqrt`, and `2/x`.
+The validation cell in `docs/legacy/Untitled.ipynb` evaluates 16 expressions at
+the three points `x = 0.25, 0.50, 0.75`. For each of the 48 cases it compares
+the value, first derivative, and second derivative carried by the Python 2dual
+tuple with central finite differences. The tolerance is `1e-5`; the domain
+points avoid the non-real or non-finite branches of `log`, `sqrt`, and `2/x`.
 
 The notebook is executed in full, not by extracting only the validation cells.
 That keeps the existing ODE and closed-form solution material executable too.
@@ -31,7 +31,7 @@ sage -python -m jupyter nbconvert \
   --ExecutePreprocessor.kernel_name=sagemath \
   --ExecutePreprocessor.timeout=120 \
   --output Untitled.executed.ipynb \
-  Untitled.ipynb
+  docs/legacy/Untitled.ipynb
 ```
 
 The captured run below was made on 2026-10-13 with SageMath 10.10 (Python

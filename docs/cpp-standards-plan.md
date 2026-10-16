@@ -231,7 +231,7 @@ style(cpp): normalize indentation to four spaces
 3. Fixed-seed neutrality check for every "neutral" step:
 
    ```sh
-   ODE_SEED=42 timeout 120 ./main.exe > /tmp/run.log
+   ODE_SEED=42 timeout 120 ./build/ode-solver > /tmp/run.log
    grep -E "new_best|solution|no_solution" /tmp/run.log   # compare before/after
    grep -c 'gen=' /tmp/run.log                            # generation count
    grep de_run_end /tmp/run.log | sed -E 's/elapsed_cpu_s=[^ ]+/elapsed_cpu_s=X/'

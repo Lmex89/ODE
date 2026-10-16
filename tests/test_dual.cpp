@@ -2,7 +2,7 @@
 // test_dual.cpp - Tests de comportamiento de los dual numbers (issue #2).
 //
 // Para un desarrollador Python: este archivo cumple el rol de un
-// `test_dual.py` con pytest. `make test` lo compila y lo corre; como C++ no
+// `test_dual.py` con pytest. `ctest --test-dir build` lo compila y lo corre; como C++ no
 // trae pytest, cada `test_*()` imprime PASS/FAIL y el `main()` termina con
 // codigo de salida != 0 si algo fallo (igual que un pytest que "falla").
 //

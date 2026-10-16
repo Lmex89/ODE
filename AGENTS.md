@@ -2,11 +2,14 @@
 
 ## Code navigation
 
-- This repository has a `.codegraph/` index. Before investigating or changing
-  code, use `codegraph_explore` (or `codegraph explore`) rather than manually
-  searching source. Use `Read`/`Grep` only for unindexed files such as this
-  file, `Makefile`, `README.md`, `GLOSSARY.md`, notebooks, or files CodeGraph
-  flags as stale.
+- **Always use codegraph — never `grep`/`Read` indexed source first.** This repo
+  has a `.codegraph/` index over every symbol and file. For any code question —
+  a bug, a flow ("how does X reach Y"), or reading a file you plan to edit —
+  call `codegraph_explore` (or `codegraph explore`) first: one call returns the
+  verbatim, line-numbered source plus who calls it and what depends on it. Fall
+  back to `Read`/`Grep` only for files codegraph does not index (this file,
+  `README.md`, `GLOSSARY.md`, notebooks, `docs/`) or files codegraph flags as
+  stale.
 - Read `GLOSSARY.md` before work that uses domain terminology. Its token
   tables are stale (former 21-token alphabet); `token.h` is the source of
   truth and defines the contiguous alphabet `1..29`.

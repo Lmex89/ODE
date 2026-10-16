@@ -16,9 +16,11 @@
   `main.exe` with `g++`, C++17, `-Wall`, and `-O3`. Override with
   `make CXX=icpc` when needed. Never add `parse_tree_bckp.cpp` to a build: it
   also defines `main()`.
-- `make test` builds and runs eight C++ test executables plus
-  `python3 scripts/check_dual_validation.py`. For a focused test, use, for
-  example, `make test_mutation.exe && ./test_mutation.exe`.
+- `make test` builds and runs the C++ test executables plus the Python
+  checkers: `python3 scripts/check_dual_validation.py` (notebook cells) and
+  `python3 scripts/check_run_log.py` (structured log of a short `main.exe`
+  run). For a focused test, use, for example,
+  `make test_mutation.exe && ./test_mutation.exe`.
 - `make sage-test` is separate: it executes the entire Sage notebook, using a
   local `sage` installation or Docker with the pinned image. It is appropriate
   for changes to dual-number math or `Untitled.ipynb`.

@@ -55,19 +55,22 @@ class FunbObj{
 	private:
 	vector<ldouble> _vecval;
 	string _repre;
-	ldouble _fresult;
+	// _fresult es mutable porque fitness() es const pero necesita cachear el
+	// resultado. En Python sería @cached_property: método const con estado interno.
+	mutable ldouble _fresult;
 	// Cache de la fitness ya calculada (B6 de REVIEW.md): los individuos se
 	// reemplazan enteros en el bucle DE (`Population[j] = candidato`), nunca
-	// se mutan, asi que el valor cacheado no puede quedar obsoleto. En Python
-	// serian `self._cache_valido = False` y `self._fresult`.
-	bool _cache_valido = false;
+	// se mutan, así que el valor cacheado no puede quedar obsoleto. Es mutable
+	// porque fitness() es const pero debe poder actualizar la caché. En Python
+	// serían `self._cache_valido = False` y `self._fresult`.
+	mutable bool _cache_valido = false;
 	vector<vector<ldouble>> _xrange;
 	vector<long double> _xinitials = {0.0,1.0,0.0};
-	// Factor de integracion Delta x de la suma de Riemann de la ec. (4):
+	// Factor de integración Delta x de la suma de Riemann de la ec. (4):
 	// con los 100 puntos igualmente espaciados de [0,1] y ambos extremos
-	// incluidos, el paso es (stop-start)/(npoints-1) = 1/99. En Python seria
+	// incluidos, el paso es (stop-start)/(npoints-1) = 1/99. En Python sería
 	// `self._dx = (stop - start) / (len(self._xrange) - 1)`; long double no
-	// tiene equivalente exacto en Python (es mas ancho que float).
+	// tiene equivalente exacto en Python (es más ancho que float).
 	long double _dx;
 	// Caso del problema que mide esta fitness (lo elige ODE_CASE en main()):
 	//   0 = juguete historico del prototipo: y'' + y = 0, y(0)=1, y'(0)=1
@@ -85,27 +88,37 @@ class FunbObj{
 	// defecto 0 para que el resto del programa y los tests que ya construian
 	// FunbObj con 3 argumentos sigan comportandose igual. En Python seria
 	// `def __init__(self, vecval, start, stop, caso=0)`.
-	FunbObj(vector<ldouble> vecval,ldouble start,ldouble stop, int caso = 0){
+	// El constructor usa move semantics para el vector: std::move(vecval) evita
+	// copiar el vector dos veces (una en el parámetro, otra en el miembro).
+	// En Python no existe este detalle porque las listas siempre son referencias;
+	// en C++ el move evita el overhead de copiar el vector completo.
+	FunbObj(vector<ldouble> vecval,ldouble start,ldouble stop, int caso = 0)
+	: _vecval(std::move(vecval)), _caso(caso) {
 		// Rejilla de evaluacion: los 100 puntos igualmente espaciados de [0,1]
 		// que pide el paper (§5). En Python seria
 		// `self._xrange = x_rango(start, stop, 100)`.
 		_xrange = x_rango(start,stop,100);
-		_repre = parse_tree(vecval);
+		_repre = parse_tree(_vecval);
 		_xrange[0] = _xinitials;
-		_vecval = vecval;
-		_caso = caso;
 		// Delta x de la suma de Riemann que aproxima integral(f^2 dx) en la
 		// ec. (4) del paper (seccion 5). x_rango siempre devuelve 100 puntos,
 		// asi que el divisor (npoints-1) nunca es cero.
 		_dx = (stop - start) / (long double)(_xrange.size() - 1);
 	}
-	string represant(){
+	// represant() es const porque no modifica el estado observable del objeto.
+	// En Python sería @property def represant(self): return self._repre.
+	string represant() const{
 		return _repre;
 	}
-	vector<ldouble> vecvalue(){
+	// vecvalue() es const porque solo devuelve una copia del vector interno.
+	// En Python sería @property def vecvalue(self): return self._vecval.copy().
+	vector<ldouble> vecvalue() const{
 		return _vecval;
 	}
-	long double fitness(){	
+	// fitness() es const con caché mutable: el método es de solo lectura desde
+	// fuera, pero internamente puede actualizar _fresult y _cache_valido.
+	// En Python sería @cached_property: método const con estado interno cacheado.
+	long double fitness() const{	
 		// Cache por individuo: el bucle DE pide la fitness varias veces (la
 		// comparacion del trial contra el objetivo y, en el barrido del mejor
 		// de la generacion, dos por comparacion); recalcular la rejilla de 100

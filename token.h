@@ -144,6 +144,21 @@ inline int arity(int token) {
     return 0;
 }
 
+// random_operator_token devuelve un token aleatorio con aridad > 0 (operador
+// unario o binario). Evita el colapso de expresiones: si el primer token es
+// una hoja (aridad 0), la expresión completa colapsa a un solo token y los
+// demás se desperdician. En Python sería:
+//     while True:
+//         t = random.randint(TOKEN_MIN, TOKEN_MAX)
+//         if arity(t) > 0: return t
+inline int random_operator_token() {
+    int token;
+    do {
+        token = random_token();
+    } while (arity(token) == 0);
+    return token;
+}
+
 // render devuelve el fragmento de expresion que representa un token. Un
 // `switch` es el equivalente a `match token:` de Python; el string vacio hace
 // visible que un codigo invalido no tiene plantilla de renderizado.

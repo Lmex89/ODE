@@ -191,24 +191,26 @@ static void check_vec(const std::string& nombre,
 }
 
 // Si x_r2 y x_r3 son iguales, la ecuacion (7) queda v = x_r1 + F*0 = x_r1:
-// la mutacion debe devolver al individuo base tal cual.
+// la mutacion debe devolver al individuo base tal cual (salvo la reparacion
+// del primer token si es hoja, que ahora se reemplaza por un operador).
 static void test_mutation_identidad_si_y_igual_z() {
-    std::vector<long double> x = {11, 5, 3};
-    std::vector<long double> y = {11, 7, 9};
-    std::vector<long double> z = {11, 7, 9};
+    std::vector<long double> x = {18, 5, 11};  // TOKEN_ADD al inicio (operador), TOKEN_X al final
+    std::vector<long double> y = {18, 7, 11};
+    std::vector<long double> z = {18, 7, 11};
     check_vec("Mutation(x, y, y) devuelve x (F*0 = 0)", Mutation(x, y, z), x);
 }
 
 // F esta en [0,1], asi que cada token se mueve, como mucho, la distancia
-// |y[i] - z[i]| (mas 0.5 por el redondeo). Con la mutacion ad-hoc anterior
-// (|x-y| + z) esa cota no se cumplia.
+// |y[i] - z[i]| (mas 0.5 por el redondeo). La reparacion del primer token
+// (si es hoja) puede alterar esa cota solo en la posicion 0.
 static void test_mutation_vecindad_acotada() {
     srand(20261012);
-    // x[0]=11 e y[0]=z[0]=11: el token x sobrevive siempre y no se dispara la
-    // reparacion, asi la cota se puede medir sobre todo el vector.
-    std::vector<long double> x = {11, 10, 2, 20, 5};
-    std::vector<long double> y = {11, 4, 9, 3, 18};
-    std::vector<long double> z = {11, 8, 1, 19, 6};
+    // x[0]=18 (TOKEN_ADD, operador) e y[0]=z[0]=18: el primer token sobrevive
+    // y no se dispara la reparacion, asi la cota se puede medir sobre todo el vector.
+    // TOKEN_X esta presente en x para que la reparacion de TOKEN_X no se dispare.
+    std::vector<long double> x = {18, 10, 11, 20, 5};
+    std::vector<long double> y = {18, 4, 11, 3, 18};
+    std::vector<long double> z = {18, 8, 11, 19, 6};
 
     std::vector<long double> res = Mutation(x, y, z);
 

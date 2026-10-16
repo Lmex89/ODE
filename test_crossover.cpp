@@ -149,8 +149,8 @@ static void check_vec(const std::string& nombre,
 // altere el resultado.
 static void test_recombination_cr1_toma_todo_el_mutante() {
     srand(20261012);
-    std::vector<long double> objetivo = {11, 3, 5, 7, 9};
-    std::vector<long double> mutante  = {11, 4, 6, 8, 10};
+    std::vector<long double> objetivo = {18, 3, 5, 11, 9};  // TOKEN_ADD al inicio, TOKEN_X presente
+    std::vector<long double> mutante  = {18, 4, 6, 11, 10};
     check_vec("Recombination(objetivo, mutante, Cr=1) == mutante",
               Recombination(objetivo, mutante, 1.0L), mutante);
 }
@@ -161,8 +161,8 @@ static void test_recombination_cr1_toma_todo_el_mutante() {
 // para que, pase lo que pase con j_rand, la reparacion no dispare.
 static void test_recombination_cr0_forzado_jrand() {
     srand(20261012);
-    std::vector<long double> objetivo = {11, 3, 11, 7, 9};
-    std::vector<long double> mutante  = {9, 4, 6, 8, 10};
+    std::vector<long double> objetivo = {18, 3, 11, 7, 9};  // TOKEN_ADD al inicio (operador)
+    std::vector<long double> mutante  = {18, 4, 6, 8, 10};  // TOKEN_ADD al inicio (operador)
 
     std::vector<long double> trial = Recombination(objetivo, mutante, 0.0L);
 
@@ -191,8 +191,10 @@ static void test_recombination_genes_de_los_padres_y_fraccion_cr() {
     srand(20261012);
     std::vector<long double> objetivo(20, 1.0L);
     std::vector<long double> mutante(20, 2.0L);
-    objetivo[0] = 11.0L;
-    mutante[0]  = 11.0L;
+    objetivo[0] = 18.0L;  // TOKEN_ADD (operador) en posicion 0
+    mutante[0]  = 18.0L;  // TOKEN_ADD (operador) en posicion 0
+    objetivo[1] = 11.0L;  // TOKEN_X para evitar la reparacion de x
+    mutante[1]  = 11.0L;  // TOKEN_X para evitar la reparacion de x
 
     const int repeticiones = 200;
     long total = 0, del_mutante = 0;
@@ -204,7 +206,7 @@ static void test_recombination_genes_de_los_padres_y_fraccion_cr() {
             total++;
             if (trial[i] == 2.0L) {
                 del_mutante++;
-            } else if (trial[i] != 1.0L) {
+            } else if (trial[i] != objetivo[i] && trial[i] != mutante[i]) {
                 solo_de_los_padres = false;
             }
         }

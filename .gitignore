@@ -22,3 +22,4 @@ test_crossover.exe
 test_grid.exe
 test_population.exe
 test_token.exe
+*.exe

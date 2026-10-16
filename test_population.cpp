@@ -302,6 +302,92 @@ static void test_config_warm_start_requiere_dimension_20() {
     check_bool("ODE_WARM_START=1 se ignora con ODE_DIM=30", !config.warm_start);
 }
 
+// -------------------------------------------------------------------------
+// Slice 7 (issue #82): reinicio por estancamiento. El reinicio reemplaza el
+// 80% de la poblacion para inyectar diversidad, pero el indice reservado
+// conserva el mejor historico: antes el `FunbObj` del record se construia y
+// se descartaba, y el unico indice que sobrevivia era el mejor de la
+// generacion actual (no el record).
+// -------------------------------------------------------------------------
+
+static void test_reinicio_reemplaza_el_80_por_ciento() {
+    srand(20261013);
+
+    // 15 individuos: el 80% es 12, el mismo criterio que el log real
+    // `restart | ... replaced=120` con una poblacion de 150.
+    ConfigBusqueda config;
+    config.poblacion = 15;
+
+    vector<FunbObj> poblacion;
+    createPopulation(poblacion, config, 0);
+
+    // Copia de los vectores originales para contar cuantos cambian.
+    vector<vector<ldouble>> antes;
+    for (size_t i = 0; i < poblacion.size(); i++){
+        antes.push_back(poblacion[i].vecvalue());
+    }
+
+    const int indice_record = 3;
+    const vector<ldouble> record = poblacion[indice_record].vecvalue();
+
+    const int reemplazados = reiniciar_poblacion(poblacion, indice_record, record, config, 0);
+
+    check_int("el reinicio reemplaza el 80% de la poblacion (12 de 15)", reemplazados, 12);
+    check_bool("el reinicio conserva el tamano de la poblacion", poblacion.size() == 15);
+
+    // Con el record igual al vector del indice reservado, solo deben cambiar
+    // los reemplazados. El srand fijo hace deterministico el sorteo, asi que
+    // la comprobacion no es probabilistica.
+    int cambiados = 0;
+    for (size_t i = 0; i < poblacion.size(); i++){
+        if (poblacion[i].vecvalue() != antes[i]) cambiados++;
+    }
+    check_int("solo los reemplazados cambian de vector", cambiados, reemplazados);
+}
+
+static void test_reinicio_restaura_el_record() {
+    srand(20261013);
+
+    ConfigBusqueda config;
+    config.poblacion = 10;
+    vector<FunbObj> poblacion;
+    createPopulation(poblacion, config, 0);
+
+    // Record simulado: un vector fijo distinto del individuo que hoy ocupa el
+    // indice reservado (en una corrida estancada el mejor de la generacion no
+    // es el record, que suele vivir en otro indice). Son tokens validos.
+    const vector<ldouble> record = {18, 13, 17, 11};
+    const int indice_record = 4;
+    check_bool("el record simulado no es el individuo del indice reservado",
+               poblacion[indice_record].vecvalue() != record);
+
+    reiniciar_poblacion(poblacion, indice_record, record, config, 0);
+
+    check_bool("el indice reservado contiene exactamente el record restaurado",
+               poblacion[indice_record].vecvalue() == record);
+}
+
+static void test_reinicio_sin_record_no_toca_el_indice_reservado() {
+    srand(20261013);
+
+    ConfigBusqueda config;
+    config.poblacion = 10;
+    vector<FunbObj> poblacion;
+    createPopulation(poblacion, config, 0);
+
+    // `sin_record` simula la corrida en la que nunca hubo un fitness finito:
+    // el helper no debe restaurar nada ni tocar el indice reservado.
+    const int indice_record = 5;
+    const vector<ldouble> original = poblacion[indice_record].vecvalue();
+    const vector<ldouble> sin_record;
+
+    const int reemplazados = reiniciar_poblacion(poblacion, indice_record, sin_record, config, 0);
+
+    check_int("sin record el reinicio sigue reemplazando el 80% (8 de 10)", reemplazados, 8);
+    check_bool("sin record el indice reservado queda intacto",
+               poblacion[indice_record].vecvalue() == original);
+}
+
 int main() {
     std::cout << "== test_population: issues #11 y #28 (semillero y configuracion) ==\n";
     test_createPopulation_tamano_uniforme();
@@ -313,6 +399,9 @@ int main() {
     test_config_overrides();
     test_config_invalida_usa_respaldo();
     test_config_warm_start_requiere_dimension_20();
+    test_reinicio_reemplaza_el_80_por_ciento();
+    test_reinicio_restaura_el_record();
+    test_reinicio_sin_record_no_toca_el_indice_reservado();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
               << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;  // como el exit code de pytest

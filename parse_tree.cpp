@@ -434,6 +434,46 @@ void createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config,
     }
 }
 
+// reiniciar_poblacion: mecanismo de escape de minimos locales (issue #82).
+// Reemplaza el 80% de la poblacion con individuos aleatorios frescos para
+// inyectar diversidad, pero antes restaura el mejor historico `record` en el
+// indice reservado `indice_record` y no vuelve a tocar ese indice: asi el
+// reinicio no puede perder el record (elitismo real). Devuelve cuantos
+// individuos se reemplazaron, que es el campo `replaced=` del log `restart |`.
+// En Python seria
+// `reemplazados = reiniciar_poblacion(poblacion, indice, record, config, caso)`.
+int reiniciar_poblacion(vector<FunbObj>& poblacion, int indice_record,
+                        const vector<ldouble>& record,
+                        const ConfigBusqueda& config, int caso) {
+    // Precondicion: el indice reservado apunta dentro de la poblacion (evita
+    // el acceso fuera de rango si un refactor cambia el calculo de `mejor`).
+    // En Python seria `assert 0 <= indice_record < len(poblacion)`.
+    assert(indice_record >= 0 && indice_record < static_cast<int>(poblacion.size()));
+
+    // Proporcion reemplazada (80% del prototipo), con nombre para no repetir
+    // el literal (ES.45 de docs/cpp-standards.md).
+    constexpr long double PROPORCION_REEMPLAZO = 0.8;
+
+    // Elitismo: el record entra al indice reservado ANTES del barrido, para
+    // que el bucle (que salta `indice_record`) lo deje intacto. Un `record`
+    // vacio significa que la corrida nunca encontro un fitness finito: no hay
+    // nada que restaurar y el indice queda como estaba.
+    if (!record.empty()){
+        poblacion[indice_record] = FunbObj(record, 0, 1, caso);
+    }
+
+    const int tam_poblacion = static_cast<int>(poblacion.size());
+    const int cantidad_reemplazar = static_cast<int>(PROPORCION_REEMPLAZO * tam_poblacion);
+    int reemplazados = 0;
+    for (int j = 0; j < tam_poblacion && reemplazados < cantidad_reemplazar; j++){
+        if (j != indice_record){
+            poblacion[j] = FunbObj(vector_population(config.dimension), 0, 1, caso);
+            reemplazados++;
+        }
+    }
+    return reemplazados;
+}
+
 
 // mutacion_rand1: nucleo de la mutacion DE/rand/1/bin, ecuacion (7) del paper:
 //
@@ -899,22 +939,15 @@ int main() {
 
         // Reinicio adaptativo: si la búsqueda se estanca (sin mejoras en
         // STALE_LIMIT generaciones), se reemplaza el 80% de la población con
-        // nuevos individuos aleatorios, manteniendo el mejor. Esto inyecta
-        // diversidad fresca para escapar de mínimos locales. En Python sería
-        // `if generaciones_sin_mejora >= stale_limit: reiniciar_población()`.
+        // nuevos individuos aleatorios, restaurando el mejor histórico. Esto
+        // inyecta diversidad fresca para escapar de mínimos locales. En Python
+        // sería `if generaciones_sin_mejora >= stale_limit: reiniciar_poblacion()`.
         if (generaciones_sin_mejora >= STALE_LIMIT){
-            // Guardar el mejor individuo (elitismo).
-            FunbObj mejor_individuo(Bestvect, 0, 1, caso);
-            // Calcular cuántos individuos reemplazar (80% de la población).
-            const int cantidad_reemplazar = static_cast<int>(0.8 * tam_poblacion);
-            // Reemplazar individuos aleatorios (excepto el mejor).
-            int reemplazados = 0;
-            for (int j = 0; j < tam_poblacion && reemplazados < cantidad_reemplazar; j++){
-                if (j != mejor){
-                    Population[j] = FunbObj(vector_population(config.dimension), 0, 1, caso);
-                    reemplazados++;
-                }
-            }
+            // `mejor` es el indice del mejor de la generacion actual (el que
+            // el reemplazo respeta); ademas el helper restaura alli el record
+            // historico `Bestvect`, porque en una corrida estancada el mejor
+            // del momento no es el record (issue #82).
+            const int reemplazados = reiniciar_poblacion(Population, mejor, Bestvect, config, caso);
             log_info() << "restart | gen=" << gen << " stagnant_gens=" << generaciones_sin_mejora
                        << " replaced=" << reemplazados << '\n';
             cout.flush();

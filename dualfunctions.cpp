@@ -235,19 +235,6 @@ vector<ldouble> prod2dual(vector<ldouble>&x, vector<ldouble>& y){
  * Esta partiene contine todas las funciones que operan sobre las derivadas
  * =========================================================================
 */
-void imprime(vector<ldouble> n ){
-	cout << "[";
-	vector<ldouble> :: iterator it;
-	it = n.begin();
-	cout<< *it ;
-	if (!n.empty()){
-		for ( it=n.begin() +1;it !=n.end(); it++){
-			cout << ", " << *it;
-		}
-	}
-	cout << "]" ;
-}
-
 str parse_tree( vector<ldouble>& v){
 /*
  * Esta funcion devuelve la funcion string, a partir de un vector,

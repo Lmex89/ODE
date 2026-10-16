@@ -70,34 +70,28 @@ The expected solution for the default ODE `y'' + y = 0` with `y(0) = y'(0) = 1` 
 
 ### Compiling
 
-**Without the Makefile** (plain `g++`):
-
 ```bash
-g++ -std=c++17 -Wall -O3 dualfunctions.cpp semilla.cpp parse_tree.cpp -o main.exe
+cmake -B build
+cmake --build build
 ```
 
-**With the Makefile** (recommended):
+This produces `build/ode-solver`. The build uses `g++` by default; set `CXX=icpc` before running `cmake` where Intel's compiler is available:
 
 ```bash
-make        # build ./main.exe (incremental)
-make run    # build if needed, then execute
-make test   # build and run seven C++ test binaries plus notebook-cell validation
-make clean  # remove object files and binaries
+CXX=icpc cmake -B build
+cmake --build build
 ```
-
-The Makefile builds with `g++` by default; use `make CXX=icpc` where Intel's
-compiler is available.
 
 ### Running
 
 ```bash
-./main.exe                  # stochastic: seed from the clock
-ODE_SEED=42 ./main.exe      # reproducible: fixed seed, identical run
-ODE_CASE=1 ODE_SEED=42 ./main.exe   # paper's Case 1 instead of the default ODE
-ODE_CASE=2 ODE_SEED=42 ./main.exe   # hyperbolic case: y'' - y = 0, solution cosh(x)
-ODE_POP=200 ODE_GEN=1000 ./main.exe # override population size / generation cap
-ODE_DIM=40 ./main.exe               # override the individual dimension
-ODE_WARM_START=1 ODE_SEED=42 ./main.exe  # start from the five prototype seeds
+./build/ode-solver                  # stochastic: seed from the clock
+ODE_SEED=42 ./build/ode-solver      # reproducible: fixed seed, identical run
+ODE_CASE=1 ODE_SEED=42 ./build/ode-solver   # paper's Case 1 instead of the default ODE
+ODE_CASE=2 ODE_SEED=42 ./build/ode-solver   # hyperbolic case: y'' - y = 0, solution cosh(x)
+ODE_POP=200 ODE_GEN=1000 ./build/ode-solver # override population size / generation cap
+ODE_DIM=40 ./build/ode-solver               # override the individual dimension
+ODE_WARM_START=1 ODE_SEED=42 ./build/ode-solver  # start from the five prototype seeds
 ```
 
 `ODE_SEED` fixes the `srand()` seed and the chosen value is printed in the
@@ -124,31 +118,40 @@ up to the generation cap (`max_generations=5000` by default). Output can be
 very verbose — consider piping through `tail`:
 
 ```bash
-./main.exe | tail -30
+./build/ode-solver | tail -30
 ```
 
 ### Testing
 
 ```bash
-make test
+ctest --test-dir build
 ```
 
-`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()`/`sinh2dual()`/`cosh2dual()`/`tanh2dual()` derivatives, the `x²`/`x³` leaves, and the constant π/e leaves). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..29`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_population.cpp` asserts the initial population (exact size, per-individual dimension, tokens inside the `1..29` alphabet, opt-in warm start, fixed-seed determinism) and the search-configuration resolver (default dimension 20, `ODE_POP`/`ODE_DIM`/`ODE_GEN` overrides, invalid-value fallback, warm-start/dimension coupling). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included) and the paper's fitness functional (eq. (4): squared residuals, `λ₁ = λ₂ = 10`, the `Δx = 1/99` integration factor, the Case 1 (`ODE_CASE=1`) and hyperbolic Case 2 (`ODE_CASE=2`) residuals, and independently computed expected values for valid candidates). `test_token.cpp` asserts the public token-alphabet contract (codes `1..29`, arity per token, rendering, validity predicates, `random_token()` bounds). The tests link only what each one needs and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp`, `test_token.cpp`, `test_grid.cpp` and `test_population.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp` and `test_population.cpp` include `parse_tree.cpp` directly to reach the header-less `FunbObj`).
-
-`make test` also runs `scripts/check_dual_validation.py`, which executes the notebook's validation cells in plain Python (no SageMath kernel needed).
-
-The SageMath notebook validation is a separate target because it needs a real
-SageMath kernel:
+This builds and runs all 9 C++ tests registered in `CMakeLists.txt`. For a focused test:
 
 ```bash
-make sage-test
+cmake --build build --target test_mutation
+./build/test_mutation
 ```
 
-`make sage-test` uses a native `sage` executable when available. Otherwise it
-uses Docker and the pinned SageMath image documented in
-[docs/sage-dual-validation.md](docs/sage-dual-validation.md). It executes the
-complete notebook, then checks the stored cell output for 48 passing
-expression/point cases and the `PASS: 48/48 casos` summary.
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()`/`sinh2dual()`/`cosh2dual()`/`tanh2dual()` derivatives, the `x²`/`x³` leaves, and the constant π/e leaves). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..29`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_population.cpp` asserts the initial population (exact size, per-individual dimension, tokens inside the `1..29` alphabet, opt-in warm start, fixed-seed determinism) and the search-configuration resolver (default dimension 20, `ODE_POP`/`ODE_DIM`/`ODE_GEN` overrides, invalid-value fallback, warm-start/dimension coupling). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included) and the paper's fitness functional (eq. (4): squared residuals, `λ₁ = λ₂ = 10`, the `Δx = 1/99` integration factor, the Case 1 (`ODE_CASE=1`) and hyperbolic Case 2 (`ODE_CASE=2`) residuals, and independently computed expected values for valid candidates). `test_token.cpp` asserts the public token-alphabet contract (codes `1..29`, arity per token, rendering, validity predicates, `random_token()` bounds). `test_funbobj_const.cpp` asserts that `FunbObj` accessors are const-correct. `test_header_hygiene.cpp` asserts that `dualfunctions.h` is self-contained and uses const references for read-only parameters. The tests link only what each one needs and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp`, `test_token.cpp`, `test_grid.cpp`, `test_population.cpp` and `test_funbobj_const.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp`, `test_population.cpp` and `test_funbobj_const.cpp` include `parse_tree.cpp` directly to reach the header-less `FunbObj`).
+
+The notebook/log checkers run standalone (they are not registered with ctest):
+
+```bash
+python3 scripts/check_dual_validation.py
+python3 scripts/check_run_log.py
+```
+
+`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log.
+
+The SageMath notebook validation needs a real SageMath kernel:
+
+```bash
+scripts/run_sage_dual_validation.sh
+```
+
+`scripts/run_sage_dual_validation.sh` uses a native `sage` executable when available. Otherwise it uses Docker and the pinned SageMath image documented in [docs/sage-dual-validation.md](docs/sage-dual-validation.md). It executes the complete notebook, then checks the stored cell output for 48 passing expression/point cases and the `PASS: 48/48 casos` summary.
 
 ### A/B experiment
 
@@ -165,33 +168,35 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 
 | File | Description |
 |------|-------------|
-| `parse_tree.cpp` | `main()` and the DE loop (single population, mutation, binomial crossover, greedy selection) |
-| `dualfunctions.h` | Header for token interpreter and 2nd-order dual-number arithmetic |
-| `dualfunctions.cpp` | Implementation of 2dual operations (sin, cos, tan, sinh, cosh, tanh, exp, log, pow, etc.) and tree evaluation |
-| `token.h` | Header-only token alphabet: codes, arity, rendering, predicates and random draws |
-| `semilla.h` / `semilla.cpp` | Run-seed control: resolves `ODE_SEED`, falling back to the clock |
-| `parse_tree_bckp.cpp` | Reference backup — **do not compile** (also defines `main()`) |
-| `Makefile` | Build targets: `make`, `make run`, `make test`, `make sage-test`, `make clean` (`g++` by default) |
-| `test_dual.cpp` | Dual-number evaluation tests, run with `make test` |
-| `test_mutation.cpp` | DE/rand/1/bin mutation tests, run with `make test` |
-| `test_crossover.cpp` | Binomial crossover tests, run with `make test` |
-| `test_semilla.cpp` | `ODE_SEED` resolution tests, run with `make test` |
-| `test_grid.cpp` | Evaluation-grid tests, run with `make test` |
-| `test_population.cpp` | Population and configuration tests, run with `make test` |
-| `test_token.cpp` | Token-alphabet contract tests, run with `make test` |
+| `src/parse_tree.cpp` | `main()` and the DE loop (single population, mutation, binomial crossover, greedy selection) |
+| `src/dualfunctions.h` | Header for token interpreter and 2nd-order dual-number arithmetic |
+| `src/dualfunctions.cpp` | Implementation of 2dual operations (sin, cos, tan, sinh, cosh, tanh, exp, log, pow, etc.) and tree evaluation |
+| `src/token.h` | Header-only token alphabet: codes, arity, rendering, predicates and random draws |
+| `src/semilla.h` / `src/semilla.cpp` | Run-seed control: resolves `ODE_SEED`, falling back to the clock |
+| `docs/legacy/parse_tree_bckp.cpp` | Reference backup — **do not compile** (also defines `main()`) |
+| `tests/test_dual.cpp` | Dual-number evaluation tests |
+| `tests/test_mutation.cpp` | DE/rand/1/bin mutation tests |
+| `tests/test_crossover.cpp` | Binomial crossover tests |
+| `tests/test_semilla.cpp` | `ODE_SEED` resolution tests |
+| `tests/test_grid.cpp` | Evaluation-grid tests |
+| `tests/test_population.cpp` | Population and configuration tests |
+| `tests/test_token.cpp` | Token-alphabet contract tests |
+| `tests/test_funbobj_const.cpp` | `FunbObj` const-correctness tests |
+| `tests/test_header_hygiene.cpp` | Header self-containment and const-reference tests |
 | `scripts/ab_experiment.sh` | Reproducible A/B experiment (pre-fix vs post-fix, same seed) |
 | `docs/ab-experiment.md` | A/B comparison report and conclusions |
-| `scripts/check_dual_validation.py` | Executes the notebook's validation cells without SageMath (part of `make test`) |
+| `scripts/check_dual_validation.py` | Executes the notebook's validation cells without SageMath |
+| `scripts/check_run_log.py` | Validates the structured log from a solver run |
 | `scripts/run_sage_dual_validation.sh` | Execute the complete notebook in SageMath and verify its output |
 | `scripts/check_sage_dual_validation.py` | Check the executed notebook's 48-case PASS/FAIL result |
 | `docs/sage-dual-validation.md` | SageMath command, environment, and captured evidence |
-| `Untitled.ipynb` | SageMath scratchpad for reference ODE/solution (not part of the build) |
+| `docs/legacy/Untitled.ipynb` | SageMath scratchpad for reference ODE/solution (not part of the build) |
 
 ## Caveats
 
 - Search is stochastic by default (`srand(time(NULL))`); set `ODE_SEED=N` for reproducible runs, `ODE_CASE=1` for the paper's Case 1 and `ODE_CASE=2` for the hyperbolic case
 - Search defaults use 100 individuals, dimension 20, and 5,000 generations; `ODE_POP`, `ODE_DIM` and `ODE_GEN` override them, and `ODE_WARM_START=1` restores the five 20-token prototype seeds when the dimension is 20 (the default)
-- No CI; dual-number, seed, mutation, crossover, population/configuration, grid and token-alphabet tests run with `make test`
+- No CI; dual-number, seed, mutation, crossover, population/configuration, grid, token-alphabet, FunbObj const-correctness and header hygiene tests run with `ctest --test-dir build`
 - Code comments are in Spanish
 - `dualfunctions.h` requires STL headers (`vector`, `string`) to be included before it
 - The SageMath notebook's fitness formula is stale; the C++ code is the source of truth

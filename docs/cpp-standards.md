@@ -157,8 +157,8 @@ logical change per commit (see the commit conventions in `AGENTS.md`).
 
 There is no CI: verification is manual (AGENTS.md).
 
-- `make` must stay warning-clean under `-std=c++17 -Wall -O3`; `make test`
-  must pass all six binaries (`test_dual` ... `test_population`).
+- `cmake --build build` must stay warning-clean under `-std=c++17 -Wall -O3`; `ctest --test-dir build`
+  must pass all nine binaries (`test_dual` ... `test_funbobj_const`).
 - Pure helpers get a unit test in the existing style (see `test_mutation.cpp`,
   `test_crossover.cpp`) rather than a manual run.
 - Behavioural changes to the DE loop: run with a fixed `ODE_SEED` (and

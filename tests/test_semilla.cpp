@@ -2,7 +2,7 @@
 // test_semilla.cpp - Tests del control de semilla (issue #4).
 //
 // Para un desarrollador Python: igual que un `test_semilla.py` de pytest.
-// `make test` lo compila y lo corre; termina con codigo de salida != 0 si
+// `ctest --test-dir build` lo compila y lo corre; termina con codigo de salida != 0 si
 // algun assert falla. Los tests llaman SOLO a `resolver_semilla()`, la
 // funcion publica de semilla.h: es el contrato del modulo, no un detalle
 // interno. Los valores esperados son literales del experimento A/B (misma

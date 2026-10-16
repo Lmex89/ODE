@@ -54,12 +54,12 @@ run: $(TARGET)
 # (issue #2), control de semilla (issue #4), la mutacion DE/rand/1/bin
 # (issue #5), el cruce binomial (issue #6), la rejilla de evaluacion
 # (issue #7), el semillero de la poblacion (issue #11), el validador Python
-# de notebook (issue #18) y el alfabeto de tokens (issue #31). Cada binario
-# enlaza solo lo que necesita;
+# de notebook (issue #18), el alfabeto de tokens (issue #31) y la higiene
+# del header (issue #39). Cada binario enlaza solo lo que necesita;
 # test_mutation, test_crossover, test_grid y test_population necesitan
 # parse_tree.cpp con -DODE_NO_MAIN (ver abajo).
 # En Python seria como correr `pytest`: exit code != 0 si algun assert falla.
-TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe test_grid.exe test_population.exe test_token.exe
+TESTBINS := test_dual.exe test_semilla.exe test_mutation.exe test_crossover.exe test_grid.exe test_population.exe test_token.exe test_header_hygiene.exe
 
 test: $(TESTBINS)
 	./test_dual.exe
@@ -69,6 +69,7 @@ test: $(TESTBINS)
 	./test_grid.exe
 	./test_population.exe
 	./test_token.exe
+	./test_header_hygiene.exe
 	python3 scripts/check_dual_validation.py
 
 # `make sage-test` ejecuta el notebook completo dentro de un kernel SageMath
@@ -119,6 +120,12 @@ test_grid.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_grid.cpp semill
 # deja el main() del test como unico punto de entrada.
 test_population.exe: semilla.cpp dualfunctions.cpp parse_tree.cpp test_population.cpp semilla.h dualfunctions.h token.h
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -DODE_NO_MAIN semilla.cpp dualfunctions.cpp test_population.cpp -o $@
+
+# test_header_hygiene es un test de tiempo de compilacion (issue #39): verifica
+# que dualfunctions.h sea autocontenido y que los parametros de solo-lectura
+# sean const references. Solo necesita compilar; si no compila, el test falla.
+test_header_hygiene.exe: test_header_hygiene.cpp dualfunctions.h
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) test_header_hygiene.cpp -o $@
 
 clean:
 	rm -f $(OBJS) $(TARGET) $(TESTBINS)

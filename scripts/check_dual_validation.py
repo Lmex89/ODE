@@ -6,7 +6,9 @@ from pathlib import Path
 
 
 def main():
-    notebook = Path(__file__).resolve().parents[1] / "Untitled.ipynb"
+    notebook = (
+        Path(__file__).resolve().parents[1] / "docs" / "legacy" / "Untitled.ipynb"
+    )
     cells = json.loads(notebook.read_text())["cells"]
     marker = "Validacion de numeros duales"
     start = next(

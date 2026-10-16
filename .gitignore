@@ -4,6 +4,15 @@
 # CMake build directory (out-of-source build: cmake -B build)
 build/
 
+# Compilation artifacts
+*.o
+*.obj
+*.exe
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
 # Run outputs
 out
 out.txt

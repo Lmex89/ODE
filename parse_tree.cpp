@@ -1,4 +1,5 @@
 #include <iostream>
+#include <array>
 #include <vector>
 #include <ctime>
 #include <cmath>
@@ -452,23 +453,25 @@ int token_valido(ldouble v){
 // la ecuacion (7): el paper exige individuos distintos para que la diferencia
 // (x_r2 - x_r3) no sea siempre cero.
 //
-// Los parametros `int& r1` son *referencias*: en C++ equivalen a un parametro
-// de salida (Python tendria que devolver una tupla, `return r1, r2, r3`).
+// Los parametros de salida (`int& r1, ...`) se reemplazaron por un valor
+// devuelto (F.20/F.21): en Python seria `return r1, r2, r3`, y el llamador lo
+// desempaqueta con un structured binding, `r1, r2, r3 = indices_distintos(...)`.
 // El sorteo se hace por rechazo: se tira rand() hasta que no toque un indice
 // repetido. Con poblaciones de ~275 individuos el bucle casi nunca repite.
-void indices_distintos(int tam, int excluir, int& r1, int& r2, int& r3){
+array<int, 3> indices_distintos(int tam, int excluir){
 	// Con menos de 4 individuos no existen 3 indices distintos del objetivo;
 	// se devuelven los que haya para no quedarse en un bucle infinito (solo
 	// puede pasar si alguien achica la poblacion a mano).
 	if (tam < 4) {
-		r1 = 0;
-		r2 = (tam > 1) ? 1 : 0;
-		r3 = (tam > 2) ? 2 : 0;
-		return;
+		return {0, (tam > 1) ? 1 : 0, (tam > 2) ? 2 : 0};
 	}
-	do { r1 = rand() % tam; } while (r1 == excluir);
-	do { r2 = rand() % tam; } while (r2 == excluir || r2 == r1);
-	do { r3 = rand() % tam; } while (r3 == excluir || r3 == r1 || r3 == r2);
+	// El orden de los sorteos (r1, r2, r3) es parte del contrato de neutralidad
+	// del flujo de rand(): no reordenar ni cambiar el numero de tiradas.
+	array<int, 3> indices{};
+	do { indices[0] = rand() % tam; } while (indices[0] == excluir);
+	do { indices[1] = rand() % tam; } while (indices[1] == excluir || indices[1] == indices[0]);
+	do { indices[2] = rand() % tam; } while (indices[2] == excluir || indices[2] == indices[0] || indices[2] == indices[1]);
+	return indices;
 }
 
 // ---------------------------------------------------------------------------
@@ -797,8 +800,9 @@ int main() {
 		// muta, se cruza (eq. (8)) y se selecciona el mejor de los dos.
 		for (int j = 0; j < (int) Population.size(); j++){
 
-			int r1, r2, r3;
-			indices_distintos((int) Population.size(), j, r1, r2, r3);
+			// Structured binding: desempaqueta el array devuelto por el
+			// sorteo (Python: `r1, r2, r3 = indices_distintos(...)`).
+			auto [r1, r2, r3] = indices_distintos((int) Population.size(), j);
 			vector<ldouble> mutante(Mutation(Population[r1].vecvalue(), Population[r2].vecvalue(), Population[r3].vecvalue()));
 			vector<ldouble> trial(Recombination(Population[j].vecvalue(), mutante, Cr));
 

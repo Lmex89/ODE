@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include <iomanip>
+#include <array>
 #include <vector>
 #include <string>
 #include <sstream>
@@ -30,7 +31,7 @@ using namespace std;  // el header ya no inyecta nombres; el test los necesita p
 // ruidoso, no silencioso).
 ldouble mutacion_rand1(ldouble r1, ldouble r2, ldouble r3, ldouble F);
 int token_valido(ldouble v);
-void indices_distintos(int tam, int excluir, int& r1, int& r2, int& r3);
+array<int, 3> indices_distintos(int tam, int excluir);
 vector<ldouble> Mutation(const vector<ldouble>& x, const vector<ldouble>& y,
                          const vector<ldouble>& z);
 
@@ -127,8 +128,9 @@ static void test_indices_distintos() {
 
     bool rango_ok = true, distintos_ok = true;
     for (int k = 0; k < 1000; k++) {
-        int r1, r2, r3;
-        indices_distintos(4, 1, r1, r2, r3);  // solo 4 individuos y se excluye el 1
+        // Structured binding (C++17): desempaqueta el array que devuelve el
+        // sorteo; en Python seria `r1, r2, r3 = indices_distintos(4, 1)`.
+        auto [r1, r2, r3] = indices_distintos(4, 1);  // solo 4 individuos y se excluye el 1
         if (r1 < 0 || r1 >= 4 || r2 < 0 || r2 >= 4 || r3 < 0 || r3 >= 4) rango_ok = false;
         if (r1 == r2 || r1 == r3 || r2 == r3) distintos_ok = false;
         if (r1 == 1 || r2 == 1 || r3 == 1) distintos_ok = false;  // es el individuo objetivo
@@ -140,11 +142,9 @@ static void test_indices_distintos() {
     // devolviera, por ejemplo, {0,1,2}, no seria aleatoria). Barajando 300
     // veces, la probabilidad de ver una sola combinacion es ~0.
     bool vario = false;
-    int p1, p2, p3;
-    indices_distintos(8, 0, p1, p2, p3);
+    auto [p1, p2, p3] = indices_distintos(8, 0);
     for (int k = 0; k < 300 && !vario; k++) {
-        int r1, r2, r3;
-        indices_distintos(8, 0, r1, r2, r3);
+        auto [r1, r2, r3] = indices_distintos(8, 0);
         if (r1 != p1 || r2 != p2 || r3 != p3) vario = true;
     }
     check_bool("indices_distintos(8, excluir=0): el sorteo varia entre llamadas", vario);

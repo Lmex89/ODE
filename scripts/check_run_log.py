@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verifica el contrato del log de una corrida real de main.exe (issue #44).
+"""Verifica el contrato del log de una corrida real de build/ode-solver (issue #44).
 
 Comprueba tres cosas sobre la salida completa de una corrida corta y
 deterministica (ODE_SEED=42, ODE_CASE=1, ODE_GEN=1):
@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 
-BINARIO = Path(__file__).resolve().parents[1] / "main.exe"
+BINARIO = Path(__file__).resolve().parents[1] / "build" / "ode-solver"
 
 # Forma de cada linea estructurada, segun el bloque de logging de
 # parse_tree.cpp: "[  0.12s] [INFO ] evento | clave=valor ...". Los dos espacios
@@ -46,7 +46,7 @@ FIRMA_AUTOR = "signature | author=Lmex"
 
 
 def correr_main():
-    """Ejecuta main.exe en su modo corto y determinista. En Python seria
+    """Ejecuta build/ode-solver en su modo corto y determinista. En Python seria
     subprocess.run([...], env=os.environ | {...}, capture_output=True)."""
     entorno = dict(os.environ, ODE_SEED="42", ODE_CASE="1", ODE_GEN="1")
     return subprocess.run(
@@ -91,11 +91,11 @@ def main():
     try:
         proc = correr_main()
     except subprocess.TimeoutExpired:
-        print("check_run_log: main.exe excedio los 60s", file=sys.stderr)
+        print("check_run_log: build/ode-solver excedio los 60s", file=sys.stderr)
         return 1
 
     if proc.returncode != 0:
-        print(f"check_run_log: main.exe salio con codigo {proc.returncode}",
+        print(f"check_run_log: build/ode-solver salio con codigo {proc.returncode}",
               file=sys.stderr)
         return 1
 

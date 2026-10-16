@@ -322,6 +322,39 @@ static void test_fitness_caso2_condiciones_iniciales() {
              f.fitness(), 20.0L, 1e-12L);
 }
 
+// -------------------------------------------------------------------------
+// Slice 7 (issue #102): las condiciones iniciales dejan de ser solo 0.0/1.0.
+// El caso 6 (Legendre) declara y(0) = -1/2 y el caso 7 (Hermite) y(0) = -2,
+// valores fraccionarios y negativos que los ternarios antiguos no podian
+// expresar. La cota esperada se deriva a mano del funcional (4) con
+// lambda = 10: con la expresion `x` (token 11, parsv en x=0 da [0,1,0]) la
+// penalizacion de condiciones iniciales vale exactamente
+// 10*(0-y0)^2 + 10*(1-dy0)^2 y el residual (cualquiera de los casos, presente
+// o futuro) solo aporta terminos al cuadrado no negativos. En Python seria
+// `assert f.fitness() >= 12.5` con la cota calculada aparte.
+// -------------------------------------------------------------------------
+
+static void test_fitness_caso6_condiciones_iniciales_fraccionarias() {
+    // Caso 6: y(0) = -1/2, y'(0) = 0 => cota 10*(1/2)^2 + 10*1^2 = 12.5.
+    // Con las condiciones anteriores (y(0)=1, y'(0)=1) la penalizacion valia
+    // 10 y la fitness del mismo x quedaba por debajo de la cota, asi que el
+    // assert distingue ambos juegos de condiciones iniciales.
+    FunbObj f({11}, 0.0L, 1.0L, 6);
+    const long double fit = f.fitness();
+    check_bool("fitness_caso6(x) es finita (no INFINITY)", std::isfinite(fit));
+    check_bool("fitness_caso6(x) >= 12.5 (y(0)=-1/2, y'(0)=0)", fit >= 12.5L);
+}
+
+static void test_fitness_caso7_condiciones_iniciales_negativas() {
+    // Caso 7: y(0) = -2, y'(0) = 0 => cota 10*2^2 + 10*1^2 = 50. La cota
+    // separa estas condiciones (negativas) de las (1,1) anteriores, con las
+    // que la fitness del mismo x quedaba muy por debajo.
+    FunbObj f({11}, 0.0L, 1.0L, 7);
+    const long double fit = f.fitness();
+    check_bool("fitness_caso7(x) es finita (no INFINITY)", std::isfinite(fit));
+    check_bool("fitness_caso7(x) >= 50 (y(0)=-2, y'(0)=0)", fit >= 50.0L);
+}
+
 int main() {
     std::cout << "== test_grid: issues #7 (rejilla) y #27 (funcional de fitness) ==\n";
     test_x_rango_cantidad_de_puntos();
@@ -335,6 +368,8 @@ int main() {
     test_fitness_caso1_aprox_del_paper();
     test_fitness_caso2_solucion_exacta();
     test_fitness_caso2_condiciones_iniciales();
+    test_fitness_caso6_condiciones_iniciales_fraccionarias();
+    test_fitness_caso7_condiciones_iniciales_negativas();
     test_fitness_arbol_incompleto_es_infinita();
     test_fitness_sin_x_no_muta_el_individuo();
     test_fitness_hojas_polinomicas_dependen_de_x();

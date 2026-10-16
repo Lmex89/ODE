@@ -19,8 +19,10 @@
 #include <cstdlib>
 #include <ctime>
 
-#include "dualfunctions.h"  // necesita <vector>/<string> antes (header no autocontenido)
+#include "dualfunctions.h"  // ahora autocontenido: incluye <vector>/<string> por si mismo
 #include "token.h"          // expone el contrato publico del rango del alfabeto
+
+using namespace std;  // el header ya no inyecta nombres; el test los necesita para los prototipos
 
 // Prototipos de las costuras (seams) que se prueban: son funciones publicas de
 // parse_tree.cpp que hoy no viven en un header, asi que el test las declara.
@@ -29,7 +31,8 @@
 ldouble mutacion_rand1(ldouble r1, ldouble r2, ldouble r3, ldouble F);
 int token_valido(ldouble v);
 void indices_distintos(int tam, int excluir, int& r1, int& r2, int& r3);
-vector<ldouble> Mutation(vector<ldouble>x, vector<ldouble> y, vector<ldouble>z);
+vector<ldouble> Mutation(const vector<ldouble>& x, const vector<ldouble>& y,
+                         const vector<ldouble>& z);
 
 // -------------------------------------------------------------------------
 // Arnes minimo (mismo estilo que test_dual.cpp): contadores globales y

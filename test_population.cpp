@@ -18,7 +18,7 @@
 #include <string>
 #include <cstdlib>
 
-#include "dualfunctions.h"  // necesita <vector>/<string> antes (header no autocontenido)
+#include "dualfunctions.h"  // ahora autocontenido: incluye <vector>/<string> por si mismo
 #include "token.h"          // expone el contrato publico del rango del alfabeto
 
 // En vez de declarar prototipos sueltos, este test incluye parse_tree.cpp

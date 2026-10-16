@@ -483,14 +483,19 @@ static void test_narg_tabla() {
     check_int("narg(21) = 2 (potencia)", narg(21.0L), 2);
 }
 
-// Slice TDD del issue #32: un codigo fuera del alfabeto no tiene aridad.
-// El resultado -1 es el contrato de `arity()` en token.h; en Python seria
-// como obtener un sentinel explicito de una tabla en vez de leer una variable
-// sin inicializar (que no tiene equivalente seguro en Python).
+// Slice TDD del issue #37: el evaluador es total sobre los codigos de token.
+// Un codigo fuera del alfabeto se trata como hoja sin argumentos (0), como
+// consultar `tabla.get(token, 0)` en Python; antes `arity()` devolvia el
+// centinela -1 y cada consumidor tenia que conocer ese estado especial.
 static void test_narg_codigo_invalido() {
-    check_int("narg(0) devuelve -1 fuera del alfabeto", narg(0.0L), -1);
-    check_int("narg(TOKEN_MAX+1) devuelve -1 fuera del alfabeto",
-              narg(TOKEN_MAX + 1.0L), -1);
+    check_int("narg(0) = 0 (fuera del alfabeto, hoja)", narg(0.0L), 0);
+    check_int("narg(-1) = 0 (fuera del alfabeto, hoja)", narg(-1.0L), 0);
+    check_int("narg(TOKEN_MAX+1) = 0 (fuera del alfabeto, hoja)",
+              narg(TOKEN_MAX + 1.0L), 0);
+    // Contraprueba: la tabla de los codigos validos no cambia.
+    check_int("narg(TOKEN_X) = 0 (hoja valida)", narg(TOKEN_X), 0);
+    check_int("narg(TOKEN_SIN) = 1 (unaria valida)", narg(TOKEN_SIN), 1);
+    check_int("narg(TOKEN_ADD) = 2 (binaria valida)", narg(TOKEN_ADD), 2);
 }
 
 static void test_parsv_funciones_conocidas() {
@@ -533,13 +538,31 @@ static void test_parse_tree_token12() {
     check_str("parse_tree([18,14,11,13,11])", parse_tree(suma), "(cos(x))+(sin(x))");
 }
 
-// Slice TDD del renderizador: un token invalido usa la plantilla vacia del
-// alfabeto. En Python seria como insertar `render(token)` y obtener `""` para
-// un codigo desconocido, no reutilizar por accidente el token anterior.
+// Slice TDD de los issues #32/#37: un token fuera del alfabeto usa la
+// plantilla vacia del alfabeto. En Python seria como insertar `render(token)`
+// y obtener `""` para un codigo desconocido, sin reutilizar por accidente el
+// texto del token anterior (el bug historico de `tmp` sin limpiar).
 static void test_parse_tree_codigo_invalido() {
     std::vector<long double> tokens = {TOKEN_ADD, TOKEN_CONST1, 0};
     check_str("parse_tree conserva el hueco de un token invalido",
               parse_tree(tokens), "(1.0)+()");
+    // El mismo contrato cuando el token invalido es el argumento de una
+    // unaria: la plantilla vacia deja el hueco "()" visible.
+    std::vector<long double> hijo_invalido = {TOKEN_SIN, TOKEN_MAX + 1};
+    check_str("parse_tree conserva el hueco con un hijo invalido",
+              parse_tree(hijo_invalido), "sin()");
+    // Contraprueba: los tokens validos siguen renderizandose igual.
+    std::vector<long double> validos = {TOKEN_SIN, TOKEN_X};
+    check_str("parse_tree de tokens validos no cambia",
+              parse_tree(validos), "sin(x)");
+}
+
+// Slice TDD del issue #37: renderizar un vector vacio es seguro y devuelve la
+// cadena vacia. Antes `fun[0]` sobre un vector vacio leia fuera de rango; en
+// Python seria `if not v: return ""` antes de concatenar los fragmentos.
+static void test_parse_tree_vector_vacio() {
+    std::vector<long double> vacio;
+    check_str("parse_tree(vector vacio) = \"\"", parse_tree(vacio), "");
 }
 
 // -------------------------------------------------------------------------
@@ -895,6 +918,7 @@ int main() {
     test_parsv_funciones_conocidas();
     test_parse_tree_token12();
     test_parse_tree_codigo_invalido();
+    test_parse_tree_vector_vacio();
     test_operf2_consumo_en_sitio();
     test_operf2_salta_huecos_nan();
     test_operf2_inicio();

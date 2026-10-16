@@ -34,6 +34,12 @@ typedef string  str;
 // dx/dx = 1 y d2x/dx2 = 0, la convencion que espera parsv().
 vector<vector<long double>> x_rango(long double start,long double stop,int npoints){
 
+	// Precondicion: npoints >= 2 para evitar division por cero en (npoints-1).
+	// Con npoints < 2, la formula x_i = start + (stop-start)*i/(npoints-1)
+	// divide por cero o genera un solo punto sin sentido. En Python seria
+	// `assert npoints >= 2, "grid requires at least 2 points"`.
+	assert(npoints >= 2);
+
 	vector<vector<long double>> ans;
 
 	for(int i = 0; i < npoints; i++){
@@ -148,14 +154,10 @@ class FunbObj{
 
 	for (	int i = 0 ; i < (int)_xrange.size(); i++){
 		vector<ldouble> fitnessval(parsv(_vecval,_xrange[i]));
-		//  imprime(_vecval); cout << endl;
 		//  cout << parse_tree(_vecval) << endl;
 			
 		//   cout << endl; cout << i << " " ;
-		//  imprime(_xrange[i]) ; cout << "despues de _range" << endl;
-		// imprime(fitnessval);
 		// cout <<" <<<<<"  << endl;
-		// imprime(a_start);
 		// cin.get();
 
 		// Cualquier componente NaN hace que todo el individuo sea no evaluable.
@@ -310,6 +312,11 @@ ConfigBusqueda resolver_config(const char* pop_env, const char* dim_env,
 // `[random.randint(TOKEN_MIN, TOKEN_MAX) for _ in range(tam)]`; en C++
 // `random_token()` concentra esa regla en token.h.
 vector<long double> vector_population(int tam){
+	// Precondicion: tam >= 1 para evitar division por cero en rand() % tam.
+	// Con tam == 0, el bucle de inyeccion de TOKEN_X divide por cero. En Python
+	// seria `assert tam >= 1, "individual requires at least 1 token"`.
+	assert(tam >= 1);
+
 	vector<ldouble> ans;
 
 	// random_token() aplica el rango definido en token.h; asi este consumidor no
@@ -324,7 +331,7 @@ vector<long double> vector_population(int tam){
 	// reparacion valida). Antes el indice se limitaba a [0, tam-4] (resto del
 	// tamano de poblacion de la version vieja) y las ultimas posiciones nunca
 	// se reparaban.
-	if (!ans.empty() && std::find(ans.begin(), ans.end(), TOKEN_X) == ans.end()){
+	if (std::find(ans.begin(), ans.end(), TOKEN_X) == ans.end()){
 		for (int i = 0; i < 2; i++){
 			ans[rand() % tam] = TOKEN_X;
 		}
@@ -375,11 +382,15 @@ const vector<vector<ldouble>>& semillas_warm_start(){
 // `poblacion += [FunbObj(vector_population(dim), 0, 1, caso) for _ in range(n)]`.
 void createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config, int caso){
 
-	// Precondicion propia del bucle DE: la poblacion entra vacia y se llena
-	// con push_back (en Python seria `poblacion.append(...)`). El assert es la
-	// version C++ de `assert not poblacion`, activa porque no se compila con
-	// -DNDEBUG.
+	// Precondiciones del inicializador de poblacion:
+	// 1. La poblacion entra vacia y se llena con push_back (en Python seria
+	//    `assert not poblacion`). Activa porque no se compila con -DNDEBUG.
+	// 2. poblacion >= 1: una solicitud de longitud cero no tiene sentido en el
+	//    bucle DE (necesitamos al menos un individuo para evaluar fitness). En
+	//    Python seria `assert config.poblacion >= 1, "population must have at
+	//    least 1 individual"`.
 	assert(Population.empty());
+	assert(config.poblacion >= 1);
 
 	// Warm start: se copian las cinco semillas solo si tienen la dimension
 	// pedida. El chequeo esta tambien en resolver_config (que apaga la
@@ -566,7 +577,7 @@ vector<ldouble> Recombination(const vector<ldouble>& objetivo, const vector<ldou
 	// hoja que dependa de x (variable o polinomial, issue #63), asi que si el
 	// cruce borro el token x se fuerza uno en una posicion al azar. Es una
 	// regla propia de este prototipo, no del paper.
-	if (trial.size() > 0 && std::find(trial.begin(), trial.end(),
+	if (std::find(trial.begin(), trial.end(),
 	                                  static_cast<ldouble>(TOKEN_X)) == trial.end()){
 		trial[rand() % trial.size()] = TOKEN_X;
 	}

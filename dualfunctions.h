@@ -23,7 +23,6 @@ vector<ldouble> division2dual(vector<ldouble>&x, vector<ldouble>& y);
 vector<ldouble> pow2dual(vector<ldouble>&x, vector<ldouble>& y);
 vector<ldouble> prod2dual(vector<ldouble>&x, vector<ldouble>& y);
 
-void imprime(vector<ldouble> n );
 str parse_tree( vector<ldouble>& v);
 int narg(ldouble x);
 // Equivalente C++ de la seccion `auxv(:,k+1:length)` del Fortran del paper

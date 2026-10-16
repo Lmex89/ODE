@@ -64,9 +64,21 @@ The expected solution for the default ODE `y'' + y = 0` with `y(0) = y'(0) = 1` 
 
 ## Build & run
 
+### Quick start
+
+```bash
+cmake -B build                              # configure (reads CMakeLists.txt)
+cmake --build build                         # compile -> build/ode-solver
+ODE_SEED=42 ./build/ode-solver | tail -30   # reproducible run (seed 42)
+ctest --test-dir build                      # run the test suite
+```
+
 ### Prerequisites
 
+- CMake ≥ 3.16 — the only supported build entry point
 - A C++17 compiler (`g++` or `icpc`)
+- Python 3 — only for the standalone notebook/log checkers (`scripts/check_*.py`)
+- Docker — only for `scripts/run_sage_dual_validation.sh` when no native `sage` executable is available
 
 ### Compiling
 
@@ -127,7 +139,7 @@ very verbose — consider piping through `tail`:
 ctest --test-dir build
 ```
 
-This builds and runs all 9 C++ tests registered in `CMakeLists.txt`. For a focused test:
+This runs the 9 C++ tests registered in `CMakeLists.txt` (all targets are built by the preceding `cmake --build build`). For a focused test:
 
 ```bash
 cmake --build build --target test_mutation
@@ -168,6 +180,8 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 
 | File | Description |
 |------|-------------|
+| `CMakeLists.txt` | CMake build configuration (C++17, `-Wall`, `-O3`) |
+| `build/ode-solver` | Compiled executable (output of `cmake --build build`) |
 | `src/parse_tree.cpp` | `main()` and the DE loop (single population, mutation, binomial crossover, greedy selection) |
 | `src/dualfunctions.h` | Header for token interpreter and 2nd-order dual-number arithmetic |
 | `src/dualfunctions.cpp` | Implementation of 2dual operations (sin, cos, tan, sinh, cosh, tanh, exp, log, pow, etc.) and tree evaluation |

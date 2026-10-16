@@ -240,6 +240,12 @@ str parse_tree( vector<ldouble>& v){
  * Esta funcion devuelve la funcion string, a partir de un vector,
  * crea el arbol para que visualmente se pueda ver la funcion
 */
+	// Un vector vacio no tiene tokens que renderizar: se devuelve la cadena
+	// vacia sin tocar `fun[0]` (antes eso leia fuera de rango y era
+	// comportamiento indefinido). En Python seria `if not v: return ""`.
+	if (v.empty()){
+		return "";
+	}
 	vector<string> fun;
 	string f_string ="";
 

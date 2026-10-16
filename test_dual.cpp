@@ -538,13 +538,31 @@ static void test_parse_tree_token12() {
     check_str("parse_tree([18,14,11,13,11])", parse_tree(suma), "(cos(x))+(sin(x))");
 }
 
-// Slice TDD del renderizador: un token invalido usa la plantilla vacia del
-// alfabeto. En Python seria como insertar `render(token)` y obtener `""` para
-// un codigo desconocido, no reutilizar por accidente el token anterior.
+// Slice TDD de los issues #32/#37: un token fuera del alfabeto usa la
+// plantilla vacia del alfabeto. En Python seria como insertar `render(token)`
+// y obtener `""` para un codigo desconocido, sin reutilizar por accidente el
+// texto del token anterior (el bug historico de `tmp` sin limpiar).
 static void test_parse_tree_codigo_invalido() {
     std::vector<long double> tokens = {TOKEN_ADD, TOKEN_CONST1, 0};
     check_str("parse_tree conserva el hueco de un token invalido",
               parse_tree(tokens), "(1.0)+()");
+    // El mismo contrato cuando el token invalido es el argumento de una
+    // unaria: la plantilla vacia deja el hueco "()" visible.
+    std::vector<long double> hijo_invalido = {TOKEN_SIN, TOKEN_MAX + 1};
+    check_str("parse_tree conserva el hueco con un hijo invalido",
+              parse_tree(hijo_invalido), "sin()");
+    // Contraprueba: los tokens validos siguen renderizandose igual.
+    std::vector<long double> validos = {TOKEN_SIN, TOKEN_X};
+    check_str("parse_tree de tokens validos no cambia",
+              parse_tree(validos), "sin(x)");
+}
+
+// Slice TDD del issue #37: renderizar un vector vacio es seguro y devuelve la
+// cadena vacia. Antes `fun[0]` sobre un vector vacio leia fuera de rango; en
+// Python seria `if not v: return ""` antes de concatenar los fragmentos.
+static void test_parse_tree_vector_vacio() {
+    std::vector<long double> vacio;
+    check_str("parse_tree(vector vacio) = \"\"", parse_tree(vacio), "");
 }
 
 // -------------------------------------------------------------------------
@@ -900,6 +918,7 @@ int main() {
     test_parsv_funciones_conocidas();
     test_parse_tree_token12();
     test_parse_tree_codigo_invalido();
+    test_parse_tree_vector_vacio();
     test_operf2_consumo_en_sitio();
     test_operf2_salta_huecos_nan();
     test_operf2_inicio();

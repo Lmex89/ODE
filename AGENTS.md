@@ -5,8 +5,7 @@
 - This repository has a `.codegraph/` index. Before investigating or changing
   code, use `codegraph_explore` (or `codegraph explore`) rather than manually
   searching source. Use `Read`/`Grep` only for unindexed files such as this
-  file, `Makefile`, `README.md`, `GLOSSARY.md`, notebooks, or files CodeGraph
-  flags as stale.
+  file, `README.md`, `GLOSSARY.md`, notebooks, or files CodeGraph flags as stale.
 - Read `GLOSSARY.md` before work that uses domain terminology. Its token
   tables are stale (former 21-token alphabet); `token.h` is the source of
   truth and defines the contiguous alphabet `1..29`.

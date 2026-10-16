@@ -7,8 +7,8 @@ mapped to this repo).
 the compliance snapshot and findings below remain the evidence reference for
 those tickets.
 
-**Baseline.** `make` builds warning-free with `g++ 15.2` under
-`-std=c++17 -Wall -O3`; `make test` is green (six binaries +
+**Baseline.** `cmake --build build` builds warning-free with `g++ 15.2` under
+`-std=c++17 -Wall -O3`; `ctest --test-dir build` is green (nine binaries +
 `python3 scripts/check_dual_validation.py` → 48/48) before any change below.
 
 **Scope audited.** `parse_tree.cpp`, `dualfunctions.h`, `dualfunctions.cpp`,
@@ -211,10 +211,9 @@ style(cpp): normalize indentation to four spaces
 
 ### Phase 4 — backlog / optional
 
-- `make test-asan`: extra target building the tests with
-  `-fsanitize=address,undefined` (the REVIEW.md probes used ASan; a target
-  makes the check routine). Optional, and the first thing to run after
-  Phases 1–2 if it is added.
+- ASan test target: build tests with `-fsanitize=address,undefined` via CMake
+  (the REVIEW.md probes used ASan; a CMake target makes the check routine).
+  Optional, and the first thing to run after Phases 1–2 if it is added.
 - F23 allocation copies: only with a measurement (`Per.6`); the per-individual
   fitness cache means `parsv` is called once per individual, not per
   generation.
@@ -226,8 +225,8 @@ style(cpp): normalize indentation to four spaces
 
 ## 4. Verification protocol (every step)
 
-1. `make clean && make` — must stay warning-free under `-std=c++17 -Wall -O3`.
-2. `make test` — six binaries must pass plus `python3
+1. `cmake --build build` — must stay warning-free under `-std=c++17 -Wall -O3`.
+2. `ctest --test-dir build` — nine binaries must pass plus `python3
    scripts/check_dual_validation.py` (48/48 baseline).
 3. Fixed-seed neutrality check for every "neutral" step:
 

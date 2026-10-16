@@ -140,6 +140,6 @@ plateau above is the documented baseline.
 make test                                                  # unit tests
 scripts/ab_experiment.sh --seed "1 42 2026" --timeout 300  # this report
 for S in 2 3 4 5 6 7 8 9; do                               # extra batch
-    ODE_SEED=$S timeout 240 ./main.exe > /tmp/sweep-$S.log
+    ODE_SEED=$S timeout 240 ./build/ode-solver > /tmp/sweep-$S.log
 done
 ```

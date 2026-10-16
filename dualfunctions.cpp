@@ -18,7 +18,7 @@ typedef string  str;
 const ldouble VALOR_PI = acos(-1.0L);
 const ldouble VALOR_E = exp(1.0L);
 
-vector<ldouble> sin2dual(vector<ldouble>& xval){
+vector<ldouble> sin2dual(const vector<ldouble>& xval){
 
 	vector<ldouble> f = {NAN,NAN,NAN};;
 
@@ -29,7 +29,7 @@ vector<ldouble> sin2dual(vector<ldouble>& xval){
 	return f;
 }
 
-vector<ldouble> cos2dual(vector<ldouble>& xval){
+vector<ldouble> cos2dual(const vector<ldouble>& xval){
 
 	vector<ldouble> f = {NAN,NAN,NAN}; ;
 
@@ -40,7 +40,7 @@ vector<ldouble> cos2dual(vector<ldouble>& xval){
 	return f;
 }
 
-vector<ldouble> tan2dual(vector<ldouble>& xval){
+vector<ldouble> tan2dual(const vector<ldouble>& xval){
 
 	vector<ldouble> f = {NAN,NAN,NAN}; ;
 
@@ -56,7 +56,7 @@ vector<ldouble> tan2dual(vector<ldouble>& xval){
 // sinh2dual: version de segundo orden de sinh(u). En Python seria
 // `[math.sinh(u), math.cosh(u)*du, math.sinh(u)*du**2 + math.cosh(u)*ddu]`;
 // xval[1] y xval[2] son u' y u'' (la regla de la cadena), no la parte real.
-vector<ldouble> sinh2dual(vector<ldouble>& xval){
+vector<ldouble> sinh2dual(const vector<ldouble>& xval){
 
 	vector<ldouble> f = {NAN,NAN,NAN};
 
@@ -69,7 +69,7 @@ vector<ldouble> sinh2dual(vector<ldouble>& xval){
 
 // cosh2dual: version de segundo orden de cosh(u). En Python seria
 // `[math.cosh(u), math.sinh(u)*du, math.cosh(u)*du**2 + math.sinh(u)*ddu]`.
-vector<ldouble> cosh2dual(vector<ldouble>& xval){
+vector<ldouble> cosh2dual(const vector<ldouble>& xval){
 
 	vector<ldouble> f = {NAN,NAN,NAN};
 
@@ -85,7 +85,7 @@ vector<ldouble> cosh2dual(vector<ldouble>& xval){
 //   (ddu*math.cosh(u)**2 - 2*du**2*math.sinh(u)*math.cosh(u))/math.cosh(u)**4]`;
 // el denominador cosh^4(u) sale de derivar 1/cosh^2(u) por la regla del
 // cociente, no de la parte real.
-vector<ldouble> tanh2dual(vector<ldouble>& xval){
+vector<ldouble> tanh2dual(const vector<ldouble>& xval){
 
 	vector<ldouble> f = {NAN,NAN,NAN};
 
@@ -96,7 +96,7 @@ vector<ldouble> tanh2dual(vector<ldouble>& xval){
 	return f;
 }
 
-vector<ldouble> exp2dual(vector<ldouble>& xval){
+vector<ldouble> exp2dual(const vector<ldouble>& xval){
 
 	vector<ldouble> f(3);
 
@@ -107,7 +107,7 @@ vector<ldouble> exp2dual(vector<ldouble>& xval){
 	return f;
 }
 
-vector<ldouble> log2dual(vector<ldouble>& xval){
+vector<ldouble> log2dual(const vector<ldouble>& xval){
 
 	vector<ldouble> f(3); ;
 
@@ -118,7 +118,7 @@ vector<ldouble> log2dual(vector<ldouble>& xval){
 	return f;
 }
 
-vector<ldouble> division2dual(vector<ldouble>&x, vector<ldouble>& y){
+vector<ldouble> division2dual(const vector<ldouble>&x, const vector<ldouble>& y){
 
 	vector<ldouble> f(3) ;
 
@@ -142,7 +142,7 @@ vector<ldouble> division2dual(vector<ldouble>&x, vector<ldouble>& y){
 //   u < 0  -> real solo con exponente entero y constante; si no, NaN explicito
 // En Python seria la misma cascada de `if/elif` con math.pow/math.log; `NAN`
 // es float("nan") (aqui es el macro NAN de <cmath>).
-vector<ldouble> pow2dual(vector<ldouble>&x, vector<ldouble>& y){
+vector<ldouble> pow2dual(const vector<ldouble>&x, const vector<ldouble>& y){
 
 	// Arranca en NaN: toda rama que no asigne un valor deja NaN, que es la
 	// politica explicita para los casos indefinidos (equivale a
@@ -208,7 +208,7 @@ vector<ldouble> pow2dual(vector<ldouble>&x, vector<ldouble>& y){
 }
 
 
-vector<ldouble> sqrt2dual(vector<ldouble>& xval){
+vector<ldouble> sqrt2dual(const vector<ldouble>& xval){
 
 	vector<ldouble> f(3);
 	vector<ldouble> mediodr = {0.500,0.0,0.0};
@@ -219,7 +219,7 @@ vector<ldouble> sqrt2dual(vector<ldouble>& xval){
 
 	}
 
-vector<ldouble> prod2dual(vector<ldouble>&x, vector<ldouble>& y){
+vector<ldouble> prod2dual(const vector<ldouble>&x, const vector<ldouble>& y){
 
 	vector<ldouble> f(3); ;
 
@@ -235,7 +235,7 @@ vector<ldouble> prod2dual(vector<ldouble>&x, vector<ldouble>& y){
  * Esta partiene contine todas las funciones que operan sobre las derivadas
  * =========================================================================
 */
-str parse_tree( vector<ldouble>& v){
+str parse_tree(const vector<ldouble>& v){
 /*
  * Esta funcion devuelve la funcion string, a partir de un vector,
  * crea el arbol para que visualmente se pueda ver la funcion
@@ -387,7 +387,7 @@ vector<long double> OperF2(ldouble x,vector<vector<ldouble>>& vecval, int inicio
 
 
 
-vector<ldouble> OperF(ldouble x, vector<ldouble>& xval){
+vector<ldouble> OperF(ldouble x, const vector<ldouble>& xval){
 
 /*Esta funcion evalua las funciones ya descritas
  * en la poblacion incial, con un solo argumento.

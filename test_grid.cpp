@@ -19,7 +19,7 @@
 #include <string>
 #include <cmath>
 
-#include "dualfunctions.h"  // necesita <vector>/<string> antes (header no autocontenido)
+#include "dualfunctions.h"  // ahora autocontenido: incluye <vector>/<string> por si mismo
 
 // En vez de declarar prototipos de funciones sueltas (como hacen test_mutation
 // y test_crossover), este test incluye parse_tree.cpp entero: x_rango y

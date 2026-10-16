@@ -267,7 +267,7 @@ static void test_token_tan_integracion() {
 // objeto de primera clase, p. ej. `fn = sinh2dual`).
 static void check_dual_finite_difference(
         const std::string& nombre,
-        std::vector<long double> (*fn)(std::vector<long double>&),
+        std::vector<long double> (*fn)(const std::vector<long double>&),
         long double x, long double tol) {
     const long double h = 1e-5L;
     std::vector<long double> centro_in = {x, 1.0L, 0.0L};

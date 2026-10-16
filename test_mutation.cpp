@@ -29,7 +29,8 @@
 ldouble mutacion_rand1(ldouble r1, ldouble r2, ldouble r3, ldouble F);
 int token_valido(ldouble v);
 void indices_distintos(int tam, int excluir, int& r1, int& r2, int& r3);
-vector<ldouble> Mutation(vector<ldouble>x, vector<ldouble> y, vector<ldouble>z);
+vector<ldouble> Mutation(const vector<ldouble>& x, const vector<ldouble>& y,
+                         const vector<ldouble>& z);
 
 // -------------------------------------------------------------------------
 // Arnes minimo (mismo estilo que test_dual.cpp): contadores globales y

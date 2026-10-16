@@ -16,7 +16,7 @@
   `main.exe` with `g++`, C++17, `-Wall`, and `-O3`. Override with
   `make CXX=icpc` when needed. Never add `parse_tree_bckp.cpp` to a build: it
   also defines `main()`.
-- `make test` builds and runs seven C++ test executables plus
+- `make test` builds and runs eight C++ test executables plus
   `python3 scripts/check_dual_validation.py`. For a focused test, use, for
   example, `make test_mutation.exe && ./test_mutation.exe`.
 - `make sage-test` is separate: it executes the entire Sage notebook, using a
@@ -49,8 +49,6 @@
   arity, category predicates) and the evaluator dispatch in
   `dualfunctions.cpp`, and cover it with focused token/dual tests. Use named
   token constants and `random_token()` rather than literal bounds.
-- `dualfunctions.h` is currently not self-contained: include `<vector>` and
-  `<string>` before it in a new translation unit until that header is fixed.
 
 ## C++ and output conventions
 

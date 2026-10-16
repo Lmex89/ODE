@@ -19,8 +19,10 @@
 #include <cstdlib>
 #include <ctime>
 
-#include "dualfunctions.h"  // necesita <vector>/<string> antes (header no autocontenido)
+#include "dualfunctions.h"  // ahora autocontenido: incluye <vector>/<string> por si mismo
 #include "token.h"          // expone el contrato publico del rango del alfabeto
+
+using namespace std;  // el header ya no inyecta nombres; el test los necesita para los prototipos
 
 // Prototipos de las costuras (seams) que se prueban: son funciones publicas de
 // parse_tree.cpp que hoy no viven en un header, asi que el test las declara.

@@ -180,6 +180,8 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 
 | File | Description |
 |------|-------------|
+| `CMakeLists.txt` | CMake build configuration (C++17, `-Wall`, `-O3`) |
+| `build/ode-solver` | Compiled executable (output of `cmake --build build`) |
 | `src/parse_tree.cpp` | `main()` and the DE loop (single population, mutation, binomial crossover, greedy selection) |
 | `src/dualfunctions.h` | Header for token interpreter and 2nd-order dual-number arithmetic |
 | `src/dualfunctions.cpp` | Implementation of 2dual operations (sin, cos, tan, sinh, cosh, tanh, exp, log, pow, etc.) and tree evaluation |

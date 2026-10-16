@@ -65,7 +65,7 @@ static void check_ld(const std::string& nombre, ldouble got, ldouble esperado,
         std::cout << "PASS  " << nombre << "\n";
     } else {
         std::cout << "FAIL  " << nombre << "  (got=" << std::setprecision(17)
-                  << (double)got << " esperado=" << (double)esperado << ")\n";
+                  << static_cast<double>(got) << " esperado=" << static_cast<double>(esperado) << ")\n";
         g_fallos++;
     }
 }
@@ -162,7 +162,7 @@ static std::string vec_str(const std::vector<long double>& v) {
     std::ostringstream os;
     os << "[";
     for (size_t i = 0; i < v.size(); i++) {
-        os << (double)v[i];
+        os << static_cast<double>(v[i]);
         if (i + 1 < v.size()) os << ", ";
     }
     os << "]";

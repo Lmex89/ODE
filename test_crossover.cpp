@@ -206,7 +206,7 @@ static void test_recombination_genes_de_los_padres_y_fraccion_cr() {
             total++;
             if (trial[i] == 2.0L) {
                 del_mutante++;
-            } else if (trial[i] != 1.0L) {
+            } else if (trial[i] != objetivo[i] && trial[i] != mutante[i]) {
                 solo_de_los_padres = false;
             }
         }

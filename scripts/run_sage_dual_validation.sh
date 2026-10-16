@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NOTEBOOK="$ROOT_DIR/Untitled.ipynb"
+NOTEBOOK="$ROOT_DIR/docs/legacy/Untitled.ipynb"
 WORK_DIR="$(mktemp -d)"
 EXECUTED_NOTEBOOK="$WORK_DIR/Untitled.executed.ipynb"
 SAGE_IMAGE="${SAGE_IMAGE:-sagemath/sagemath@sha256:310dfe23fc786f3a5a06a7b0387c60201ec79b32c0db941b7624505ee5edb565}"
@@ -49,7 +49,7 @@ else
                 --ExecutePreprocessor.kernel_name=sagemath \
                 --ExecutePreprocessor.timeout="${SAGE_TIMEOUT:-120}" \
                 --output /out/Untitled.executed.ipynb \
-                Untitled.ipynb
+                docs/legacy/Untitled.ipynb
         '
 fi
 

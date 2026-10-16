@@ -284,7 +284,9 @@ int narg(ldouble x){
 /*
 * Esta funcion devuelve el numero de argumentos para evaular una operacion.
 * Funciona como la tabla de aridad de la gramatica: 0 = hoja, 1 = funcion
-* unaria, 2 = operador binario.
+* unaria, 2 = operador binario. Es total: `arity()` de token.h tambien trata
+* cualquier codigo fuera del alfabeto como hoja (0), asi que nunca devuelve
+* una aridad indefinida.
 */
 	// `ldouble` no tiene equivalente exacto en Python: aqui el codigo llega
 	// como long double y se convierte al `int` que usa la tabla de tokens.

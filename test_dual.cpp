@@ -483,14 +483,19 @@ static void test_narg_tabla() {
     check_int("narg(21) = 2 (potencia)", narg(21.0L), 2);
 }
 
-// Slice TDD del issue #32: un codigo fuera del alfabeto no tiene aridad.
-// El resultado -1 es el contrato de `arity()` en token.h; en Python seria
-// como obtener un sentinel explicito de una tabla en vez de leer una variable
-// sin inicializar (que no tiene equivalente seguro en Python).
+// Slice TDD del issue #37: el evaluador es total sobre los codigos de token.
+// Un codigo fuera del alfabeto se trata como hoja sin argumentos (0), como
+// consultar `tabla.get(token, 0)` en Python; antes `arity()` devolvia el
+// centinela -1 y cada consumidor tenia que conocer ese estado especial.
 static void test_narg_codigo_invalido() {
-    check_int("narg(0) devuelve -1 fuera del alfabeto", narg(0.0L), -1);
-    check_int("narg(TOKEN_MAX+1) devuelve -1 fuera del alfabeto",
-              narg(TOKEN_MAX + 1.0L), -1);
+    check_int("narg(0) = 0 (fuera del alfabeto, hoja)", narg(0.0L), 0);
+    check_int("narg(-1) = 0 (fuera del alfabeto, hoja)", narg(-1.0L), 0);
+    check_int("narg(TOKEN_MAX+1) = 0 (fuera del alfabeto, hoja)",
+              narg(TOKEN_MAX + 1.0L), 0);
+    // Contraprueba: la tabla de los codigos validos no cambia.
+    check_int("narg(TOKEN_X) = 0 (hoja valida)", narg(TOKEN_X), 0);
+    check_int("narg(TOKEN_SIN) = 1 (unaria valida)", narg(TOKEN_SIN), 1);
+    check_int("narg(TOKEN_ADD) = 2 (binaria valida)", narg(TOKEN_ADD), 2);
 }
 
 static void test_parsv_funciones_conocidas() {

@@ -331,9 +331,14 @@ vector<long double> vector_population(int tam){
 
 	vector<ldouble> ans;
 
-	// random_token() aplica el rango definido en token.h; asi este consumidor no
-	// duplica el tamano ni los extremos del alfabeto.
-	for (int i = 0; i < tam; i++){
+	// El primer token debe ser un operador (aridad > 0) para evitar el colapso
+	// de expresiones: si el primer token es una hoja (aridad 0), toda la
+	// expresión colapsa a un solo token y los demás se desperdician. En Python
+	// sería `ans.append(random_operator_token())`.
+	ans.push_back(random_operator_token());
+
+	// El resto de los tokens pueden ser cualquiera (hojas u operadores).
+	for (int i = 1; i < tam; i++){
 		ans.push_back(random_token());
 	}
 
@@ -522,6 +527,14 @@ vector<ldouble> Mutation(const vector<ldouble>& x, const vector<ldouble>& y, con
 		res[i] = token_valido(mutacion_rand1(x[i], y[i], z[i], F));
 	}
 
+	// Reparación de colapso: si el primer token quedó como hoja (aridad 0), la
+	// expresión completa colapsaría a un solo token. Se reemplaza con un
+	// operador aleatorio (aridad > 0). En Python sería
+	// `if arity(res[0]) == 0: res[0] = random_operator_token()`.
+	if (res.size() > 0 && arity(static_cast<int>(res[0])) == 0){
+		res[0] = random_operator_token();
+	}
+
 	// Reparacion heredada: la fitness exige alguna hoja que dependa de x
 	// (variable o polinomial, issue #63), asi que si la mutacion borro el
 	// token x se fuerza uno en una posicion al azar (un solo token; antes se
@@ -587,6 +600,14 @@ vector<ldouble> Recombination(const vector<ldouble>& objetivo, const vector<ldou
 		} else {
 			trial[i] = gen_binomial(objetivo[i], mutante[i], r, Cr);
 		}
+	}
+
+	// Reparación de colapso: si el primer token quedó como hoja (aridad 0), la
+	// expresión completa colapsaría a un solo token. Se reemplaza con un
+	// operador aleatorio (aridad > 0). En Python sería
+	// `if arity(trial[0]) == 0: trial[0] = random_operator_token()`.
+	if (trial.size() > 0 && arity(static_cast<int>(trial[0])) == 0){
+		trial[0] = random_operator_token();
 	}
 
 	// Reparacion heredada (igual que en Mutation()): la fitness exige alguna
@@ -771,6 +792,13 @@ int main() {
 	bool flag = true;
 	const int max_gen = config.max_generaciones;  // tope del bucle (ODE_GEN)
 	string estado = "max_generations";  // pasa a "converged" si llega a eps
+	
+	// Mecanismo de escape de mínimos locales: si la búsqueda no mejora en
+	// STALE_LIMIT generaciones, se reinicia el 80% de la población manteniendo
+	// el mejor individuo. Esto inyecta diversidad fresca sin perder el mejor
+	// hallazgo. En Python sería `stale_limit = 500`.
+	const int STALE_LIMIT = 500;
+	int generaciones_sin_mejora = 0;
 
 	// Cabecera de la corrida (reemplaza el banner de ASCII art): una sola
 	// linea con toda la configuracion en clave=valor. `population=` informa el
@@ -859,6 +887,39 @@ int main() {
 			           << " expr=" << parse_tree(Bestvect)
 			           << " vector=" << fmt_vector(Bestvect) << '\n';
 			cout.flush();
+			// Reinicio del contador de estancamiento: hay un new_best, asi que
+			// la búsqueda está progresando. En Python sería
+			// `generaciones_sin_mejora = 0`.
+			generaciones_sin_mejora = 0;
+		} else {
+			// Sin mejora: incremento el contador. En Python sería
+			// `generaciones_sin_mejora += 1`.
+			generaciones_sin_mejora++;
+		}
+
+		// Reinicio adaptativo: si la búsqueda se estanca (sin mejoras en
+		// STALE_LIMIT generaciones), se reemplaza el 80% de la población con
+		// nuevos individuos aleatorios, manteniendo el mejor. Esto inyecta
+		// diversidad fresca para escapar de mínimos locales. En Python sería
+		// `if generaciones_sin_mejora >= stale_limit: reiniciar_población()`.
+		if (generaciones_sin_mejora >= STALE_LIMIT){
+			// Guardar el mejor individuo (elitismo).
+			FunbObj mejor_individuo(Bestvect, 0, 1, caso);
+			// Calcular cuántos individuos reemplazar (80% de la población).
+			const int cantidad_reemplazar = static_cast<int>(0.8 * tam_poblacion);
+			// Reemplazar individuos aleatorios (excepto el mejor).
+			int reemplazados = 0;
+			for (int j = 0; j < tam_poblacion && reemplazados < cantidad_reemplazar; j++){
+				if (j != mejor){
+					Population[j] = FunbObj(vector_population(config.dimension), 0, 1, caso);
+					reemplazados++;
+				}
+			}
+			log_info() << "restart | gen=" << gen << " stagnant_gens=" << generaciones_sin_mejora
+			           << " replaced=" << reemplazados << '\n';
+			cout.flush();
+			// Resetear el contador para que no se reinicie en la siguiente generación.
+			generaciones_sin_mejora = 0;
 		}
 
 		if ( Bestfit < eps){

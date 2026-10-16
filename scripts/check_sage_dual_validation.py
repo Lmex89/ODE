@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verifica la salida de una ejecucion real de Untitled.ipynb en SageMath."""
+"""Verifica la salida de una ejecucion real de docs/legacy/Untitled.ipynb en SageMath."""
 
 import json
 import sys

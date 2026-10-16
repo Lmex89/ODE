@@ -15,9 +15,9 @@
 # usa "despues". El parche solo agrega el gancho; no toca la matematica.
 #
 # Salidas en $OUTDIR (por defecto un mktemp en /tmp/opencode):
-#   - antes/main.exe, despues/main.exe     binarios comparados
-#   - antes-seedN.log, despues-seedN.log   salida completa de cada corrida
-#   - metricas.tsv                         tabla de la comparacion
+#   - antes/main.exe, despues/build/ode-solver   binarios comparados
+#   - antes-seedN.log, despues-seedN.log         salida completa de cada corrida
+#   - metricas.tsv                               tabla de la comparacion
 #
 # Uso:
 #   scripts/ab_experiment.sh [--seed "1 42 2026"] [--timeout 300]
@@ -94,16 +94,18 @@ git -C "$REPO" archive HEAD          | tar -x -C "$OUTDIR/despues"
 # 2) Gancho de semilla en A: los mismos semilla.{h,cpp} que usa B y el
 #    parche que reemplaza srand(time(NULL)) por resolver_semilla(...).
 # -------------------------------------------------------------------------
-cp "$REPO/semilla.h" "$REPO/semilla.cpp" "$OUTDIR/antes/"
+cp "$REPO/src/semilla.h" "$REPO/src/semilla.cpp" "$OUTDIR/antes/"
 patch --batch --silent -d "$OUTDIR/antes" -p1 < "$REPO/scripts/ab_seed_hook.patch"
-echo "  sha256 semilla.cpp  : $(sha256sum "$REPO/semilla.cpp" | cut -d' ' -f1)"
+echo "  sha256 semilla.cpp  : $(sha256sum "$REPO/src/semilla.cpp" | cut -d' ' -f1)"
 
 # -------------------------------------------------------------------------
 # 3) Compilar ambas versiones con los mismos flags.
+#    "antes" (bc70e95) tiene layout plano; "despues" (HEAD) tiene layout nuevo
+#    con src/. Ambos producen binarios en sus respectivos directorios.
 # -------------------------------------------------------------------------
 ( cd "$OUTDIR/antes"   && $CXX $FLAGS dualfunctions.cpp semilla.cpp parse_tree.cpp -o main.exe )
-( cd "$OUTDIR/despues" && $CXX $FLAGS dualfunctions.cpp semilla.cpp parse_tree.cpp -o main.exe )
-echo "  md5 antes/despues  : $(md5sum "$OUTDIR/antes/main.exe" | cut -d' ' -f1) / $(md5sum "$OUTDIR/despues/main.exe" | cut -d' ' -f1)"
+( cd "$OUTDIR/despues" && mkdir -p build && $CXX $FLAGS src/dualfunctions.cpp src/semilla.cpp src/parse_tree.cpp -o build/ode-solver )
+echo "  md5 antes/despues  : $(md5sum "$OUTDIR/antes/main.exe" | cut -d' ' -f1) / $(md5sum "$OUTDIR/despues/build/ode-solver" | cut -d' ' -f1)"
 
 # -------------------------------------------------------------------------
 # 4) Correr A y B con cada semilla y extraer las metricas del log.
@@ -189,7 +191,13 @@ for SEED in $SEEDS; do
         LOG="$OUTDIR/$V-seed$SEED.log"
         T0=$(date +%s.%N)
         STATUS=0
-        ( cd "$OUTDIR/$V" && ODE_SEED="$SEED" timeout "$TIMEOUT_S" ./main.exe > "$LOG" 2>&1 ) || STATUS=$?
+        # "antes" tiene layout plano (main.exe); "despues" tiene layout nuevo (build/ode-solver).
+        if [[ "$V" == "antes" ]]; then
+            BIN="./main.exe"
+        else
+            BIN="./build/ode-solver"
+        fi
+        ( cd "$OUTDIR/$V" && ODE_SEED="$SEED" timeout "$TIMEOUT_S" $BIN > "$LOG" 2>&1 ) || STATUS=$?
         ESTADO="termino"                  # el loop termino por si solo
         if [[ $STATUS -eq 124 ]]; then
             ESTADO="timeout"              # lo corto `timeout`

@@ -1,9 +1,8 @@
 # Local codegraph index (machine-specific: sqlite db, sockets, pid files)
 .codegraph/
 
-# Compiled binaries and object files
-main.exe
-*.o
+# CMake build directory (out-of-source build: cmake -B build)
+build/
 
 # Run outputs
 out
@@ -14,12 +13,4 @@ out.txt
 .ipynb_checkpoints/
 .vscode/
 
-# Test binaries built by `make test` (ephemeral, unlike the committed main.exe)
-test_dual.exe
-test_mutation.exe
-test_semilla.exe
-test_crossover.exe
-test_grid.exe
-test_population.exe
-test_token.exe
-*.exe
+

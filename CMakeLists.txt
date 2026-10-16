@@ -1,15 +1,15 @@
-# CMakeLists.txt del prototipo ODE (issue #47: linea base de CMake).
+# CMakeLists.txt del prototipo ODE (issue #48: layout estandar de C++).
 #
 # Para un desarrollador Python: este archivo es el equivalente CMake del
-# Makefile y convive con el. CMake configura y compila fuera de las fuentes
-# (todo el build cae en build/); los comandos son:
+# pyproject.toml y el unico punto de entrada del build. Los fuentes viven en
+# src/ y los tests en tests/; el Makefile de la raiz quedo obsoleto con la
+# reorganizacion (su retiro es el issue #53). Los comandos son:
 #
 #   cmake -B build            # configurar       (como leer pyproject.toml)
 #   cmake --build build       # compilar         (como `python -m build`)
 #   ctest --test-dir build    # correr los tests (como `pytest`)
 #
-# El Makefile sigue vigente y no se toca en este issue: ambos caminos compilan
-# los mismos fuentes y producen el mismo main.exe.
+# El ejecutable se llama build/ode-solver (antes main.exe).
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -24,32 +24,36 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_compile_options(-Wall -O3)
 
 # ---------------------------------------------------------------------------
-# Ejecutable principal: mismos fuentes que $(SRCS) del Makefile. Conserva el
-# nombre main.exe (en Linux CMake no anade sufijo al objetivo), asi que
-# build/main.exe es el mismo binario que `make` deja en la raiz.
-# parse_tree_bckp.cpp queda fuera a proposito: tambien define main() y
-# enlazarlo daria un simbolo duplicado.
+# Ejecutable principal: los mismos fuentes que $(SRCS) del Makefile, ahora en
+# src/. El objetivo se llama ode-solver (issue #48) y en Linux CMake no anade
+# sufijo, asi que el binario queda en build/ode-solver.
+# parse_tree_bckp.cpp queda fuera a proposito: ahora vive en docs/legacy/ y
+# tambien define main(); enlazarlo daria un simbolo duplicado.
 # ---------------------------------------------------------------------------
-add_executable(main.exe
-    dualfunctions.cpp
-    semilla.cpp
-    parse_tree.cpp
+add_executable(ode-solver
+    src/dualfunctions.cpp
+    src/semilla.cpp
+    src/parse_tree.cpp
 )
 
 # ---------------------------------------------------------------------------
-# Tests: los mismos 9 binarios de `make test`. Cada test define su propio
-# main() y devuelve codigo distinto de cero si falla algun assert (el
-# equivalente al exit code de pytest).
+# Tests: los mismos 9 binarios de `make test`, ahora en tests/. Cada test
+# define su propio main() y devuelve codigo distinto de cero si falla algun
+# assert (el equivalente al exit code de pytest). Todos necesitan src/ en el
+# include path porque los headers (dualfunctions.h, semilla.h, token.h) ya no
+# resuelven junto al archivo que los incluye.
 # ---------------------------------------------------------------------------
 
 enable_testing()
 
 # test_dual (issue #2): numeros duales; enlaza solo dualfunctions.cpp.
-add_executable(test_dual dualfunctions.cpp test_dual.cpp)
+add_executable(test_dual src/dualfunctions.cpp tests/test_dual.cpp)
+target_include_directories(test_dual PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME test_dual COMMAND test_dual)
 
 # test_semilla (issue #4): resolucion de ODE_SEED; solo semilla.cpp.
-add_executable(test_semilla semilla.cpp test_semilla.cpp)
+add_executable(test_semilla src/semilla.cpp tests/test_semilla.cpp)
+target_include_directories(test_semilla PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME test_semilla COMMAND test_semilla)
 
 # test_mutation (issue #5), test_crossover (issue #6) y test_token (issue #31)
@@ -58,33 +62,35 @@ add_test(NAME test_semilla COMMAND test_semilla)
 # unico main() de cada binario sea el del test (misma tecnica que el Makefile).
 foreach(nombre IN ITEMS test_mutation test_crossover test_token)
     add_executable(${nombre}
-        semilla.cpp
-        dualfunctions.cpp
-        parse_tree.cpp
-        ${nombre}.cpp
+        src/semilla.cpp
+        src/dualfunctions.cpp
+        src/parse_tree.cpp
+        tests/${nombre}.cpp
     )
     target_compile_definitions(${nombre} PRIVATE ODE_NO_MAIN)
+    target_include_directories(${nombre} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME ${nombre} COMMAND ${nombre})
 endforeach()
 
 # test_funbobj_const (issue #42), test_grid (issue #7) y test_population
 # (issue #11) incluyen parse_tree.cpp desde su propio .cpp (FunbObj no tiene
 # header): parse_tree.cpp NO se compila aparte o habria simbolos duplicados.
-# Necesitan el directorio de fuentes en el include path, ahora que el .cpp
-# incluido se busca primero junto al archivo que lo incluye, y -DODE_NO_MAIN
-# para que gane el main() del test.
+# Necesitan src/ en el include path (asi resuelven tanto el .cpp incluido
+# como sus headers) y -DODE_NO_MAIN para que gane el main() del test.
 foreach(nombre IN ITEMS test_funbobj_const test_grid test_population)
     add_executable(${nombre}
-        semilla.cpp
-        dualfunctions.cpp
-        ${nombre}.cpp
+        src/semilla.cpp
+        src/dualfunctions.cpp
+        tests/${nombre}.cpp
     )
     target_compile_definitions(${nombre} PRIVATE ODE_NO_MAIN)
-    target_include_directories(${nombre} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_include_directories(${nombre} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_test(NAME ${nombre} COMMAND ${nombre})
 endforeach()
 
 # test_header_hygiene (issue #39): test de tiempo de compilacion; si el
-# binario compila, el test pasa.
-add_executable(test_header_hygiene test_header_hygiene.cpp)
+# binario compila, el test pasa. Incluye dualfunctions.h, que ahora vive en
+# src/.
+add_executable(test_header_hygiene tests/test_header_hygiene.cpp)
+target_include_directories(test_header_hygiene PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME test_header_hygiene COMMAND test_header_hygiene)

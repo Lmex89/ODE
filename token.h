@@ -115,8 +115,9 @@ inline int random_token() {
 }
 
 // arity traduce un token a la cantidad de hijos que requiere un arbol prefijo.
-// Es el equivalente a consultar un `dict` de aridades en Python; -1 indica un
-// codigo fuera del alfabeto, que no pertenece a ninguna regla gramatical.
+// Es el equivalente a `tabla.get(token, 0)` en Python: un codigo fuera del
+// alfabeto se trata como hoja sin argumentos (0), de modo que el evaluador es
+// total sobre cualquier entero y no existe una aridad indefinida o centinela.
 inline int arity(int token) {
     // Hojas de valor fijo: los literales 1.0-10.0, la variable x y las
     // constantes pi/e (issue #64). En Python seria
@@ -137,7 +138,10 @@ inline int arity(int token) {
     if (token >= TOKEN_ADD && token <= TOKEN_POW) {
         return 2;
     }
-    return -1;
+    // Fuera del alfabeto: hoja sin argumentos, no un error. En Python seria el
+    // valor por defecto de `tabla.get(token, 0)`; `is_valid()` sigue siendo el
+    // predicado explicito para preguntar si el codigo pertenece al alfabeto.
+    return 0;
 }
 
 // render devuelve el fragmento de expresion que representa un token. Un

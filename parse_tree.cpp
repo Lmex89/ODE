@@ -154,14 +154,10 @@ class FunbObj{
 
 	for (	int i = 0 ; i < (int)_xrange.size(); i++){
 		vector<ldouble> fitnessval(parsv(_vecval,_xrange[i]));
-		//  imprime(_vecval); cout << endl;
 		//  cout << parse_tree(_vecval) << endl;
 			
 		//   cout << endl; cout << i << " " ;
-		//  imprime(_xrange[i]) ; cout << "despues de _range" << endl;
-		// imprime(fitnessval);
 		// cout <<" <<<<<"  << endl;
-		// imprime(a_start);
 		// cin.get();
 
 		// Cualquier componente NaN hace que todo el individuo sea no evaluable.

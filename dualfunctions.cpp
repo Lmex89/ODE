@@ -235,24 +235,17 @@ vector<ldouble> prod2dual(vector<ldouble>&x, vector<ldouble>& y){
  * Esta partiene contine todas las funciones que operan sobre las derivadas
  * =========================================================================
 */
-void imprime(vector<ldouble> n ){
-	cout << "[";
-	vector<ldouble> :: iterator it;
-	it = n.begin();
-	cout<< *it ;
-	if (!n.empty()){
-		for ( it=n.begin() +1;it !=n.end(); it++){
-			cout << ", " << *it;
-		}
-	}
-	cout << "]" ;
-}
-
 str parse_tree( vector<ldouble>& v){
 /*
  * Esta funcion devuelve la funcion string, a partir de un vector,
  * crea el arbol para que visualmente se pueda ver la funcion
 */
+	// Un vector vacio no tiene tokens que renderizar: se devuelve la cadena
+	// vacia sin tocar `fun[0]` (antes eso leia fuera de rango y era
+	// comportamiento indefinido). En Python seria `if not v: return ""`.
+	if (v.empty()){
+		return "";
+	}
 	vector<string> fun;
 	string f_string ="";
 
@@ -284,7 +277,9 @@ int narg(ldouble x){
 /*
 * Esta funcion devuelve el numero de argumentos para evaular una operacion.
 * Funciona como la tabla de aridad de la gramatica: 0 = hoja, 1 = funcion
-* unaria, 2 = operador binario.
+* unaria, 2 = operador binario. Es total: `arity()` de token.h tambien trata
+* cualquier codigo fuera del alfabeto como hoja (0), asi que nunca devuelve
+* una aridad indefinida.
 */
 	// `ldouble` no tiene equivalente exacto en Python: aqui el codigo llega
 	// como long double y se convierte al `int` que usa la tabla de tokens.

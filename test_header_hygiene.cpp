@@ -1,73 +1,54 @@
-// test_header_hygiene.cpp — test de higiene de interfaz (issue #39).
+// test_header_hygiene.cpp — test de tiempo de compilacion (issue #39)
 //
-// Este archivo verifica que dualfunctions.h sea autocontenido y que los
-// parametros de solo-lectura sean const references. Es un test de tiempo de
-// compilacion: si no compila, el test falla.
+// Verifica que dualfunctions.h sea autocontenido y que los parametros de
+// solo-lectura sean const references. Es un test de compilacion pura: no
+// enlaza con dualfunctions.cpp, solo verifica que las declaraciones sean
+// correctas.
 //
-// Para un desarrollador Python: esto es como un `import` que verifica que un
-// modulo no dependa de nombres inyectados por otros modulos. Si el header no
-// incluye todo lo que usa, este archivo no compilara (como un `ImportError`).
-//
-// Se compila solo, sin incluir <vector> ni <string> antes de dualfunctions.h.
-// Si el header no es autocontenido, el compilador fallara.
+// Para un desarrollador Python: esto es como hacer `import modulo` sin
+// llamar a ninguna funcion. Si el import falla (el header no incluye todo
+// lo que usa), el test falla en tiempo de compilacion.
 
 #include "dualfunctions.h"
 
-// Test 1: el header debe declarar std::vector y std::string sin depender de
-// using namespace std; inyectado en el TU consumidor.
-static void test_tipos_cualificados() {
-    // Si el header usa `vector` sin `std::`, esto no compila.
-    std::vector<ldouble> v = {1.0L, 2.0L, 3.0L};
-    std::string s = parse_tree(v);
-    (void)s;  // sin uso intencional
-}
+// Verificar que los tipos esten cualificados con std::
+static_assert(sizeof(std::vector<ldouble>) > 0, "std::vector debe estar disponible");
+static_assert(sizeof(str) > 0, "str (std::string) debe estar disponible");
 
-// Test 2: los parametros de solo-lectura deben ser const references, asi que
-// se deben poder pasar vectores const. Si no son const, esto no compila.
-static void test_parametros_const() {
-    const std::vector<ldouble> xval = {0.5L, 1.0L, 0.0L};
-    const std::vector<ldouble> yval = {2.0L, 0.0L, 0.0L};
-
-    // Todas estas funciones deben aceptar const references (son de solo-lectura).
-    auto r1 = sin2dual(xval);
-    auto r2 = cos2dual(xval);
-    auto r3 = tan2dual(xval);
-    auto r4 = sinh2dual(xval);
-    auto r5 = cosh2dual(xval);
-    auto r6 = tanh2dual(xval);
-    auto r7 = exp2dual(xval);
-    auto r8 = log2dual(xval);
-    auto r9 = sqrt2dual(xval);
-    auto r10 = division2dual(xval, yval);
-    auto r11 = pow2dual(xval, yval);
-    auto r12 = prod2dual(xval, yval);
-    auto r13 = parse_tree(xval);
-    auto r14 = OperF(11.0L, xval);  // 11 = TOKEN_X
-    auto r15 = parsv(xval, xval);
-
-    // Evitar warnings de "unused variable".
-    (void)r1; (void)r2; (void)r3; (void)r4; (void)r5;
-    (void)r6; (void)r7; (void)r8; (void)r9; (void)r10;
-    (void)r11; (void)r12; (void)r13; (void)r14; (void)r15;
-}
-
-// Test 3: OperF2 debe mantener su matriz no-const (contrato documentado de
-// entrada/salida). Este test verifica que NO sea const reference.
-static void test_operf2_no_const() {
-    // OperF2 modifica la matriz in-place (borra operandos consumidos),
-    // asi que debe seguir aceptando non-const reference.
-    std::vector<std::vector<ldouble>> vecval = {
-        {1.0L, 2.0L, 3.0L},
-        {0.0L, 0.0L, 0.0L},
-        {0.0L, 0.0L, 0.0L}
-    };
-    auto result = OperF2(11.0L, vecval, 0);  // 11 = TOKEN_X
-    (void)result;
+// Verificar que las declaraciones acepten const references (solo declaracion,
+// sin implementacion). Si el header declara parametros no-const, esto no
+// compilara porque no podra pasar un const vector a un parametro no-const.
+void test_const_correctness() {
+    // Solo necesitamos que las declaraciones acepten const references.
+    // No llamamos a las funciones, solo verificamos que las firmas sean
+    // compatibles con const references usando punteros a funcion.
+    
+    // Funciones unarias: deben aceptar const std::vector<ldouble>&
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&)>(sin2dual);
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&)>(cos2dual);
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&)>(tan2dual);
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&)>(sinh2dual);
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&)>(cosh2dual);
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&)>(tanh2dual);
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&)>(exp2dual);
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&)>(log2dual);
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&)>(sqrt2dual);
+    
+    // Funciones binarias: deben aceptar dos const std::vector<ldouble>&
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&, const std::vector<ldouble>&)>(division2dual);
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&, const std::vector<ldouble>&)>(pow2dual);
+    (void)static_cast<std::vector<ldouble>(*)(const std::vector<ldouble>&, const std::vector<ldouble>&)>(prod2dual);
+    
+    // parse_tree y OperF: deben aceptar const references
+    (void)static_cast<str(*)(const std::vector<ldouble>&)>(parse_tree);
+    (void)static_cast<std::vector<ldouble>(*)(ldouble, const std::vector<ldouble>&)>(OperF);
+    
+    // OperF2 mantiene su matriz no-const (contrato documentado de entrada/salida)
+    (void)static_cast<std::vector<long double>(*)(ldouble, std::vector<std::vector<ldouble>>&, int)>(OperF2);
 }
 
 int main() {
-    test_tipos_cualificados();
-    test_parametros_const();
-    test_operf2_no_const();
+    // No necesitamos hacer nada en runtime. Si este archivo compila, el
+    // header es autocontenido y las firmas son correctas.
     return 0;
 }

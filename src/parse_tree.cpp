@@ -685,6 +685,89 @@ void createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config,
     }
 }
 
+// ResumenDiversidad: resultado puro de mirar las fitness de una generacion.
+// `individuos_finitos` cuenta solo los valores evaluables, `individuos_totales`
+// es el tamano de la muestra y el coeficiente de variacion usa solo los
+// finitos. En Python seria un dataclass con esos tres campos.
+struct ResumenDiversidad {
+    int individuos_finitos = 0;
+    int individuos_totales = 0;
+    long double coeficiente_variacion = 0.0L;
+};
+
+// Proporcion minima de la poblacion que debe tener fitness finita para que el
+// CV sea una senal de diversidad y no el reflejo de unos pocos individuos
+// evaluables (issue #129). En Python seria `FRACCION_MINIMA_FINITA = 0.25`.
+constexpr long double FRACCION_MINIMA_FINITA = 0.25L;
+
+// resumir_diversidad: calcula el coeficiente de variacion (desviacion
+// poblacional / media) sobre las fitness finitas, ignorando INFINITY y NaN.
+// Las fitness no finitas son el contrato documentado del interprete para
+// arboles invalidos, no diversidad real: incluirlas hundiria la media y
+// dispararia reinicios falsos. Si no hay ninguna finita, el resumen queda en
+// cero y el consumidor decide con la guarda de proporcion. En Python seria
+// `finitas = [f for f in fitnesses if math.isfinite(f)]` y luego
+// `statistics.pstdev(finitas) / statistics.mean(finitas)`.
+ResumenDiversidad resumir_diversidad(const vector<ldouble>& fitnesses) {
+    ResumenDiversidad resumen;
+    resumen.individuos_totales = static_cast<int>(fitnesses.size());
+    long double suma = 0.0L;
+
+    for (ldouble fitness : fitnesses) {
+        if (!std::isfinite(fitness)) continue;
+        resumen.individuos_finitos++;
+        suma += fitness;
+    }
+
+    // Sin muestra no hay CV que calcular (0/0); la guarda de la decision
+    // rechaza este caso porque la proporcion finita es cero.
+    if (resumen.individuos_finitos == 0) return resumen;
+
+    const long double media =
+        suma / static_cast<long double>(resumen.individuos_finitos);
+
+    // Las fitness son sumas de cuadrados (no negativas). Una media cero
+    // implica que toda la muestra finita es cero: el colapso es maximo y el
+    // CV se define como 0 para no dividir por cero (ES.105). En Python seria
+    // `cv = pstdev(finitas) / media if media > 0 else 0.0`.
+    if (media <= 0.0L) return resumen;
+
+    long double suma_cuadrados = 0.0L;
+    for (ldouble fitness : fitnesses) {
+        if (!std::isfinite(fitness)) continue;
+        const long double diferencia = fitness - media;
+        suma_cuadrados += diferencia * diferencia;
+    }
+
+    // Desviacion poblacional (divide por n, no por n-1): la muestra ES la
+    // poblacion de esa generacion. En Python: sqrt(suma_cuadrados / n) / media.
+    const long double varianza =
+        suma_cuadrados / static_cast<long double>(resumen.individuos_finitos);
+    resumen.coeficiente_variacion = std::sqrt(varianza) / media;
+    return resumen;
+}
+
+// dispara_reinicio_por_diversidad: decide si el resumen de la generacion
+// activa el reinicio por colapso de diversidad (issue #129). Sin un record
+// finito no hay nada que el reinicio pueda preservar, y la guarda de
+// proporcion evita que unos pocos individuos evaluables disparen el canal.
+// En Python seria
+// `return hay_record and finitos / total >= 0.25 and cv < umbral`.
+bool dispara_reinicio_por_diversidad(const ResumenDiversidad& resumen,
+                                     bool hay_record,
+                                     long double umbral) {
+    if (!hay_record) return false;
+    if (resumen.individuos_totales <= 0) return false;
+
+    const long double proporcion_finita =
+        static_cast<long double>(resumen.individuos_finitos) /
+        static_cast<long double>(resumen.individuos_totales);
+    if (proporcion_finita < FRACCION_MINIMA_FINITA) return false;
+
+    // Comparacion estricta: "cae por debajo del umbral" no incluye tocarlo.
+    return resumen.coeficiente_variacion < umbral;
+}
+
 // parte_entera: cuantos elementos representa la fraccion `fraccion` de un
 // total `total`, truncando hacia abajo. Es el int(f*n) que el reinicio usa
 // tanto para la fraccion de reemplazo como para la cuota de mutacion, en un
@@ -1285,6 +1368,12 @@ int main() {
     const int stale_limit = config.stale_limit;
     int generaciones_sin_mejora = 0;
 
+    // El disparador por diversidad solo existe en modo adaptive (issue #129).
+    // En legacy no se calcula el CV ni se toca el flujo de reinicio: la corrida
+    // historica sigue siendo bit-reproducible. En Python seria
+    // `adaptativo = config.restart_mode == ModoReinicio.ADAPTIVE`.
+    const bool adaptativo = config.restart_mode == ModoReinicio::adaptive;
+
     // Estado del escalado (issue #128): vive en el bucle DE y solo se consulta
     // cuando el modo adaptive ejecuta un reinicio. En modo legacy no se usa,
     // asi que la corrida historica sigue siendo bit-reproducible.
@@ -1408,14 +1497,35 @@ int main() {
             generaciones_sin_mejora++;
         }
 
-        // Reinicio por estancamiento: si la búsqueda se estanca (sin mejoras
-        // en stale_limit generaciones) se renueva parte de la población,
-        // restaurando el mejor histórico (diversidad fresca contra los mínimos
-        // locales). El modo lo elige ODE_RESTART_MODE: `legacy` es el
-        // comportamiento historico y `adaptive` el reinicio elitista con
-        // composicion hibrida (issue #127). En Python sería
-        // `if generaciones_sin_mejora >= stale_limit: reiniciar...`.
-        if (generaciones_sin_mejora >= stale_limit){
+        // Dos disparadores comparten el mismo canal de reinicio (issue #125):
+        // el estancamiento historico y, solo en adaptive, el colapso de
+        // diversidad (issue #129). El de estancamiento tiene prioridad para no
+        // encadenar dos reinicios en la misma generacion. En Python seria
+        // `reiniciar = stagnant or (adaptive and diversity)`.
+        const bool reiniciar_por_estancamiento =
+            generaciones_sin_mejora >= stale_limit;
+
+        bool reiniciar_por_diversidad = false;
+        if (adaptativo && !reiniciar_por_estancamiento){
+            // La muestra es la poblacion de esta generacion; fitness() ya esta
+            // cacheada por la seleccion y el barrido del mejor. En Python seria
+            // `resumen = resumir_diversidad([ind.fitness() for ind in poblacion])`.
+            vector<ldouble> fitnesses;
+            fitnesses.reserve(Population.size());
+            for (const FunbObj& individuo : Population){
+                fitnesses.push_back(individuo.fitness());
+            }
+            const ResumenDiversidad resumen = resumir_diversidad(fitnesses);
+            // El record existe solo si alguna generacion encontro un fitness
+            // finito (`Bestvect` se llena junto con `Bestfit`).
+            reiniciar_por_diversidad = dispara_reinicio_por_diversidad(
+                resumen, !Bestvect.empty(), config.div_threshold);
+        }
+
+        // El modo lo elige ODE_RESTART_MODE: `legacy` conserva el reinicio
+        // historico y `adaptive` usa el reinicio elitista con composicion
+        // hibrida (issue #127).
+        if (reiniciar_por_estancamiento || reiniciar_por_diversidad){
             int reemplazados = 0;
             long double fraccion = config.restart_fraction;
             string detalle_restart;
@@ -1443,16 +1553,20 @@ int main() {
             // `fraction=` dejan auditable que disparo el reinicio y con que
             // fuerza, `kept=` cuenta los sobrevivientes intactos (issue #127)
             // y `mutation_share=` registra la cuota escalada en adaptive
-            // (issue #128). Las claves viejas (`gen`, `stagnant_gens`,
-            // `replaced`) conservan nombre y orden por compatibilidad con los
-            // consumidores del log, que leen por clave (`clave=valor`).
+            // (issue #128). En adaptive el trigger distingue estancamiento de
+            // colapso de diversidad (issue #129). Las claves viejas (`gen`,
+            // `stagnant_gens`, `replaced`) conservan nombre y orden por
+            // compatibilidad con los consumidores del log, que leen por clave
+            // (`clave=valor`).
             const int conservados = static_cast<int>(Population.size()) - reemplazados;
+            const char* trigger =
+                reiniciar_por_diversidad ? "diversity" : "stale";
             log_info() << "restart | gen=" << gen
                        << " stagnant_gens=" << generaciones_sin_mejora
                        << " replaced=" << reemplazados
                        << " fraction=" << fmt_fijo(fraccion, 2)
                        << detalle_restart
-                       << " trigger=stale"
+                       << " trigger=" << trigger
                        << " kept=" << conservados << '\n';
             cout.flush();
             // Resetear el contador para que no se reinicie en la siguiente generación.

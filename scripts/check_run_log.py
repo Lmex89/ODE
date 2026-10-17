@@ -17,6 +17,8 @@ deterministicas (ODE_SEED=42, ODE_CASE=1):
    #127): el disparador de estancamiento con la fraccion efectiva y cuantos
    individuos sobrevivieron. En legacy la fraccion es ODE_RESTART_FRACTION
    (0.80) y en adaptive la fraccion minima (0.40) del reinicio adaptativo.
+   Las cifras esperadas asumen los defaults (poblacion 100, fracciones
+   0.80/0.40): el checker aisla ODE_POP y las fracciones del entorno.
 
 En Python seria el equivalente a un test de integracion de pytest que ejecuta
 el entry point como subproceso y valida su stdout.
@@ -67,6 +69,12 @@ def correr_main(con_modo=None, extra_env=None):
         entorno.pop("ODE_RESTART_MODE", None)
     else:
         entorno["ODE_RESTART_MODE"] = con_modo
+    # Las cifras esperadas de la linea restart | (80/20 legacy, 40/60 adaptive)
+    # derivan del tamano de poblacion y de las fracciones por defecto: se
+    # eliminan del entorno para que un ODE_POP/ODE_RESTART_FRACTION del shell
+    # no cambie el conteo (issue #134, revision).
+    for clave in ("ODE_POP", "ODE_RESTART_FRACTION", "ODE_RESTART_MIN_FRACTION"):
+        entorno.pop(clave, None)
     # ODE_STALE_LIMIT=1 + ODE_GEN>=2 (issue #127) hacen disparar un reinicio
     # deterministico: la gen 1 fija un record y la gen 2 se estanca.
     if extra_env:

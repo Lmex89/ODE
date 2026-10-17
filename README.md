@@ -210,7 +210,7 @@ ODE_CASE=2 ODE_SEED=42 ./build/ode-solver   # hyperbolic case: y'' - y = 0, solu
 ODE_POP=200 ODE_GEN=1000 ./build/ode-solver # override population size / generation cap
 ODE_DIM=40 ./build/ode-solver               # override the individual dimension
 ODE_WARM_START=1 ODE_SEED=42 ./build/ode-solver  # start from the five prototype seeds
-ODE_RESTART_MODE=adaptive ODE_SEED=42 ./build/ode-solver  # adaptive restart (escalating parameters)
+ODE_RESTART_MODE=adaptive ODE_SEED=42 ./build/ode-solver  # adaptive restart (escalating, elite-preserving, hybrid)
 ```
 
 `ODE_SEED` fixes the `srand()` seed and the chosen value is printed in the
@@ -232,20 +232,23 @@ not 20, the default). The startup line reports the effective configuration
 
 Stagnation restarts are controlled by `ODE_STALE_LIMIT` (default 500
 generations without a new best) and `ODE_RESTART_FRACTION` (default 0.8, the
-share of the population replaced). `ODE_RESTART_MODE` selects the restart mode
-(`legacy`, the default, or `adaptive`) and the startup line reports the
-effective `restart_mode=`. In `adaptive` mode the restart parameters escalate
-(issue #128): `ODE_RESTART_MIN_FRACTION` (default 0.4) grows by 0.2 per
-consecutive restart without a new best up to `ODE_RESTART_FRACTION` (default
-0.8), and after `ODE_RESTART_CAP` (default 3) consecutive restarts they become
-refinement-only (fraction 0.2, mutation share 1.0). A new best resets the
-ladder; `ODE_RESTART_MUTATION_SHARE` (default 0.5) is the hybrid share below
-the cap. Only the escalated fraction is consumed today: the share is logged
-and unit-tested, but the adaptive restart routine that applies it — including
-elite mutations in refinement-only — is still pending (issue #127), so
-adaptive mode runs the escalated fraction through the legacy random
-replacement. `ODE_DIV_THRESHOLD` (default 0.05) is not consumed yet (issue
-#129). Legacy mode keeps the historical restart verbatim.
+share of the population replaced in `legacy` mode). `ODE_RESTART_MODE` selects
+the restart mode (`legacy`, the default, or `adaptive`) and the startup line
+reports the effective `restart_mode=`. In `adaptive` mode the restart
+parameters escalate (issue #128): `ODE_RESTART_MIN_FRACTION` (default 0.4)
+grows by 0.2 per consecutive restart without a new best up to
+`ODE_RESTART_FRACTION` (default 0.8), and after `ODE_RESTART_CAP` (default 3)
+consecutive restarts they become refinement-only (fraction 0.2, mutation share
+1.0). A new best resets the ladder; `ODE_RESTART_MUTATION_SHARE` (default 0.5)
+is the hybrid share below the cap. Each adaptive restart then keeps the
+fittest `100% − fraction` of the population (issue #127) and replaces only the
+worst share: `mutation_share` of the replacements are 1–2-token point
+mutations of elites and the rest fresh uniform individuals, and the all-time
+record survives every restart (re-injected among the replacements when it was
+outside the population). Each `restart |` line reports `trigger=stale`,
+`fraction=`, `kept=` and `replaced=`, plus `mutation_share=` in adaptive mode.
+`ODE_DIV_THRESHOLD` (default 0.05) is not consumed yet (issue #129). Legacy
+mode keeps the historical restart verbatim.
 
 The program logs one structured line per event (`[  0.12s] [INFO ] gen=1
 best=... best_ever=... expr=...`), plus `new_best` records, a final `solution`

@@ -329,11 +329,15 @@ constexpr int DIMENSION_SEMILLAS = 20;
 // ConfigBusqueda: los parametros de la corrida en una estructura en vez de
 // argumentos sueltos (regla I.23 de docs/cpp-standards.md: firmas cortas).
 // Los `= valor` son los defaults, como en un dataclass de Python.
+// stale_limit: generaciones sin mejora antes de reiniciar poblacion.
+// restart_fraction: proporcion de individuos que se reemplazan en un reinicio.
 struct ConfigBusqueda {
     int poblacion = POBLACION_DEFECTO;
     int dimension = DIMENSION_DEFECTO;
     int max_generaciones = GENERACIONES_DEFECTO;
     bool warm_start = false;
+    int stale_limit = 500;
+    long double restart_fraction = 0.8L;
 };
 
 // config_entera: lee una variable de entorno ya obtenida con getenv() (en
@@ -358,6 +362,24 @@ int config_entera(const char* valor_env, int respaldo, int minimo) {
     return static_cast<int>(valor);
 }
 
+// config_decimal: lee una variable de entorno y devuelve su valor long double
+// solo si representa un numero valido; si falta o no es numerica, devuelve el
+// respaldo. Es el equivalente de config_entera para numeros de punto flotante.
+// En Python seria `float(valor_env)` con manejo de excepciones.
+long double config_decimal(const char* valor_env, long double respaldo) {
+    if (valor_env == nullptr) return respaldo;
+
+    // strtold interpreta el texto como long double (como float() de Python)
+    // y deja en `fin` la posicion del primer caracter no consumido.
+    char* fin = nullptr;
+    long double valor = strtold(valor_env, &fin);
+
+    // Se exige que TODO el texto sea el numero, igual que config_entera.
+    if (fin == valor_env || *fin != '\0') return respaldo;
+
+    return valor;
+}
+
 // config_bandera: lee una bandera de entorno: "1" activa, "0" desactiva y
 // cualquier otro valor (o la ausencia) devuelve el respaldo. En Python seria
 // `{"1": True, "0": False}.get(valor, respaldo)`.
@@ -368,22 +390,55 @@ bool config_bandera(const char* valor_env, bool respaldo) {
     return respaldo;
 }
 
+// defaults_por_caso: devuelve los defaults de (poblacion, dimension,
+// generaciones) segun el caso ODE. El paper (Mex et al. 2015) tunnea estos
+// parametros por caso: los casos 0-2 usan defaults originales (100/20/5000),
+// mientras que los casos 3-5 requieren busquedas mas agresivas porque sus
+// soluciones exactas tienen 6/11/15 tokens. En Python seria un dict de
+// defaults por caso.
+struct DefaultsCaso {
+    int poblacion;
+    int dimension;
+    int generaciones;
+};
+
+DefaultsCaso defaults_por_caso(int caso) {
+    // Casos 0-2: soluciones cortas (2-5 tokens), defaults del paper.
+    // Casos 3-5: soluciones mas largas (6-15 tokens), necesitan mas
+    // poblacion, dimension y generaciones para converger a J < 1e-5.
+    if (caso >= 3 && caso <= 5) {
+        return {200, 25, 10000};
+    }
+    return {POBLACION_DEFECTO, DIMENSION_DEFECTO, GENERACIONES_DEFECTO};
+}
+
 // resolver_config: arma la configuracion efectiva de la corrida a partir de
-// los valores crudos de ODE_POP/ODE_DIM/ODE_GEN/ODE_WARM_START. main() lee el
-// entorno con getenv() y se los pasa (por eso es una funcion pura y testeable,
-// igual que resolver_semilla).
+// los valores crudos de ODE_POP/ODE_DIM/ODE_GEN/ODE_WARM_START/ODE_STALE_LIMIT/
+// ODE_RESTART_FRACTION. main() lee el entorno con getenv() y se los pasa
+// (por eso es una funcion pura y testeable, igual que resolver_semilla).
+// Los defaults por caso (paper practice) son el fallback para pop/dim/gen.
 ConfigBusqueda resolver_config(const char* pop_env, const char* dim_env,
-                               const char* gen_env, const char* warm_env) {
+                               const char* gen_env, const char* warm_env,
+                               int caso = 0,
+                               const char* stale_env = nullptr,
+                               const char* fraction_env = nullptr) {
+    DefaultsCaso defaults = defaults_por_caso(caso);
     ConfigBusqueda config;
-    config.poblacion = config_entera(pop_env, POBLACION_DEFECTO, POBLACION_MINIMA);
-    config.dimension = config_entera(dim_env, DIMENSION_DEFECTO, DIMENSION_MINIMA);
-    config.max_generaciones = config_entera(gen_env, GENERACIONES_DEFECTO, GENERACIONES_MINIMAS);
+    config.poblacion = config_entera(pop_env, defaults.poblacion, POBLACION_MINIMA);
+    config.dimension = config_entera(dim_env, defaults.dimension, DIMENSION_MINIMA);
+    config.max_generaciones = config_entera(gen_env, defaults.generaciones, GENERACIONES_MINIMAS);
 
     // Las cinco semillas warm start miden DIMENSION_SEMILLAS tokens: con otra
     // dimension no valen como individuos (Mutation()/Recombination() emparejan
     // genes por posicion, B5 de REVIEW.md), asi que se ignora la peticion.
     config.warm_start = config_bandera(warm_env, false) &&
                         config.dimension == DIMENSION_SEMILLAS;
+
+    // Parametros de reinicio (issue #108): stale_limit por defecto 500
+    // generaciones, restart_fraction 0.8 (80% de la poblacion). El paper
+    // tunnea estos parametros por caso, pero aqui se controlan via env vars.
+    config.stale_limit = config_entera(stale_env, 500, 1);
+    config.restart_fraction = config_decimal(fraction_env, 0.8L);
 
     return config;
 }
@@ -521,10 +576,6 @@ int reiniciar_poblacion(vector<FunbObj>& poblacion, int indice_record,
     // En Python seria `assert 0 <= indice_record < len(poblacion)`.
     assert(indice_record >= 0 && indice_record < static_cast<int>(poblacion.size()));
 
-    // Proporcion reemplazada (80% del prototipo), con nombre para no repetir
-    // el literal (ES.45 de docs/cpp-standards.md).
-    constexpr long double PROPORCION_REEMPLAZO = 0.8;
-
     // Elitismo: el record entra al indice reservado ANTES del barrido, para
     // que el bucle (que salta `indice_record`) lo deje intacto. Un `record`
     // vacio significa que la corrida nunca encontro un fitness finito: no hay
@@ -533,8 +584,10 @@ int reiniciar_poblacion(vector<FunbObj>& poblacion, int indice_record,
         poblacion[indice_record] = FunbObj(record, 0, 1, caso);
     }
 
+    // La fraccion de reemplazo viene de config.restart_fraction (issue #108),
+    // configurable via ODE_RESTART_FRACTION. Antes era hardcoded 0.8.
     const int tam_poblacion = static_cast<int>(poblacion.size());
-    const int cantidad_reemplazar = static_cast<int>(PROPORCION_REEMPLAZO * tam_poblacion);
+    const int cantidad_reemplazar = static_cast<int>(config.restart_fraction * tam_poblacion);
     int reemplazados = 0;
     for (int j = 0; j < tam_poblacion && reemplazados < cantidad_reemplazar; j++){
         if (j != indice_record){
@@ -894,7 +947,10 @@ int main() {
     // aleatoria uniforme, como pide la ecuacion (6) del paper. En Python seria
     // `config = ConfigBusqueda.from_env()` leyendo os.environ.
     ConfigBusqueda config = resolver_config(getenv("ODE_POP"), getenv("ODE_DIM"),
-                                            getenv("ODE_GEN"), getenv("ODE_WARM_START"));
+                                            getenv("ODE_GEN"), getenv("ODE_WARM_START"),
+                                            caso,
+                                            getenv("ODE_STALE_LIMIT"),
+                                            getenv("ODE_RESTART_FRACTION"));
 
     // Una sola poblacion (issue #6): antes habia dos (Population1/Population2)
     // que se cruzaban entre si; DE/rand/1/bin (paper) evoluciona una unica
@@ -915,16 +971,19 @@ int main() {
     string estado = "max_generations";  // pasa a "converged" si llega a eps
     
     // Mecanismo de escape de mínimos locales: si la búsqueda no mejora en
-    // STALE_LIMIT generaciones, se reinicia el 80% de la población manteniendo
-    // el mejor individuo. Esto inyecta diversidad fresca sin perder el mejor
-    // hallazgo. En Python sería `stale_limit = 500`.
-    const int STALE_LIMIT = 500;
+    // stale_limit generaciones, se reinicia el restart_fraction de la población
+    // manteniendo el mejor individuo. Esto inyecta diversidad fresca sin perder
+    // el mejor hallazgo. configurable via ODE_STALE_LIMIT y ODE_RESTART_FRACTION.
+    const int stale_limit = config.stale_limit;
     int generaciones_sin_mejora = 0;
 
     // Cabecera de la corrida (reemplaza el banner de ASCII art): una sola
     // linea con toda la configuracion en clave=valor. `population=` informa el
     // tamano real de la poblacion ya creada; `warm_start=` es el valor efectivo
     // (con ODE_DIM distinto de 20 la bandera se ignora, ver resolver_config).
+    // `stale_limit` y `restart_fraction` son los parametros de reinicio
+    // adaptativo (issue #108), configurables via ODE_STALE_LIMIT y
+    // ODE_RESTART_FRACTION.
     log_info() << "de_run_start | seed=" << semilla
                << " case=" << caso
                << " population=" << Population.size()
@@ -932,7 +991,9 @@ int main() {
                << " warm_start=" << (config.warm_start ? 1 : 0)
                << " cr=" << fmt_fijo(Cr, 2)
                << " fitness_target=" << fmt_ciencia(eps)
-               << " max_generations=" << max_gen << '\n';
+               << " max_generations=" << max_gen
+               << " stale_limit=" << stale_limit
+               << " restart_fraction=" << fmt_fijo(config.restart_fraction, 2) << '\n';
 
     // Descripcion legible del caso: el dato maquina es el campo `case=` de
     // arriba; este renglon es la explicacion y va como texto libre (sin
@@ -1029,11 +1090,11 @@ int main() {
         }
 
         // Reinicio adaptativo: si la búsqueda se estanca (sin mejoras en
-        // STALE_LIMIT generaciones), se reemplaza el 80% de la población con
-        // nuevos individuos aleatorios, restaurando el mejor histórico. Esto
-        // inyecta diversidad fresca para escapar de mínimos locales. En Python
-        // sería `if generaciones_sin_mejora >= stale_limit: reiniciar_poblacion()`.
-        if (generaciones_sin_mejora >= STALE_LIMIT){
+        // stale_limit generaciones), se reemplaza el restart_fraction de la
+        // población con nuevos individuos aleatorios, restaurando el mejor
+        // histórico. Esto inyecta diversidad fresca para escapar de mínimos
+        // locales. En Python sería `if generaciones_sin_mejora >= stale_limit: reiniciar_poblacion()`.
+        if (generaciones_sin_mejora >= stale_limit){
             // `mejor` es el indice del mejor de la generacion actual (el que
             // el reemplazo respeta); ademas el helper restaura alli el record
             // historico `Bestvect`, porque en una corrida estancada el mejor

@@ -101,10 +101,12 @@ echo "  sha256 semilla.cpp  : $(sha256sum "$REPO/src/semilla.cpp" | cut -d' ' -f
 # -------------------------------------------------------------------------
 # 3) Compilar ambas versiones con los mismos flags.
 #    "antes" (bc70e95) tiene layout plano; "despues" (HEAD) tiene layout nuevo
-#    con src/. Ambos producen binarios en sus respectivos directorios.
+#    con src/ (los mismos fuentes que el target ode-solver de CMakeLists.txt;
+#    src/salida.cpp es la redireccion de #112). Ambos producen binarios en sus
+#    respectivos directorios.
 # -------------------------------------------------------------------------
 ( cd "$OUTDIR/antes"   && $CXX $FLAGS dualfunctions.cpp semilla.cpp parse_tree.cpp -o main.exe )
-( cd "$OUTDIR/despues" && mkdir -p build && $CXX $FLAGS src/dualfunctions.cpp src/semilla.cpp src/parse_tree.cpp -o build/ode-solver )
+( cd "$OUTDIR/despues" && mkdir -p build && $CXX $FLAGS src/dualfunctions.cpp src/semilla.cpp src/salida.cpp src/parse_tree.cpp -o build/ode-solver )
 echo "  md5 antes/despues  : $(md5sum "$OUTDIR/antes/main.exe" | cut -d' ' -f1) / $(md5sum "$OUTDIR/despues/build/ode-solver" | cut -d' ' -f1)"
 
 # -------------------------------------------------------------------------
@@ -192,12 +194,23 @@ for SEED in $SEEDS; do
         T0=$(date +%s.%N)
         STATUS=0
         # "antes" tiene layout plano (main.exe); "despues" tiene layout nuevo (build/ode-solver).
+        # Desde #112 "despues" escribe en ode-solver.log por defecto y deja
+        # stdout vacio, pero el experimento captura la corrida con el redirect
+        # de abajo: "despues" corre con ODE_LOG=terminal (issue #115). "antes"
+        # (bc70e95) no conoce ODE_LOG, asi que su invocacion queda intacta.
+        # En Python seria `extra = [] if v == "antes" else ["ODE_LOG=terminal"]`
+        # pasado al env de subprocess.run; aqui ENV_SALIDA vacia expande a
+        # cero palabras (por eso va sin comillas) y `env` recibe la asignacion
+        # como argumento: un word que sale de una expansion no se re-parsea
+        # como asignacion de shell.
+        ENV_SALIDA=""
         if [[ "$V" == "antes" ]]; then
             BIN="./main.exe"
         else
             BIN="./build/ode-solver"
+            ENV_SALIDA="ODE_LOG=terminal"
         fi
-        ( cd "$OUTDIR/$V" && ODE_SEED="$SEED" timeout "$TIMEOUT_S" $BIN > "$LOG" 2>&1 ) || STATUS=$?
+        ( cd "$OUTDIR/$V" && env ODE_SEED="$SEED" $ENV_SALIDA timeout "$TIMEOUT_S" $BIN > "$LOG" 2>&1 ) || STATUS=$?
         ESTADO="termino"                  # el loop termino por si solo
         if [[ $STATUS -eq 124 ]]; then
             ESTADO="timeout"              # lo corto `timeout`

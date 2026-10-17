@@ -22,7 +22,7 @@
   historical files in `docs/legacy/` (the backup
   `docs/legacy/parse_tree_bckp.cpp` and the notebook
   `docs/legacy/Untitled.ipynb`).
-- `ctest --test-dir build` builds and runs the 10 C++ tests registered in
+- `ctest --test-dir build` builds and runs the 11 C++ tests registered in
   `CMakeLists.txt`: each test file under `tests/` is its own executable, and
   its exit code is nonzero exactly when an assert fails (the same contract
   as pytest). For a focused test, build its target and run it directly:
@@ -36,10 +36,16 @@
   notebook's validation cells, no SageMath needed) and
   `python3 scripts/check_run_log.py` (runs the solver in its short
   deterministic mode and validates the structured log).
-- `python3 scripts/check_all_cases.py` runs the smoke test for ODE cases 3-7
-  (damped oscillator, forced oscillator, resonance, Legendre, Hermite) with
-  `ODE_GEN=200`, `ODE_SEED=42`. It validates that each case completes, produces
-  finite fitness, and improves over the first generation. Output format:
+- `python3 scripts/check_all_cases.py` runs tests for ODE cases 3-7
+  (damped oscillator, forced oscillator, resonance, Legendre, Hermite) in two modes:
+  - `--mode smoke` (default): `ODE_GEN=200`, `ODE_SEED=42`. Validates that each
+    case completes, produces finite fitness, and improves over the first generation.
+  - `--mode convergence`: Uses per-case configs (see CASO_CONFIGS in the script),
+    `ODE_SEED=42`. Validates that each case reaches `status=converged` and
+    `best < 1e-5`. Cases documented in `docs/limitations.md` print a warning
+    but don't fail the script.
+  
+  Output format (smoke mode):
   ```
   Smoke test: cases [3, 4, 5, 6, 7], gen=200, seed=42
   
@@ -53,9 +59,8 @@
   ============================================================
   check_all_cases: PASS
   ```
-  Exit code is 0 if all cases pass, non-zero otherwise. This validates that the
-  residuals are well-defined and the DE search improves; strict convergence
-  checking (`status=converged`, `best < 1e-5`) is owned by #108.
+  Exit code is 0 if all cases pass (or are documented limitations in convergence
+  mode), non-zero otherwise.
 - `scripts/run_sage_dual_validation.sh` is the Sage counterpart: it executes
   the entire notebook (`docs/legacy/Untitled.ipynb`) using a local `sage`
   installation or Docker with the pinned image. It is appropriate for changes
@@ -73,6 +78,7 @@
   `ODE_GEN`, and `ODE_WARM_START=1` override the defaults (100 individuals,
   dimension 20, 5,000 generations); warm start (20-token seeds) activates
   only when the dimension is 20 (the default).
+   `ODE_STALE_LIMIT` (default 500) and `ODE_RESTART_FRACTION` (default 0.8) control the restart mechanism: after `stale_limit` generations without improvement, `restart_fraction` of the population is replaced with fresh random individuals while preserving the best solution found.
 - There is no CI. For behaviorally neutral DE changes, compare fixed-seed runs
   with `scripts/ab_experiment.sh --seed 42 --timeout 300`.
 

@@ -31,11 +31,12 @@ BINARIO = Path(__file__).resolve().parents[1] / "build" / "ode-solver"
 POBLACION = 20
 GENERACIONES = 40
 
-# Forma de la linea adaptativa (issue #128); el modo legacy no imprime
-# `fraction=` ni `mutation_share=`.
+# Forma de la linea adaptativa (issues #127/#128/#129). El trigger puede ser
+# `stale` o `diversity`; ambos comparten la escalera que valida este checker.
 RE_REINICIO = re.compile(
     r"restart \| gen=(\d+) stagnant_gens=(\d+) replaced=(\d+) "
-    r"fraction=([0-9.]+) mutation_share=([0-9.]+)"
+    r"fraction=([0-9.]+) mutation_share=([0-9.]+) "
+    r"trigger=(\w+) kept=(\d+)"
 )
 RE_NUEVO_RECORD = re.compile(r"new_best \|")
 
@@ -115,7 +116,9 @@ def verificar(lineas):
         if not coincidencia:
             continue
 
-        gen, _stagnant, reemplazados, fraccion, cuota = coincidencia.groups()
+        gen, _stagnant, reemplazados, fraccion, cuota, _trigger, _kept = (
+            coincidencia.groups()
+        )
         reemplazados = int(reemplazados)
         fraccion = float(fraccion)
         cuota = float(cuota)

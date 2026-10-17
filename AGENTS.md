@@ -22,7 +22,7 @@
   historical files in `docs/legacy/` (the backup
   `docs/legacy/parse_tree_bckp.cpp` and the notebook
   `docs/legacy/Untitled.ipynb`).
-- `ctest --test-dir build` builds and runs the 13 C++ tests registered in
+- `ctest --test-dir build` builds and runs the 14 C++ tests registered in
   `CMakeLists.txt`: each test file under `tests/` is its own executable, and
   its exit code is nonzero exactly when an assert fails (the same contract
   as pytest). For a focused test, build its target and run it directly:
@@ -41,7 +41,11 @@
   `python3 scripts/check_restart_escalation.py` (runs an adaptive solver in
   terminal mode with `ODE_STALE_LIMIT=1` and validates the escalated
   `fraction=`, `replaced=`, `mutation_share=` and reset-on-`new_best`
-  sequence that the DE loop actually logs).
+  sequence that the DE loop actually logs), and
+  `python3 scripts/check_diversity_trigger.py` (forces the diversity channel
+  with `ODE_DIV_THRESHOLD=1000000000` and validates `trigger=diversity`, the
+  stale-window reset, the shared escalation ladder, `trigger=stale` with the
+  channel off, and the untouched legacy restart parameters).
 - `python3 scripts/check_ab_experiment.py` runs `scripts/ab_experiment.sh` in
   its short deterministic mode (`ODE_GEN=200`, seed 42, a 20s timeout per run)
   and validates that `metricas.tsv` extracts metrics for both builds: the
@@ -95,7 +99,7 @@
   dimension 20, 5,000 generations); warm start (20-token seeds) activates
   only when the dimension is 20 (the default).
    `ODE_STALE_LIMIT` (default 500) and `ODE_RESTART_FRACTION` (default 0.8) control the restart mechanism: after `stale_limit` generations without improvement, `restart_fraction` of the population is replaced with fresh random individuals while preserving the best solution found.
-   `ODE_RESTART_MODE` (`legacy`, the default, or `adaptive`) selects the restart mode and is reported in the `de_run_start` header. In `adaptive` mode the restart parameters escalate (issue #128): `ODE_RESTART_MIN_FRACTION` (0.4) grows by 0.2 per consecutive restart without a new best up to `ODE_RESTART_FRACTION` (0.8), and after `ODE_RESTART_CAP` (3) consecutive restarts the parameters become refinement-only (fraction 0.2, mutation share 1.0); a `new_best` resets the ladder. Each adaptive restart then keeps the fittest `100% − fraction` of the population (the all-time record always survives, re-injected among the replacements when absent) and replaces only the worst share, whose `mutation_share` are 1–2-token point mutations of elites and the rest fresh uniform individuals (issue #127). The `restart |` line reports `trigger=stale`, `fraction=`, `kept=` and `replaced=`, plus `mutation_share=` in adaptive mode. `ODE_DIV_THRESHOLD` (0.05) is not consumed yet (issue #129). Legacy mode stays bit-reproducible.
+   `ODE_RESTART_MODE` (`legacy`, the default, or `adaptive`) selects the restart mode and is reported in the `de_run_start` header. In `adaptive` mode the restart parameters escalate (issue #128): `ODE_RESTART_MIN_FRACTION` (0.4) grows by 0.2 per consecutive restart without a new best up to `ODE_RESTART_FRACTION` (0.8), and after `ODE_RESTART_CAP` (3) consecutive restarts the parameters become refinement-only (fraction 0.2, mutation share 1.0); a `new_best` resets the ladder. Each adaptive restart then keeps the fittest `100% − fraction` of the population (the all-time record always survives, re-injected among the replacements when absent) and replaces only the worst share, whose `mutation_share` are 1–2-token point mutations of elites and the rest fresh uniform individuals (issue #127). The `restart |` line reports `trigger=stale|diversity`, `fraction=`, `kept=` and `replaced=`, plus `mutation_share=` in adaptive mode. In adaptive mode the diversity trigger (issue #129) computes the coefficient of variation (population std / mean) over the finite fitnesses each generation; it fires through the same restart routine and escalation state when at least 25% of the population is finite, a finite record exists, and the CV is below `ODE_DIV_THRESHOLD` (0.05). A diversity restart logs `trigger=diversity`, and any restart resets the stale-generation window. `ODE_DIV_THRESHOLD` is ignored in legacy mode, which stays bit-reproducible.
 - There is no CI. For behaviorally neutral DE changes, compare fixed-seed runs
   with `scripts/ab_experiment.sh --seed 42 --timeout 300`.
 

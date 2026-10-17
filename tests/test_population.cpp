@@ -497,12 +497,16 @@ static void test_reinicio_adaptativo_inyecta_el_record() {
     check_bool("el record ausente entra a la poblacion durante el reinicio",
                record_presente);
 
-    // La inyeccion no sacrifica al mejor: el k=1 sigue intacto.
+    // La inyeccion no sacrifica a ningun sobreviviente: los dos conservados
+    // (k=1 en el indice 1 y k=2 en el indice 0) quedan intactos y el record
+    // ocupa el primer lugar reemplazado (k=3, el mejor de los dos peores).
     check_bool("el mejor real (k=1, indice 1) sobrevive intacto",
                poblacion[1].vecvalue() == antes[1]);
-    // Los reemplazados siguen siendo los peores (k=3 y k=4).
-    check_bool("se reemplaza el k=3 (indice 3)",
-               poblacion[3].vecvalue() != antes[3]);
+    check_bool("el k=2 (indice 0) tambien sobrevive intacto",
+               poblacion[0].vecvalue() == antes[0]);
+    check_bool("el record ocupa el primer lugar reemplazado (indice 3)",
+               poblacion[3].vecvalue() == record);
+    // El resto de los reemplazados sigue siendo el peor (k=4).
     check_bool("se reemplaza el k=4 (peor, indice 2)",
                poblacion[2].vecvalue() != antes[2]);
 
@@ -537,26 +541,18 @@ static int distancia_hamming(const vector<ldouble>& a, const vector<ldouble>& b)
     return distancia;
 }
 
-// mutaciones_puntuales: de los indices reemplazados, cuantos quedaron a 1-2
-// cambios de algun sobreviviente (la firma de una mutacion puntual de elite;
-// con vectores de 20 tokens al azar, un uniforme nuevo no cae tan cerca). En
-// Python seria `sum(min(distancia(r, s) for s in sobrevivientes) in (1, 2)
-// for r in reemplazados)`.
-static int mutaciones_puntuales(const vector<FunbObj>& poblacion,
-                                const vector<int>& reemplazados_idx,
-                                const vector<int>& sobrevivientes_idx) {
-    int mutaciones = 0;
-    for (size_t r = 0; r < reemplazados_idx.size(); r++){
-        int mejor = 1000;
-        for (size_t s = 0; s < sobrevivientes_idx.size(); s++){
-            const int d = distancia_hamming(
-                poblacion[reemplazados_idx[r]].vecvalue(),
-                poblacion[sobrevivientes_idx[s]].vecvalue());
-            if (d < mejor) mejor = d;
-        }
-        if (mejor >= 1 && mejor <= 2) mutaciones++;
+// distancia_minima_a: minima distancia Hamming entre `valor` y los vectores
+// de los indices `candidatos`; -1 si la lista esta vacia. En Python seria
+// `min((distancia_hamming(valor, poblacion[i].vecvalue()) for i in candidatos), default=-1)`.
+static int distancia_minima_a(const vector<ldouble>& valor,
+                              const vector<FunbObj>& poblacion,
+                              const vector<int>& candidatos) {
+    int minima = -1;
+    for (size_t s = 0; s < candidatos.size(); s++){
+        const int d = distancia_hamming(valor, poblacion[candidatos[s]].vecvalue());
+        if (minima < 0 || d < minima) minima = d;
     }
-    return mutaciones;
+    return minima;
 }
 
 static void test_reinicio_adaptativo_compone_reemplazos_hibridos() {
@@ -580,7 +576,8 @@ static void test_reinicio_adaptativo_compone_reemplazos_hibridos() {
         {0.0L, 0, "share 0.0"},
     };
 
-    for (size_t esc = 0; esc < 3; esc++){
+    const size_t n_escenarios = sizeof(escenarios) / sizeof(escenarios[0]);
+    for (size_t esc = 0; esc < n_escenarios; esc++){
         const Escenario& e = escenarios[esc];
         srand(20261019);
 
@@ -602,22 +599,115 @@ static void test_reinicio_adaptativo_compone_reemplazos_hibridos() {
             } else {
                 reemplazados_idx.push_back(static_cast<int>(i));
             }
-            if (poblacion[i].vecvalue().size() != 20) longitudes_ok = false;
+            if (poblacion[i].vecvalue().size() != static_cast<size_t>(config.dimension)){
+                longitudes_ok = false;
+            }
+        }
+
+        // Composicion: cada reemplazo es una mutacion de elite (a 1-2 tokens
+        // de un sobreviviente) o un uniforme fresco (a >= 3 de todos). Los dos
+        // predicados son distintos a proposito: un reemplazo que no cambiara
+        // nada (distancia 0) no cae en ninguno y delata el error.
+        int mutaciones = 0;
+        int uniformes = 0;
+        for (size_t r = 0; r < reemplazados_idx.size(); r++){
+            const int minima = distancia_minima_a(
+                poblacion[reemplazados_idx[r]].vecvalue(), poblacion, sobrevivientes_idx);
+            if (minima >= 1 && minima <= 2) mutaciones++;
+            if (minima >= 3) uniformes++;
         }
 
         const string etiqueta = string(e.nombre) + ": ";
         check_int(etiqueta + "reemplaza 4 de 10", reemplazados, 4);
-        check_bool(etiqueta + "todos los reemplazos conservan 20 tokens",
+        check_bool(etiqueta + "todos los reemplazos conservan la dimension",
                    longitudes_ok);
-        check_int(etiqueta + "mutaciones de elite esperadas",
-                  mutaciones_puntuales(poblacion, reemplazados_idx,
-                                       sobrevivientes_idx),
+        check_int(etiqueta + "mutaciones de elite esperadas", mutaciones,
                   e.mutaciones_esperadas);
-        check_int(etiqueta + "uniformes nuevos (el resto)",
-                  4 - mutaciones_puntuales(poblacion, reemplazados_idx,
-                                           sobrevivientes_idx),
-                  4 - e.mutaciones_esperadas);
+        check_int(etiqueta + "uniformes frescos (el resto)", uniformes,
+                  reemplazados - e.mutaciones_esperadas);
     }
+}
+
+// -------------------------------------------------------------------------
+// Slice 10 (issue #127, revision): cobertura directa del nucleo puro de la
+// mutacion puntual (sin sorteo, con valores a mano), del driver aleatorio y
+// del borde en que el record ausente no tiene cupo de reemplazo.
+// -------------------------------------------------------------------------
+
+static void test_parte_entera_trunca_hacia_abajo() {
+    check_int("parte_entera(0.8, 100) = 80", parte_entera(0.8L, 100), 80);
+    check_int("parte_entera(0.4, 5) = 2", parte_entera(0.4L, 5), 2);
+    check_int("parte_entera trunca hacia abajo: 0.99 de 3 = 2",
+              parte_entera(0.99L, 3), 2);
+    check_int("parte_entera(0, n) = 0", parte_entera(0.0L, 7), 0);
+}
+
+static void test_mutacion_puntual_cambia_uno_o_dos_tokens() {
+    srand(20261020);
+
+    // Nucleo puro: una sustitucion explicita cambia exactamente una posicion
+    // y conserva la longitud, sin sorteo (como mutacion_rand1).
+    const vector<ldouble> base = {TOKEN_MUL, TOKEN_CONST1, TOKEN_X,
+                                  TOKEN_SIN, TOKEN_CONST2};
+    const vector<ldouble> sustitucion = mutacion_puntual_en(base, 3, TOKEN_COS);
+    check_int("mutacion puntual directa: cambia exactamente 1 token",
+              distancia_hamming(sustitucion, base), 1);
+    check_int("mutacion puntual directa: conserva la longitud",
+              static_cast<int>(sustitucion.size()),
+              static_cast<int>(base.size()));
+    check_bool("mutacion puntual directa: escribe el token pedido en la posicion pedida",
+               sustitucion[3] == static_cast<ldouble>(TOKEN_COS) &&
+               sustitucion[0] == base[0] && sustitucion[1] == base[1] &&
+               sustitucion[2] == base[2] && sustitucion[4] == base[4]);
+
+    // Driver: 40 sorteos con la misma semilla; siempre 1-2 cambios y la
+    // longitud intacta. El minimo arranca en el maximo posible y el maximo en
+    // 0: son cotas, no centinelas.
+    int minimo = static_cast<int>(base.size());
+    int maximo = 0;
+    bool longitudes_ok = true;
+    for (int i = 0; i < 40; i++){
+        const vector<ldouble> mutado = mutacion_puntual(base);
+        const int d = distancia_hamming(mutado, base);
+        if (d < minimo) minimo = d;
+        if (d > maximo) maximo = d;
+        if (mutado.size() != base.size()) longitudes_ok = false;
+    }
+    check_bool("mutacion puntual aleatoria: siempre conserva la longitud",
+               longitudes_ok);
+    check_int("mutacion puntual aleatoria: el minimo de cambios es 1", minimo, 1);
+    check_int("mutacion puntual aleatoria: el maximo de cambios es 2", maximo, 2);
+
+    // Un vector de un solo token no puede elegir segunda posicion: cambia
+    // exactamente 1 (el clamp evita el rand() % 0).
+    const vector<ldouble> un_token = {TOKEN_X};
+    const vector<ldouble> mutado_uno = mutacion_puntual(un_token);
+    check_int("mutacion puntual aleatoria con 1 token: exactamente 1 cambio",
+              distancia_hamming(mutado_uno, un_token), 1);
+}
+
+static void test_reinicio_adaptativo_inyecta_el_record_sin_cupo() {
+    srand(20261021);
+
+    // Poblacion de 2 con fraccion 0.4: int(0.4*2) = 0 lugares de reemplazo.
+    // El record ausente necesita uno, asi que desplaza al peor (k=2, indice 0)
+    // y esa sustitucion cuenta como reemplazo: el log informara replaced=1,
+    // kept=1 y ningun sobreviviente cambia de vector.
+    vector<FunbObj> poblacion = poblacion_fixture({2, 1});
+    const vector<vector<ldouble>> antes = copia_vectores(poblacion);
+    const vector<ldouble> record = {static_cast<ldouble>(TOKEN_ADD),
+                                    static_cast<ldouble>(TOKEN_CONST1),
+                                    static_cast<ldouble>(TOKEN_X)};
+
+    const int reemplazados =
+        reiniciar_poblacion_adaptativo(poblacion, record, {0.4L, 0.5L, 3, 0});
+
+    check_int("sin cupo de reemplazo, el record desplaza al peor (1)",
+              reemplazados, 1);
+    check_bool("el unico sobreviviente (k=1, indice 1) queda intacto",
+               poblacion[1].vecvalue() == antes[1]);
+    check_bool("el record ausente entra igual a la poblacion",
+               poblacion[0].vecvalue() == record);
 }
 
 int main() {
@@ -637,6 +727,9 @@ int main() {
     test_reinicio_adaptativo_conserva_los_mejores();
     test_reinicio_adaptativo_inyecta_el_record();
     test_reinicio_adaptativo_compone_reemplazos_hibridos();
+    test_parte_entera_trunca_hacia_abajo();
+    test_mutacion_puntual_cambia_uno_o_dos_tokens();
+    test_reinicio_adaptativo_inyecta_el_record_sin_cupo();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
               << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;  // como el exit code de pytest

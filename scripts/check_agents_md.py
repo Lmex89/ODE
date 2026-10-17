@@ -69,6 +69,8 @@ PRESERVADOS = (
     "author=Lmex",
     "GLOSSARY.md",
     "ODE_NO_MAIN",
+    "ODE_LOG",
+    "ODE_LOG_FILE",
     "random_token()",
 )
 

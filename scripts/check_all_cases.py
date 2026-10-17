@@ -66,10 +66,15 @@ def correr_caso(caso, modo="smoke", seed=SEED):
     
     Uses per-case config in convergence mode, fixed config in smoke mode.
     """
+    # ODE_LOG=terminal (issue #114): this checker reads the run log from
+    # stdout, but since #112 the solver writes to ode-solver.log by default.
+    # Forcing terminal mode here overrides any ODE_LOG/ODE_LOG_FILE in the
+    # caller's environment (the last key wins in dict()).
     if modo == "convergence":
         config = CASO_CONFIGS.get(caso, CASO_CONFIGS[0])
         entorno = dict(
             os.environ,
+            ODE_LOG="terminal",
             ODE_SEED=str(seed),
             ODE_CASE=str(caso),
             ODE_POP=str(config["pop"]),
@@ -80,6 +85,7 @@ def correr_caso(caso, modo="smoke", seed=SEED):
     else:
         entorno = dict(
             os.environ,
+            ODE_LOG="terminal",
             ODE_SEED=str(seed),
             ODE_CASE=str(caso),
             ODE_GEN=str(GENERACIONES),

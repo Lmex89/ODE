@@ -240,10 +240,12 @@ consecutive restart without a new best up to `ODE_RESTART_FRACTION` (default
 0.8), and after `ODE_RESTART_CAP` (default 3) consecutive restarts they become
 refinement-only (fraction 0.2, mutation share 1.0). A new best resets the
 ladder; `ODE_RESTART_MUTATION_SHARE` (default 0.5) is the hybrid share below
-the cap. The adaptive restart routine itself is still pending (issue #127), so
-adaptive mode applies the escalated fraction through the legacy routine, while
-`ODE_DIV_THRESHOLD` (default 0.05) is not consumed yet (issue #129). Legacy
-mode keeps the historical restart verbatim.
+the cap. Only the escalated fraction is consumed today: the share is logged
+and unit-tested, but the adaptive restart routine that applies it — including
+elite mutations in refinement-only — is still pending (issue #127), so
+adaptive mode runs the escalated fraction through the legacy random
+replacement. `ODE_DIV_THRESHOLD` (default 0.05) is not consumed yet (issue
+#129). Legacy mode keeps the historical restart verbatim.
 
 The program logs one structured line per event (`[  0.12s] [INFO ] gen=1
 best=... best_ever=... expr=...`), plus `new_best` records, a final `solution`
@@ -275,9 +277,10 @@ The notebook/log checkers run standalone (they are not registered with ctest):
 ```bash
 python3 scripts/check_dual_validation.py
 python3 scripts/check_run_log.py
+python3 scripts/check_restart_escalation.py
 ```
 
-`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log.
+`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log. `check_restart_escalation.py` forces adaptive restarts and validates the sequence the DE loop logs (`fraction=`, `replaced=`, `mutation_share=` and the reset on `new_best`).
 
 The SageMath notebook validation needs a real SageMath kernel:
 
@@ -324,6 +327,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `docs/ab-experiment.md` | A/B comparison report and conclusions |
 | `scripts/check_dual_validation.py` | Executes the notebook's validation cells without SageMath |
 | `scripts/check_run_log.py` | Validates the structured log from a solver run |
+| `scripts/check_restart_escalation.py` | Validates the adaptive restart wiring in the DE loop |
 | `scripts/run_sage_dual_validation.sh` | Execute the complete notebook in SageMath and verify its output |
 | `scripts/check_sage_dual_validation.py` | Check the executed notebook's 48-case PASS/FAIL result |
 | `docs/sage-dual-validation.md` | SageMath command, environment, and captured evidence |

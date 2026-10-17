@@ -30,7 +30,7 @@ Domain-specific terms used in this codebase.
 | **Generation** | One iteration of the evolutionary loop |
 | **Convergence** | When fitness drops below a threshold (1e-5), indicating a sufficiently good solution has been found |
 | **Restart escalation** | Growing the replacement fraction across consecutive restarts without a new best (0.4 → 0.6 → 0.8 by default), capped by `ODE_RESTART_FRACTION` |
-| **Refinement-only restart** | Degraded restart after `ODE_RESTART_CAP` consecutive restarts without improvement: fraction 0.2 and mutation share 1.0 (all replacements are elite mutations) until a `new_best` resets the ladder |
+| **Refinement-only restart** | Degraded restart after `ODE_RESTART_CAP` consecutive restarts without improvement: fraction 0.2 and mutation share 1.0 until a `new_best` resets the ladder. The share is logged and tested, but the elite-mutation routine that consumes it is pending (#127); today the fraction runs through the legacy random replacement |
 
 ## Expression representation
 

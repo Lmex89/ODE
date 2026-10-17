@@ -13,6 +13,7 @@
 #include <iomanip>
 #include "dualfunctions.h"
 #include "semilla.h"
+#include "salida.h"
 #include "token.h"
 
 using namespace std;
@@ -904,6 +905,20 @@ int main() {
     // Arranque del reloj de CPU: alimenta el timestamp de cada linea y el
     // tiempo total del resumen (en Python: t0 = time.process_time()).
     g_log_t0 = clock();
+
+    // Destino de la salida (issue #112): por defecto todo va a ode-solver.log;
+    // ODE_LOG=terminal lo devuelve a stdout y ODE_LOG_FILE cambia la ruta. La
+    // redireccion se instala UNA vez, antes de la primera linea de log, y el
+    // RAII la deshace al salir. En Python seria `with redireccion: ...`.
+    const ConfigSalida config_salida =
+        resolver_salida(getenv("ODE_LOG"), getenv("ODE_LOG_FILE"));
+    RedireccionSalida redireccion(config_salida);
+    if (redireccion.fallo_apertura()) {
+        // La ruta no se pudo abrir: se avisa por la terminal (cout sigue
+        // intacto) y la corrida continua ahi, sin perder resultados.
+        log_warn() << "log_open_failed | path=" << config_salida.ruta << '\n';
+        cout.flush();
+    }
 
     // Semilla controlada por ODE_SEED (issue #4): con ODE_SEED=42 todas las
     // corridas salen identicas (mismo fitness, mismo vector), que es lo que

@@ -355,6 +355,78 @@ struct ConfigBusqueda {
     long double div_threshold = 0.05L;
 };
 
+// Escalado de reinicios (issue #128): cada reinicio consecutivo sin un
+// `new_best` reemplaza una fraccion mayor de la poblacion, hasta el tope
+// ODE_RESTART_FRACTION; tras ODE_RESTART_CAP reinicios sin mejora la rutina
+// pasa a solo refinamiento (fraccion 0.2 y mutaciones de elites). El
+// incremento de 0.2 y los valores del refinamiento son parte del contrato del
+// issue. En Python serian constantes de modulo:
+//     INCREMENTO_ESCALADO_REINICIO = 0.2
+//     FRACCION_REFINAMIENTO = 0.2
+//     CUOTA_MUTACION_REFINAMIENTO = 1.0
+constexpr long double INCREMENTO_ESCALADO_REINICIO = 0.2L;
+constexpr long double FRACCION_REFINAMIENTO = 0.2L;
+constexpr long double CUOTA_MUTACION_REFINAMIENTO = 1.0L;
+
+// ParametrosReinicio: lo que la rutina de reinicio necesita saber para
+// ejecutar el reinicio que toca. `fraccion` es la parte de la poblacion a
+// reemplazar y `cuota_mutacion` la proporcion de reemplazos generados por
+// mutacion de elites (el resto son individuos aleatorios). En Python seria un
+// `@dataclass(frozen=True)` con esos dos campos.
+struct ParametrosReinicio {
+    long double fraccion = 0.0L;
+    long double cuota_mutacion = 0.0L;
+};
+
+// EscaladorReinicio: estado del escalado, propiedad del bucle DE. Sigue el
+// patron de configuracion pura del repo: recibe los valores ya resueltos y
+// devuelve un resultado, sin leer el entorno ni tocar la poblacion. En Python
+// seria una clase con un unico atributo `reinicios_consecutivos` y dos
+// metodos, `siguiente(config)` y `nuevo_record()`.
+class EscaladorReinicio {
+    public:
+    // siguiente: parametros del proximo reinicio segun cuantos reinicios
+    // consecutivos sin mejora lleva el episodio, y avanza la escalera. La
+    // formula es
+    //     min(ODE_RESTART_FRACTION,
+    //         ODE_RESTART_MIN_FRACTION + 0.2 * reinicios_consecutivos)
+    // y, al llegar a ODE_RESTART_CAP, refinamiento-only. En Python seria
+    // `min(config.restart_fraction, config.restart_min_fraction + 0.2 * self.n)`.
+    ParametrosReinicio siguiente(const ConfigBusqueda& config) {
+        ParametrosReinicio parametros;
+
+        if (reinicios_consecutivos_ >= config.restart_cap) {
+            parametros.fraccion = FRACCION_REFINAMIENTO;
+            parametros.cuota_mutacion = CUOTA_MUTACION_REFINAMIENTO;
+        } else {
+            const long double fraccion_escalada =
+                config.restart_min_fraction +
+                INCREMENTO_ESCALADO_REINICIO *
+                    static_cast<long double>(reinicios_consecutivos_);
+            // std::min evita que la escalera supere el tope configurado.
+            parametros.fraccion = std::min(config.restart_fraction, fraccion_escalada);
+            parametros.cuota_mutacion = config.restart_mutation_share;
+        }
+
+        // El contador se satura en el cap: mas reinicios ya no cambian la
+        // decision y asi no puede desbordar en una corrida larga (ES.103).
+        if (reinicios_consecutivos_ < config.restart_cap) {
+            reinicios_consecutivos_++;
+        }
+        return parametros;
+    }
+
+    // nuevo_record: cualquier `new_best` corta el episodio de estancamiento y
+    // devuelve la escalera al primer reinicio suave (issue #128). En Python
+    // seria `self.reinicios_consecutivos = 0`.
+    void nuevo_record() {
+        reinicios_consecutivos_ = 0;
+    }
+
+    private:
+    int reinicios_consecutivos_ = 0;
+};
+
 // config_entera: lee una variable de entorno ya obtenida con getenv() (en
 // Python seria el string de os.environ.get(nombre), o None) y devuelve su
 // valor entero solo si representa un numero >= `minimo`; si falta, no es
@@ -1046,6 +1118,11 @@ int main() {
     const int stale_limit = config.stale_limit;
     int generaciones_sin_mejora = 0;
 
+    // Estado del escalado (issue #128): vive en el bucle DE y solo se consulta
+    // cuando el modo adaptive ejecuta un reinicio. En modo legacy no se usa,
+    // asi que la corrida historica sigue siendo bit-reproducible.
+    EscaladorReinicio escalador;
+
     // Cabecera de la corrida (reemplaza el banner de ASCII art): una sola
     // linea con toda la configuracion en clave=valor. `population=` informa el
     // tamano real de la poblacion ya creada; `warm_start=` es el valor efectivo
@@ -1151,9 +1228,12 @@ int main() {
                        << " vector=" << fmt_vector(Bestvect) << '\n';
             cout.flush();
             // Reinicio del contador de estancamiento: hay un new_best, asi que
-            // la búsqueda está progresando. En Python sería
-            // `generaciones_sin_mejora = 0`.
+            // la búsqueda está progresando. El escalado tambien vuelve al
+            // primer reinicio suave (issue #128): un record nuevo corta el
+            // episodio de reinicios consecutivos. En Python sería
+            // `generaciones_sin_mejora = 0; escalador.nuevo_record()`.
             generaciones_sin_mejora = 0;
+            escalador.nuevo_record();
         } else {
             // Sin mejora: incremento el contador. En Python sería
             // `generaciones_sin_mejora += 1`.
@@ -1170,9 +1250,31 @@ int main() {
             // el reemplazo respeta); ademas el helper restaura alli el record
             // historico `Bestvect`, porque en una corrida estancada el mejor
             // del momento no es el record (issue #82).
-            const int reemplazados = reiniciar_poblacion(Population, mejor, Bestvect, config, caso);
-            log_info() << "restart | gen=" << gen << " stagnant_gens=" << generaciones_sin_mejora
-                       << " replaced=" << reemplazados << '\n';
+            if (config.restart_mode == ModoReinicio::adaptive){
+                // El escalado decide cuanta poblacion reemplazar y que cuota
+                // de los reemplazos sera mutacion de elites (issue #128).
+                // Hasta que #127 conecte la rutina adaptativa, la fraccion
+                // escalada se aplica sobre el reinicio legacy; la cuota queda
+                // registrada para que esa rutina la consuma.
+                const ParametrosReinicio parametros = escalador.siguiente(config);
+                ConfigBusqueda config_reinicio = config;
+                config_reinicio.restart_fraction = parametros.fraccion;
+                const int reemplazados = reiniciar_poblacion(Population, mejor, Bestvect,
+                                                             config_reinicio, caso);
+                log_info() << "restart | gen=" << gen
+                           << " stagnant_gens=" << generaciones_sin_mejora
+                           << " replaced=" << reemplazados
+                           << " fraction=" << fmt_fijo(parametros.fraccion, 2)
+                           << " mutation_share=" << fmt_fijo(parametros.cuota_mutacion, 2)
+                           << '\n';
+            } else {
+                // Modo legacy: misma llamada y misma linea de log que antes de
+                // #128, para conservar la reproducibilidad historica.
+                const int reemplazados = reiniciar_poblacion(Population, mejor, Bestvect,
+                                                             config, caso);
+                log_info() << "restart | gen=" << gen << " stagnant_gens=" << generaciones_sin_mejora
+                           << " replaced=" << reemplazados << '\n';
+            }
             cout.flush();
             // Resetear el contador para que no se reinicie en la siguiente generación.
             generaciones_sin_mejora = 0;

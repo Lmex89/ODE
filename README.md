@@ -4,6 +4,112 @@ A C++ research prototype that searches for **symbolic (closed-form) solutions** 
 
 Based on the article: [Solving Ordinary Differential Equations Using Differential Evolution](https://www.hindawi.com/journals/ddns/2015/910316/) (Hindawi, 2015).
 
+## Project map
+
+Two views of the same repository: the logical architecture of the solver and
+how the work is organised in Git.
+
+### Logical architecture
+
+`build/ode-solver` is one executable built from `src/` and steered by
+environment variables; the search loop calls the evaluator for every candidate
+and feeds the resulting fitness back into selection:
+
+```mermaid
+flowchart TB
+    subgraph ENV["Run configuration - environment variables"]
+        direction LR
+        E_SEED["ODE_SEED"]
+        E_CASE["ODE_CASE (0-7)"]
+        E_SEARCH["ODE_POP · ODE_DIM · ODE_GEN · ODE_WARM_START<br/>ODE_STALE_LIMIT · ODE_RESTART_FRACTION"]
+        E_LOG["ODE_LOG · ODE_LOG_FILE"]
+    end
+
+    subgraph CORE["src/ - solver core (build/ode-solver)"]
+        SEMILLA["semilla.{h,cpp}<br/>resolves the run seed"]
+        TOKEN["token.h<br/>alphabet 1..29 · arity · rendering"]
+        DE["parse_tree.cpp - main() + DE/rand/1/bin loop<br/>population · mutation · crossover ·<br/>greedy selection · restart"]
+        DUAL["dualfunctions.{h,cpp}<br/>prefix-tree interpreter with 2dual numbers"]
+        FIT["FunbObj fitness - paper eq. (4)<br/>λ₁h₁² + λ₂h₂² + Δx·Σ f²<br/>over the 100-point grid"]
+        SALIDA["salida.{h,cpp}<br/>RAII stdout redirect"]
+    end
+
+    subgraph CHECK["Verification"]
+        TESTS["tests/ - 12 CTest executables"]
+        SCRIPTS["scripts/ - log / notebook checkers<br/>A/B experiment · Sage runner"]
+    end
+
+    OUT["structured log<br/>gen · new_best · solution · de_run_end"]
+
+    E_SEED --> SEMILLA
+    E_CASE --> DE
+    E_SEARCH --> DE
+    E_LOG --> SALIDA
+    SEMILLA -. seed .-> DE
+    TOKEN -. vocabulary .-> DE
+    TOKEN -. vocabulary .-> DUAL
+    DE -- "candidate token vector" --> DUAL
+    DUAL -- "y(x) · y'(x) · y''(x)" --> FIT
+    DE -- "population" --> FIT
+    FIT -- "fitness R (INFINITY for invalid trees)" --> DE
+    DE -- "best individual" --> OUT
+    OUT --> SALIDA
+    TESTS -. compile and link .-> CORE
+    SCRIPTS -. run and inspect .-> CORE
+```
+
+### Git repository
+
+`master` tracks sources, tests, scripts and docs; the CMake output and local
+tooling stay out of the index:
+
+```mermaid
+flowchart LR
+    ROOT["ODE - repository root"]
+
+    subgraph TRACK["Tracked on master"]
+        direction TB
+        SRC["src/ - solver sources (8 files)"]
+        TST["tests/ - 12 test files"]
+        SCR["scripts/ - checkers, experiment, Sage runner"]
+        DOC["docs/ - standards, evidence,<br/>legacy/ (never built)"]
+        AGT["AGENTS.md · .agents/skills/ - agent guide"]
+        CFG["CMakeLists.txt - the only build entry point"]
+        META["README.md · GLOSSARY.md · REVIEW.md · .gitignore"]
+    end
+
+    subgraph LOCAL["Local only - .gitignore"]
+        direction TB
+        BLD["build/ - CMake out-of-source output<br/>and the ode-solver binary"]
+        CGF[".codegraph/ - machine-specific code index"]
+        ART["ode-solver.log · out* · __pycache__/ · *.o · .vscode/"]
+    end
+
+    ROOT --> TRACK
+    ROOT --> LOCAL
+```
+
+Each change travels through a short-lived branch tied to a GitHub issue
+(prefixes in use: `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`) and a pull
+request back to `master`; the shape of the history, with two worked examples:
+
+```mermaid
+%%{init: {'gitGraph': {'mainBranchName': 'master'}} }%%
+gitGraph
+    commit id: "issue 112: output to log file"
+    branch feat/112-output-log-file
+    commit id: "feat(output): write solver output to log file"
+    commit id: "test(salida): cover the output resolver"
+    checkout master
+    merge feat/112-output-log-file id: "merge PR 118"
+    commit id: "issue 114: checkers keep terminal mode"
+    branch fix/issue-114-log-checkers-terminal-mode
+    commit id: "fix(scripts): keep stdout log checkers in terminal mode"
+    checkout master
+    merge fix/issue-114-log-checkers-terminal-mode id: "merge PR 121"
+    commit id: "issue N: next change"
+```
+
 ## How it works
 
 The program evolves a population of candidate expressions (parse trees) to find a function `y(x)` that satisfies a given ODE together with initial/boundary conditions.

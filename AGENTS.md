@@ -45,8 +45,11 @@
   `ODE_SEED=42 ODE_GEN=200 timeout 60 ./build/ode-solver | tail -30`.
   `ODE_CASE=1` selects the paper case, `ODE_CASE=2` the hyperbolic case,
   `ODE_CASE=3` the damped oscillator, `ODE_CASE=4` the forced oscillator,
-  `ODE_CASE=5` the resonance case (unset/0: the toy ODE). Cases 6-7
-  (Legendre/Hermite) are reserved for issue #104. `ODE_POP`, `ODE_DIM`,
+  `ODE_CASE=5` the resonance case, `ODE_CASE=6` the Legendre equation
+  (variable coefficients: (1-x²)y'' - 2xy' + 6y = 0, ICs y(0)=-1/2, y'(0)=0,
+  solution P₂(x) = (3x²-1)/2), `ODE_CASE=7` the Hermite equation
+  (variable coefficients: y'' - 2xy' + 4y = 0, ICs y(0)=-2, y'(0)=0,
+  solution H₂(x) = 4x²-2), and unset/0 the toy ODE. `ODE_POP`, `ODE_DIM`,
   `ODE_GEN`, and `ODE_WARM_START=1` override the defaults (100 individuals,
   dimension 20, 5,000 generations); warm start (20-token seeds) activates
   only when the dimension is 20 (the default).

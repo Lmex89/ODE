@@ -103,11 +103,59 @@ static void test_caso5_solucion_exacta() {
                fit < 1e-6L);
 }
 
+// -------------------------------------------------------------------------
+// Case 6: Legendre equation (issue #104)
+//   ODE: (1-x²)y'' - 2xy' + 6y = 0
+//   ICs: y(0)=-1/2, y'(0)=0
+//   Solution: P₂(x) = (3x²-1)/2
+//
+// Token vector (prefix notation):
+//   DIV(ADD(MUL(CONST3, X2), NEG(CONST1)), CONST2)
+//   = {20, 18, 19, 3, 26, 12, 1, 2}
+// -------------------------------------------------------------------------
+
+static void test_caso6_solucion_exacta() {
+    // (3x²-1)/2
+    vector<ldouble> tokens = {TOKEN_DIV, TOKEN_ADD, TOKEN_MUL, TOKEN_CONST3,
+                               TOKEN_X2, TOKEN_NEG, TOKEN_CONST1, TOKEN_CONST2};
+    FunbObj f(tokens, 0.0L, 1.0L, 6);
+    const long double fit = f.fitness();
+
+    check_bool("fitness_caso6((3x²-1)/2) es finita", std::isfinite(fit));
+    check_bool("fitness_caso6((3x²-1)/2) < 1e-6 (solucion exacta P₂(x))",
+               fit < 1e-6L);
+}
+
+// -------------------------------------------------------------------------
+// Case 7: Hermite equation (issue #104)
+//   ODE: y'' - 2xy' + 4y = 0
+//   ICs: y(0)=-2, y'(0)=0
+//   Solution: H₂(x) = 4x²-2
+//
+// Token vector (prefix notation):
+//   ADD(MUL(CONST4, X2), NEG(CONST2))
+//   = {18, 19, 4, 26, 12, 2}
+// -------------------------------------------------------------------------
+
+static void test_caso7_solucion_exacta() {
+    // 4x²-2
+    vector<ldouble> tokens = {TOKEN_ADD, TOKEN_MUL, TOKEN_CONST4, TOKEN_X2,
+                               TOKEN_NEG, TOKEN_CONST2};
+    FunbObj f(tokens, 0.0L, 1.0L, 7);
+    const long double fit = f.fitness();
+
+    check_bool("fitness_caso7(4x²-2) es finita", std::isfinite(fit));
+    check_bool("fitness_caso7(4x²-2) < 1e-6 (solucion exacta H₂(x))",
+               fit < 1e-6L);
+}
+
 int main() {
-    cout << "== test_ode_cases: issue #103 (cases 3-5, linear oscillators) ==\n";
+    cout << "== test_ode_cases: issues #103-#104 (cases 3-7) ==\n";
     test_caso3_solucion_exacta();
     test_caso4_solucion_exacta();
     test_caso5_solucion_exacta();
+    test_caso6_solucion_exacta();
+    test_caso7_solucion_exacta();
     cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
          << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;

@@ -4,6 +4,112 @@ A C++ research prototype that searches for **symbolic (closed-form) solutions** 
 
 Based on the article: [Solving Ordinary Differential Equations Using Differential Evolution](https://www.hindawi.com/journals/ddns/2015/910316/) (Hindawi, 2015).
 
+## Project map
+
+Two views of the same repository: the logical architecture of the solver and
+how the work is organised in Git.
+
+### Logical architecture
+
+`build/ode-solver` is one executable built from `src/` and steered by
+environment variables; the search loop calls the evaluator for every candidate
+and feeds the resulting fitness back into selection:
+
+```mermaid
+flowchart TB
+    subgraph ENV["Run configuration - environment variables"]
+        direction LR
+        E_SEED["ODE_SEED"]
+        E_CASE["ODE_CASE (0-7)"]
+        E_SEARCH["ODE_POP · ODE_DIM · ODE_GEN · ODE_WARM_START<br/>ODE_STALE_LIMIT · ODE_RESTART_FRACTION"]
+        E_LOG["ODE_LOG · ODE_LOG_FILE"]
+    end
+
+    subgraph CORE["src/ - solver core (build/ode-solver)"]
+        SEMILLA["semilla.{h,cpp}<br/>resolves the run seed"]
+        TOKEN["token.h<br/>alphabet 1..29 · arity · rendering"]
+        DE["parse_tree.cpp - main() + DE/rand/1/bin loop<br/>population · mutation · crossover ·<br/>greedy selection · restart"]
+        DUAL["dualfunctions.{h,cpp}<br/>prefix-tree interpreter with 2dual numbers"]
+        FIT["FunbObj fitness - paper eq. (4)<br/>λ₁h₁² + λ₂h₂² + Δx·Σ f²<br/>over the 100-point grid"]
+        SALIDA["salida.{h,cpp}<br/>RAII stdout redirect"]
+    end
+
+    subgraph CHECK["Verification"]
+        TESTS["tests/ - 13 CTest executables"]
+        SCRIPTS["scripts/ - log / notebook checkers<br/>A/B experiment · Sage runner"]
+    end
+
+    OUT["structured log<br/>gen · new_best · solution · de_run_end"]
+
+    E_SEED --> SEMILLA
+    E_CASE --> DE
+    E_SEARCH --> DE
+    E_LOG --> SALIDA
+    SEMILLA -. seed .-> DE
+    TOKEN -. vocabulary .-> DE
+    TOKEN -. vocabulary .-> DUAL
+    DE -- "candidate token vector" --> DUAL
+    DUAL -- "y(x) · y'(x) · y''(x)" --> FIT
+    DE -- "population" --> FIT
+    FIT -- "fitness R (INFINITY for invalid trees)" --> DE
+    DE -- "best individual" --> OUT
+    OUT --> SALIDA
+    TESTS -. compile and link .-> CORE
+    SCRIPTS -. run and inspect .-> CORE
+```
+
+### Git repository
+
+`master` tracks sources, tests, scripts and docs; the CMake output and local
+tooling stay out of the index:
+
+```mermaid
+flowchart LR
+    ROOT["ODE - repository root"]
+
+    subgraph TRACK["Tracked on master"]
+        direction TB
+        SRC["src/ - solver sources (8 files)"]
+        TST["tests/ - 13 test files"]
+        SCR["scripts/ - checkers, experiment, Sage runner"]
+        DOC["docs/ - standards, evidence,<br/>legacy/ (never built)"]
+        AGT["AGENTS.md · .agents/skills/ - agent guide"]
+        CFG["CMakeLists.txt - the only build entry point"]
+        META["README.md · GLOSSARY.md · REVIEW.md · .gitignore"]
+    end
+
+    subgraph LOCAL["Local only - .gitignore"]
+        direction TB
+        BLD["build/ - CMake out-of-source output<br/>and the ode-solver binary"]
+        CGF[".codegraph/ - machine-specific code index"]
+        ART["ode-solver.log · out* · __pycache__/ · *.o · .vscode/"]
+    end
+
+    ROOT --> TRACK
+    ROOT --> LOCAL
+```
+
+Each change travels through a short-lived branch tied to a GitHub issue
+(prefixes in use: `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`) and a pull
+request back to `master`; the shape of the history, with two worked examples:
+
+```mermaid
+%%{init: {'gitGraph': {'mainBranchName': 'master'}} }%%
+gitGraph
+    commit id: "issue 112: output to log file"
+    branch feat/112-output-log-file
+    commit id: "feat(output): write solver output to log file"
+    commit id: "test(salida): cover the output resolver"
+    checkout master
+    merge feat/112-output-log-file id: "merge PR 118"
+    commit id: "issue 114: checkers keep terminal mode"
+    branch fix/issue-114-log-checkers-terminal-mode
+    commit id: "fix(scripts): keep stdout log checkers in terminal mode"
+    checkout master
+    merge fix/issue-114-log-checkers-terminal-mode id: "merge PR 121"
+    commit id: "issue N: next change"
+```
+
 ## How it works
 
 The program evolves a population of candidate expressions (parse trees) to find a function `y(x)` that satisfies a given ODE together with initial/boundary conditions.
@@ -104,6 +210,7 @@ ODE_CASE=2 ODE_SEED=42 ./build/ode-solver   # hyperbolic case: y'' - y = 0, solu
 ODE_POP=200 ODE_GEN=1000 ./build/ode-solver # override population size / generation cap
 ODE_DIM=40 ./build/ode-solver               # override the individual dimension
 ODE_WARM_START=1 ODE_SEED=42 ./build/ode-solver  # start from the five prototype seeds
+ODE_RESTART_MODE=adaptive ODE_SEED=42 ./build/ode-solver  # adaptive restart (escalating, elite-preserving, hybrid)
 ```
 
 `ODE_SEED` fixes the `srand()` seed and the chosen value is printed in the
@@ -123,6 +230,26 @@ expressions (they are 20 tokens long, so the flag is ignored when `ODE_DIM` is
 not 20, the default). The startup line reports the effective configuration
 (`population=`, `dimension=`, `warm_start=`).
 
+Stagnation restarts are controlled by `ODE_STALE_LIMIT` (default 500
+generations without a new best) and `ODE_RESTART_FRACTION` (default 0.8, the
+share of the population replaced in `legacy` mode). `ODE_RESTART_MODE` selects
+the restart mode (`legacy`, the default, or `adaptive`) and the startup line
+reports the effective `restart_mode=`. In `adaptive` mode the restart
+parameters escalate (issue #128): `ODE_RESTART_MIN_FRACTION` (default 0.4)
+grows by 0.2 per consecutive restart without a new best up to
+`ODE_RESTART_FRACTION` (default 0.8), and after `ODE_RESTART_CAP` (default 3)
+consecutive restarts they become refinement-only (fraction 0.2, mutation share
+1.0). A new best resets the ladder; `ODE_RESTART_MUTATION_SHARE` (default 0.5)
+is the hybrid share below the cap. Each adaptive restart then keeps the
+fittest `100% − fraction` of the population (issue #127) and replaces only the
+worst share: `mutation_share` of the replacements are 1–2-token point
+mutations of elites and the rest fresh uniform individuals, and the all-time
+record survives every restart (re-injected among the replacements when it was
+outside the population). Each `restart |` line reports `trigger=stale`,
+`fraction=`, `kept=` and `replaced=`, plus `mutation_share=` in adaptive mode.
+`ODE_DIV_THRESHOLD` (default 0.05) is not consumed yet (issue #129). Legacy
+mode keeps the historical restart verbatim.
+
 The program logs one structured line per event (`[  0.12s] [INFO ] gen=1
 best=... best_ever=... expr=...`), plus `new_best` records, a final `solution`
 line and a `de_run_end` summary. It typically converges in seconds but may run
@@ -139,23 +266,24 @@ very verbose — consider piping through `tail`:
 ctest --test-dir build
 ```
 
-This runs the 9 C++ tests registered in `CMakeLists.txt` (all targets are built by the preceding `cmake --build build`). For a focused test:
+This runs the 13 C++ tests registered in `CMakeLists.txt` (all targets are built by the preceding `cmake --build build`). For a focused test:
 
 ```bash
 cmake --build build --target test_mutation
 ./build/test_mutation
 ```
 
-`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()`/`sinh2dual()`/`cosh2dual()`/`tanh2dual()` derivatives, the `x²`/`x³` leaves, and the constant π/e leaves). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..29`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_population.cpp` asserts the initial population (exact size, per-individual dimension, tokens inside the `1..29` alphabet, opt-in warm start, fixed-seed determinism) and the search-configuration resolver (default dimension 20, `ODE_POP`/`ODE_DIM`/`ODE_GEN` overrides, invalid-value fallback, warm-start/dimension coupling). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included) and the paper's fitness functional (eq. (4): squared residuals, `λ₁ = λ₂ = 10`, the `Δx = 1/99` integration factor, the Case 1 (`ODE_CASE=1`) and hyperbolic Case 2 (`ODE_CASE=2`) residuals, and independently computed expected values for valid candidates). `test_token.cpp` asserts the public token-alphabet contract (codes `1..29`, arity per token, rendering, validity predicates, `random_token()` bounds). `test_funbobj_const.cpp` asserts that `FunbObj` accessors are const-correct. `test_header_hygiene.cpp` asserts that `dualfunctions.h` is self-contained and uses const references for read-only parameters. The tests link only what each one needs and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp`, `test_token.cpp`, `test_grid.cpp`, `test_population.cpp` and `test_funbobj_const.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp`, `test_population.cpp` and `test_funbobj_const.cpp` include `parse_tree.cpp` directly to reach the header-less `FunbObj`).
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()`/`sinh2dual()`/`cosh2dual()`/`tanh2dual()` derivatives, the `x²`/`x³` leaves, and the constant π/e leaves). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..29`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_population.cpp` asserts the initial population (exact size, per-individual dimension, tokens inside the `1..29` alphabet, opt-in warm start, fixed-seed determinism) and the search-configuration resolver (default dimension 20, `ODE_POP`/`ODE_DIM`/`ODE_GEN` overrides, invalid-value fallback, warm-start/dimension coupling). `test_restart_escalation.cpp` asserts the adaptive restart ladder (0.4 → 0.6 → 0.8, refinement-only after `ODE_RESTART_CAP`, reset on a new best, configured cap and mutation share). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included) and the paper's fitness functional (eq. (4): squared residuals, `λ₁ = λ₂ = 10`, the `Δx = 1/99` integration factor, the Case 1 (`ODE_CASE=1`) and hyperbolic Case 2 (`ODE_CASE=2`) residuals, and independently computed expected values for valid candidates). `test_token.cpp` asserts the public token-alphabet contract (codes `1..29`, arity per token, rendering, validity predicates, `random_token()` bounds). `test_funbobj_const.cpp` asserts that `FunbObj` accessors are const-correct. `test_header_hygiene.cpp` asserts that `dualfunctions.h` is self-contained and uses const references for read-only parameters. The tests link only what each one needs and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp`, `test_token.cpp`, `test_grid.cpp`, `test_population.cpp`, `test_restart_escalation.cpp` and `test_funbobj_const.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp`, `test_population.cpp`, `test_restart_escalation.cpp` and `test_funbobj_const.cpp` include `parse_tree.cpp` directly to reach the header-less `FunbObj`).
 
 The notebook/log checkers run standalone (they are not registered with ctest):
 
 ```bash
 python3 scripts/check_dual_validation.py
 python3 scripts/check_run_log.py
+python3 scripts/check_restart_escalation.py
 ```
 
-`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log.
+`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log. `check_restart_escalation.py` forces adaptive restarts and validates the sequence the DE loop logs (`fraction=`, `replaced=`, `mutation_share=` and the reset on `new_best`).
 
 The SageMath notebook validation needs a real SageMath kernel:
 
@@ -194,6 +322,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `tests/test_semilla.cpp` | `ODE_SEED` resolution tests |
 | `tests/test_grid.cpp` | Evaluation-grid tests |
 | `tests/test_population.cpp` | Population and configuration tests |
+| `tests/test_restart_escalation.cpp` | Adaptive restart escalation tests |
 | `tests/test_token.cpp` | Token-alphabet contract tests |
 | `tests/test_funbobj_const.cpp` | `FunbObj` const-correctness tests |
 | `tests/test_header_hygiene.cpp` | Header self-containment and const-reference tests |
@@ -201,6 +330,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `docs/ab-experiment.md` | A/B comparison report and conclusions |
 | `scripts/check_dual_validation.py` | Executes the notebook's validation cells without SageMath |
 | `scripts/check_run_log.py` | Validates the structured log from a solver run |
+| `scripts/check_restart_escalation.py` | Validates the adaptive restart wiring in the DE loop |
 | `scripts/run_sage_dual_validation.sh` | Execute the complete notebook in SageMath and verify its output |
 | `scripts/check_sage_dual_validation.py` | Check the executed notebook's 48-case PASS/FAIL result |
 | `docs/sage-dual-validation.md` | SageMath command, environment, and captured evidence |
@@ -210,7 +340,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 
 - Search is stochastic by default (`srand(time(NULL))`); set `ODE_SEED=N` for reproducible runs, `ODE_CASE=1` for the paper's Case 1 and `ODE_CASE=2` for the hyperbolic case
 - Search defaults use 100 individuals, dimension 20, and 5,000 generations; `ODE_POP`, `ODE_DIM` and `ODE_GEN` override them, and `ODE_WARM_START=1` restores the five 20-token prototype seeds when the dimension is 20 (the default)
-- No CI; dual-number, seed, mutation, crossover, population/configuration, grid, token-alphabet, FunbObj const-correctness and header hygiene tests run with `ctest --test-dir build`
+- No CI; dual-number, seed, mutation, crossover, population/configuration, restart-escalation, grid, token-alphabet, FunbObj const-correctness and header hygiene tests run with `ctest --test-dir build`
 - Code comments are in Spanish
 - `dualfunctions.h` requires STL headers (`vector`, `string`) to be included before it
 - The SageMath notebook's fitness formula is stale; the C++ code is the source of truth

@@ -78,12 +78,13 @@ foreach(nombre IN ITEMS test_mutation test_crossover test_token)
     add_test(NAME ${nombre} COMMAND ${nombre})
 endforeach()
 
-# test_funbobj_const (issue #42), test_grid (issue #7) y test_population
-# (issue #11) incluyen parse_tree.cpp desde su propio .cpp (FunbObj no tiene
-# header): parse_tree.cpp NO se compila aparte o habria simbolos duplicados.
+# test_funbobj_const (issue #42), test_grid (issue #7), test_population
+# (issue #11), test_restart_escalation (issue #128) y el resto incluyen
+# parse_tree.cpp desde su propio .cpp (FunbObj no tiene header):
+# parse_tree.cpp NO se compila aparte o habria simbolos duplicados.
 # Necesitan src/ en el include path (asi resuelven tanto el .cpp incluido
 # como sus headers) y -DODE_NO_MAIN para que gane el main() del test.
-foreach(nombre IN ITEMS test_funbobj_const test_grid test_population test_ode_cases test_per_case_config)
+foreach(nombre IN ITEMS test_funbobj_const test_grid test_population test_ode_cases test_per_case_config test_restart_escalation)
     add_executable(${nombre}
         src/semilla.cpp
         src/dualfunctions.cpp

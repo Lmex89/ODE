@@ -22,7 +22,7 @@
   historical files in `docs/legacy/` (the backup
   `docs/legacy/parse_tree_bckp.cpp` and the notebook
   `docs/legacy/Untitled.ipynb`).
-- `ctest --test-dir build` builds and runs the 12 C++ tests registered in
+- `ctest --test-dir build` builds and runs the 13 C++ tests registered in
   `CMakeLists.txt`: each test file under `tests/` is its own executable, and
   its exit code is nonzero exactly when an assert fails (the same contract
   as pytest). For a focused test, build its target and run it directly:
@@ -33,9 +33,20 @@
   repo tree and `CMakeLists.txt`).
 - The notebook/log checkers run standalone (they are not registered with
   ctest): `python3 scripts/check_dual_validation.py` (executes the
-  notebook's validation cells, no SageMath needed) and
-  `python3 scripts/check_run_log.py` (runs the solver in its short
-  deterministic mode and validates the structured log).
+  notebook's validation cells, no SageMath needed),
+  `python3 scripts/check_run_log.py` (runs the solver in terminal mode and
+  validates the structured log), `python3 scripts/check_log_redirect.py`
+  (runs the binary in temporary directories to verify the default
+  `ode-solver.log` and `ODE_LOG=terminal`), and
+  `python3 scripts/check_restart_escalation.py` (runs an adaptive solver in
+  terminal mode with `ODE_STALE_LIMIT=1` and validates the escalated
+  `fraction=`, `replaced=`, `mutation_share=` and reset-on-`new_best`
+  sequence that the DE loop actually logs).
+- `python3 scripts/check_ab_experiment.py` runs `scripts/ab_experiment.sh` in
+  its short deterministic mode (`ODE_GEN=200`, seed 42, a 20s timeout per run)
+  and validates that `metricas.tsv` extracts metrics for both builds: the
+  current build in terminal mode and the historical `bc70e95` build left
+  untouched. It compiles both revisions, so it takes around a minute.
 - `python3 scripts/check_all_cases.py` runs tests for ODE cases 3-7
   (damped oscillator, forced oscillator, resonance, Legendre, Hermite) in two modes:
   - `--mode smoke` (default): `ODE_GEN=200`, `ODE_SEED=42`. Validates that each
@@ -65,9 +76,14 @@
   the entire notebook (`docs/legacy/Untitled.ipynb`) using a local `sage`
   installation or Docker with the pinned image. It is appropriate for changes
   to dual-number math or the notebook.
+- The solver writes its complete run log to `ode-solver.log` in the current
+  working directory by default, truncating it on each run; stdout stays empty.
+  `ODE_LOG=terminal` sends the log to stdout and creates no file, while
+  `ODE_LOG_FILE=<path>` overrides the file path. If the file cannot be opened,
+  the run falls back to stdout and warns with `log_open_failed | path=...`.
 - The search is stochastic and its default 5,000 generations can be noisy.
   Use a fixed seed and a short cap for a reproducible smoke run:
-  `ODE_SEED=42 ODE_GEN=200 timeout 60 ./build/ode-solver | tail -30`.
+  `ODE_SEED=42 ODE_GEN=200 ODE_LOG=terminal timeout 60 ./build/ode-solver | tail -30`.
   `ODE_CASE=1` selects the paper case, `ODE_CASE=2` the hyperbolic case,
   `ODE_CASE=3` the damped oscillator, `ODE_CASE=4` the forced oscillator,
   `ODE_CASE=5` the resonance case, `ODE_CASE=6` the Legendre equation
@@ -79,6 +95,7 @@
   dimension 20, 5,000 generations); warm start (20-token seeds) activates
   only when the dimension is 20 (the default).
    `ODE_STALE_LIMIT` (default 500) and `ODE_RESTART_FRACTION` (default 0.8) control the restart mechanism: after `stale_limit` generations without improvement, `restart_fraction` of the population is replaced with fresh random individuals while preserving the best solution found.
+   `ODE_RESTART_MODE` (`legacy`, the default, or `adaptive`) selects the restart mode and is reported in the `de_run_start` header. In `adaptive` mode the restart parameters escalate (issue #128): `ODE_RESTART_MIN_FRACTION` (0.4) grows by 0.2 per consecutive restart without a new best up to `ODE_RESTART_FRACTION` (0.8), and after `ODE_RESTART_CAP` (3) consecutive restarts the parameters become refinement-only (fraction 0.2, mutation share 1.0); a `new_best` resets the ladder. Each adaptive restart then keeps the fittest `100% − fraction` of the population (the all-time record always survives, re-injected among the replacements when absent) and replaces only the worst share, whose `mutation_share` are 1–2-token point mutations of elites and the rest fresh uniform individuals (issue #127). The `restart |` line reports `trigger=stale`, `fraction=`, `kept=` and `replaced=`, plus `mutation_share=` in adaptive mode. `ODE_DIV_THRESHOLD` (0.05) is not consumed yet (issue #129). Legacy mode stays bit-reproducible.
 - There is no CI. For behaviorally neutral DE changes, compare fixed-seed runs
   with `scripts/ab_experiment.sh --seed 42 --timeout 300`.
 
@@ -91,11 +108,17 @@
   rendering, and random-token source of truth.
   `docs/legacy/parse_tree_bckp.cpp` is a historical copy that also defines
   `main()`: never add it to a build.
+- `src/salida.{h,cpp}` owns the output destination: `resolver_salida()` maps
+  `ODE_LOG`/`ODE_LOG_FILE` to a mode and path, and `RedireccionSalida` is the
+  RAII redirect that swaps `std::cout` once at startup and restores it on
+  exit.
 - `tests/test_grid.cpp`, `tests/test_population.cpp`,
-  `tests/test_funbobj_const.cpp`, and `tests/test_ode_cases.cpp` include
-  `parse_tree.cpp` directly because `FunbObj` has no header. Their CMake rules
-  intentionally compile with `-DODE_NO_MAIN` and keep `parse_tree.cpp` off the
-  compile line; do not "simplify" this into compiling that source twice.
+  `tests/test_funbobj_const.cpp`, `tests/test_ode_cases.cpp`,
+  `tests/test_per_case_config.cpp`, and `tests/test_restart_escalation.cpp`
+  include `parse_tree.cpp` directly because `FunbObj` has no header. Their
+  CMake rules intentionally compile with `-DODE_NO_MAIN` and keep
+  `parse_tree.cpp` off the compile line; do not "simplify" this into
+  compiling that source twice.
 - Interpreter operand blanking to `NAN` is deliberate. Invalid/incomplete or
   x-independent trees receive `INFINITY` fitness rather than throwing, and
   `fitness()` caches per individual: individuals are replaced whole, never

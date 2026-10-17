@@ -329,8 +329,9 @@ constexpr int DIMENSION_SEMILLAS = 20;
 
 // ModoReinicio: modo de reinicio por estancamiento (issue #126). En Python
 // seria `class ModoReinicio(Enum): LEGACY = "legacy"; ADAPTIVE = "adaptive"`.
-// Por ahora el modo solo se resuelve y se informa en la cabecera del log: el
-// reinicio adaptativo en si se conecta en los tickets siguientes del #125.
+// `legacy` conserva el reinicio historico; `adaptive` aplica la fraccion
+// escalada de #128 sobre `reiniciar_poblacion`. La rutina adaptativa completa
+// (cuota de mutacion de elites) llega en #127.
 enum class ModoReinicio { legacy, adaptive };
 
 // ConfigBusqueda: los parametros de la corrida en una estructura en vez de
@@ -339,8 +340,10 @@ enum class ModoReinicio { legacy, adaptive };
 // stale_limit: generaciones sin mejora antes de reiniciar poblacion.
 // restart_fraction: proporcion de individuos que se reemplazan en un reinicio.
 // Los cinco campos siguientes son las claves del reinicio adaptativo
-// (issue #126): se resuelven y se guardan, pero la busqueda aun no las
-// consume.
+// (issue #126). El bucle consume `restart_mode`, `restart_min_fraction`,
+// `restart_cap` y la fraccion escalada; `restart_mutation_share` se registra
+// en el log, pero la rutina que lo aplica llega en #127, y `div_threshold` se
+// consume en #129.
 struct ConfigBusqueda {
     int poblacion = POBLACION_DEFECTO;
     int dimension = DIMENSION_DEFECTO;
@@ -371,8 +374,9 @@ constexpr long double CUOTA_MUTACION_REFINAMIENTO = 1.0L;
 // ParametrosReinicio: lo que la rutina de reinicio necesita saber para
 // ejecutar el reinicio que toca. `fraccion` es la parte de la poblacion a
 // reemplazar y `cuota_mutacion` la proporcion de reemplazos generados por
-// mutacion de elites (el resto son individuos aleatorios). En Python seria un
-// `@dataclass(frozen=True)` con esos dos campos.
+// mutacion de elites (el resto son individuos aleatorios); la cuota se
+// registra en el log y la consumira la rutina adaptativa de #127. En Python
+// seria un `@dataclass(frozen=True)` con esos dos campos.
 struct ParametrosReinicio {
     long double fraccion = 0.0L;
     long double cuota_mutacion = 0.0L;
@@ -382,17 +386,17 @@ struct ParametrosReinicio {
 // patron de configuracion pura del repo: recibe los valores ya resueltos y
 // devuelve un resultado, sin leer el entorno ni tocar la poblacion. En Python
 // seria una clase con un unico atributo `reinicios_consecutivos` y dos
-// metodos, `siguiente(config)` y `nuevo_record()`.
+// metodos, `consumir_siguiente(config)` y `nuevo_record()`.
 class EscaladorReinicio {
     public:
-    // siguiente: parametros del proximo reinicio segun cuantos reinicios
-    // consecutivos sin mejora lleva el episodio, y avanza la escalera. La
-    // formula es
+    // consumir_siguiente: devuelve los parametros del proximo reinicio segun
+    // cuantos reinicios consecutivos sin mejora lleva el episodio, y avanza la
+    // escalera (el nombre "consumir" marca ese efecto lateral). La formula es
     //     min(ODE_RESTART_FRACTION,
     //         ODE_RESTART_MIN_FRACTION + 0.2 * reinicios_consecutivos)
     // y, al llegar a ODE_RESTART_CAP, refinamiento-only. En Python seria
     // `min(config.restart_fraction, config.restart_min_fraction + 0.2 * self.n)`.
-    ParametrosReinicio siguiente(const ConfigBusqueda& config) {
+    ParametrosReinicio consumir_siguiente(const ConfigBusqueda& config) {
         ParametrosReinicio parametros;
 
         if (reinicios_consecutivos_ >= config.restart_cap) {
@@ -1130,7 +1134,8 @@ int main() {
     // `stale_limit` y `restart_fraction` son los parametros de reinicio
     // (issue #108), configurables via ODE_STALE_LIMIT y ODE_RESTART_FRACTION.
     // `restart_mode` es el modo efectivo resuelto por resolver_config
-    // (issue #126): por ahora informativo, la busqueda aun no lo ramifica.
+    // (issue #126) y el bucle lo usa para elegir entre el reinicio legacy y
+    // el adaptativo escalado de #128.
     log_info() << "de_run_start | seed=" << semilla
                << " case=" << caso
                << " population=" << Population.size()
@@ -1250,31 +1255,32 @@ int main() {
             // el reemplazo respeta); ademas el helper restaura alli el record
             // historico `Bestvect`, porque en una corrida estancada el mejor
             // del momento no es el record (issue #82).
-            if (config.restart_mode == ModoReinicio::adaptive){
-                // El escalado decide cuanta poblacion reemplazar y que cuota
-                // de los reemplazos sera mutacion de elites (issue #128).
+            // El escalado solo decide en modo adaptive; legacy conserva la
+            // fraccion configurada. Un unico call site aplica la fraccion en
+            // ambos modos y la linea de log solo agrega los campos adaptativos.
+            const bool adaptativo = config.restart_mode == ModoReinicio::adaptive;
+            ParametrosReinicio parametros;
+            string detalle_restart;
+            if (adaptativo){
                 // Hasta que #127 conecte la rutina adaptativa, la fraccion
                 // escalada se aplica sobre el reinicio legacy; la cuota queda
                 // registrada para que esa rutina la consuma.
-                const ParametrosReinicio parametros = escalador.siguiente(config);
-                ConfigBusqueda config_reinicio = config;
-                config_reinicio.restart_fraction = parametros.fraccion;
-                const int reemplazados = reiniciar_poblacion(Population, mejor, Bestvect,
-                                                             config_reinicio, caso);
-                log_info() << "restart | gen=" << gen
-                           << " stagnant_gens=" << generaciones_sin_mejora
-                           << " replaced=" << reemplazados
-                           << " fraction=" << fmt_fijo(parametros.fraccion, 2)
-                           << " mutation_share=" << fmt_fijo(parametros.cuota_mutacion, 2)
-                           << '\n';
+                parametros = escalador.consumir_siguiente(config);
+                detalle_restart = " fraction=" + fmt_fijo(parametros.fraccion, 2) +
+                                  " mutation_share=" +
+                                  fmt_fijo(parametros.cuota_mutacion, 2);
             } else {
-                // Modo legacy: misma llamada y misma linea de log que antes de
+                // Modo legacy: misma fraccion y misma linea de log que antes de
                 // #128, para conservar la reproducibilidad historica.
-                const int reemplazados = reiniciar_poblacion(Population, mejor, Bestvect,
-                                                             config, caso);
-                log_info() << "restart | gen=" << gen << " stagnant_gens=" << generaciones_sin_mejora
-                           << " replaced=" << reemplazados << '\n';
+                parametros.fraccion = config.restart_fraction;
             }
+            ConfigBusqueda config_reinicio = config;
+            config_reinicio.restart_fraction = parametros.fraccion;
+            const int reemplazados = reiniciar_poblacion(Population, mejor, Bestvect,
+                                                         config_reinicio, caso);
+            log_info() << "restart | gen=" << gen
+                       << " stagnant_gens=" << generaciones_sin_mejora
+                       << " replaced=" << reemplazados << detalle_restart << '\n';
             cout.flush();
             // Resetear el contador para que no se reinicie en la siguiente generación.
             generaciones_sin_mejora = 0;

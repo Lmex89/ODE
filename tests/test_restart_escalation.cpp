@@ -43,7 +43,7 @@ static void check_decimal(const std::string& nombre, long double recibido,
 
 // -------------------------------------------------------------------------
 // Seam: la secuencia publica de ParametrosReinicio que devuelve
-// EscaladorReinicio::siguiente() con la configuracion por defecto.
+// EscaladorReinicio::consumir_siguiente() con la configuracion por defecto.
 // Atrapa: el primer reinicio no es suave, el incremento no es 0.2, el tope no
 // se respeta o la degradacion a refinamiento llega antes/despues del cap.
 // -------------------------------------------------------------------------
@@ -52,32 +52,32 @@ static void test_escalado_secuencia_por_defecto() {
     EscaladorReinicio escalador;
 
     // Primer reinicio del episodio: fraccion minima, composicion hibrida.
-    ParametrosReinicio primero = escalador.siguiente(config);
+    ParametrosReinicio primero = escalador.consumir_siguiente(config);
     check_decimal("primer reinicio: fraccion 0.4", primero.fraccion, 0.4L);
     check_decimal("primer reinicio: cuota de mutacion 0.5",
                   primero.cuota_mutacion, 0.5L);
 
     // Cada reinicio consecutivo sin new_best sube 0.2.
-    ParametrosReinicio segundo = escalador.siguiente(config);
+    ParametrosReinicio segundo = escalador.consumir_siguiente(config);
     check_decimal("segundo reinicio: fraccion 0.6", segundo.fraccion, 0.6L);
     check_decimal("segundo reinicio: cuota de mutacion 0.5",
                   segundo.cuota_mutacion, 0.5L);
 
     // Tercer reinicio: tope cap, pero aun no es refinamiento-only.
-    ParametrosReinicio tercero = escalador.siguiente(config);
+    ParametrosReinicio tercero = escalador.consumir_siguiente(config);
     check_decimal("tercer reinicio: fraccion 0.8", tercero.fraccion, 0.8L);
     check_decimal("tercer reinicio: cuota de mutacion 0.5",
                   tercero.cuota_mutacion, 0.5L);
 
     // Tras ODE_RESTART_CAP=3 reinicios sin mejora: solo refinamiento.
-    ParametrosReinicio refinamiento = escalador.siguiente(config);
+    ParametrosReinicio refinamiento = escalador.consumir_siguiente(config);
     check_decimal("cuarto reinicio: fraccion de refinamiento 0.2",
                   refinamiento.fraccion, 0.2L);
     check_decimal("cuarto reinicio: toda la replacement es mutacion de elites",
                   refinamiento.cuota_mutacion, 1.0L);
 
     // La degradacion se mantiene mientras no haya un new_best.
-    ParametrosReinicio siguiente = escalador.siguiente(config);
+    ParametrosReinicio siguiente = escalador.consumir_siguiente(config);
     check_decimal("quinto reinicio sigue en refinamiento (0.2)",
                   siguiente.fraccion, 0.2L);
     check_decimal("quinto reinicio sigue con cuota de mutacion 1.0",
@@ -98,25 +98,25 @@ static void test_escalado_respeta_la_configuracion() {
 
     EscaladorReinicio escalador;
 
-    ParametrosReinicio primero = escalador.siguiente(config);
+    ParametrosReinicio primero = escalador.consumir_siguiente(config);
     check_decimal("min fraction configurada: 0.6", primero.fraccion, 0.6L);
     check_decimal("mutation share configurado: 0.75",
                   primero.cuota_mutacion, 0.75L);
 
     // 0.6 + 0.2 = 0.8, pero el tope ODE_RESTART_FRACTION=0.7 lo recorta.
-    ParametrosReinicio segundo = escalador.siguiente(config);
+    ParametrosReinicio segundo = escalador.consumir_siguiente(config);
     check_decimal("la fraccion se recorta al tope configurado (0.7)",
                   segundo.fraccion, 0.7L);
     check_decimal("el share se conserva bajo el tope (0.75)",
                   segundo.cuota_mutacion, 0.75L);
 
-    ParametrosReinicio tercero = escalador.siguiente(config);
+    ParametrosReinicio tercero = escalador.consumir_siguiente(config);
     check_decimal("el tope se mantiene en el tercer reinicio (0.7)",
                   tercero.fraccion, 0.7L);
     check_decimal("el tercer reinicio aun no es refinamiento (share 0.75)",
                   tercero.cuota_mutacion, 0.75L);
 
-    ParametrosReinicio refinamiento = escalador.siguiente(config);
+    ParametrosReinicio refinamiento = escalador.consumir_siguiente(config);
     check_decimal("el cap configurado dispara el refinamiento (0.2)",
                   refinamiento.fraccion, 0.2L);
     check_decimal("el refinamiento fuerza mutacion de elites (1.0)",
@@ -132,28 +132,28 @@ static void test_nuevo_record_reinicia_la_escalera() {
     EscaladorReinicio escalador;
 
     // Subimos dos escalones: 0.4 y 0.6.
-    escalador.siguiente(config);
-    ParametrosReinicio segundo = escalador.siguiente(config);
+    escalador.consumir_siguiente(config);
+    ParametrosReinicio segundo = escalador.consumir_siguiente(config);
     check_decimal("antes del new_best la escalera va en 0.6",
                   segundo.fraccion, 0.6L);
 
     // Un new_best corta el episodio: el siguiente reinicio vuelve al minimo.
     escalador.nuevo_record();
-    ParametrosReinicio tras_record = escalador.siguiente(config);
+    ParametrosReinicio tras_record = escalador.consumir_siguiente(config);
     check_decimal("tras new_best la fraccion vuelve a 0.4",
                   tras_record.fraccion, 0.4L);
     check_decimal("tras new_best la cuota vuelve a 0.5",
                   tras_record.cuota_mutacion, 0.5L);
 
     // Tambien se sale del refinamiento-only con un new_best.
-    escalador.siguiente(config);  // 0.6
-    escalador.siguiente(config);  // 0.8
-    ParametrosReinicio refinamiento = escalador.siguiente(config);
+    escalador.consumir_siguiente(config);  // 0.6
+    escalador.consumir_siguiente(config);  // 0.8
+    ParametrosReinicio refinamiento = escalador.consumir_siguiente(config);
     check_decimal("la escalera llego a refinamiento (0.2)",
                   refinamiento.fraccion, 0.2L);
 
     escalador.nuevo_record();
-    ParametrosReinicio reinicio = escalador.siguiente(config);
+    ParametrosReinicio reinicio = escalador.consumir_siguiente(config);
     check_decimal("new_best saca del refinamiento y vuelve a 0.4",
                   reinicio.fraccion, 0.4L);
     check_decimal("new_best restaura la cuota hibrida (0.5)",

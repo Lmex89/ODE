@@ -22,7 +22,7 @@
   historical files in `docs/legacy/` (the backup
   `docs/legacy/parse_tree_bckp.cpp` and the notebook
   `docs/legacy/Untitled.ipynb`).
-- `ctest --test-dir build` builds and runs the 12 C++ tests registered in
+- `ctest --test-dir build` builds and runs the 13 C++ tests registered in
   `CMakeLists.txt`: each test file under `tests/` is its own executable, and
   its exit code is nonzero exactly when an assert fails (the same contract
   as pytest). For a focused test, build its target and run it directly:
@@ -35,9 +35,13 @@
   ctest): `python3 scripts/check_dual_validation.py` (executes the
   notebook's validation cells, no SageMath needed),
   `python3 scripts/check_run_log.py` (runs the solver in terminal mode and
-  validates the structured log), and `python3 scripts/check_log_redirect.py`
+  validates the structured log), `python3 scripts/check_log_redirect.py`
   (runs the binary in temporary directories to verify the default
-  `ode-solver.log` and `ODE_LOG=terminal`).
+  `ode-solver.log` and `ODE_LOG=terminal`), and
+  `python3 scripts/check_restart_escalation.py` (runs an adaptive solver in
+  terminal mode with `ODE_STALE_LIMIT=1` and validates the escalated
+  `fraction=`, `replaced=`, `mutation_share=` and reset-on-`new_best`
+  sequence that the DE loop actually logs).
 - `python3 scripts/check_ab_experiment.py` runs `scripts/ab_experiment.sh` in
   its short deterministic mode (`ODE_GEN=200`, seed 42, a 20s timeout per run)
   and validates that `metricas.tsv` extracts metrics for both builds: the
@@ -91,7 +95,7 @@
   dimension 20, 5,000 generations); warm start (20-token seeds) activates
   only when the dimension is 20 (the default).
    `ODE_STALE_LIMIT` (default 500) and `ODE_RESTART_FRACTION` (default 0.8) control the restart mechanism: after `stale_limit` generations without improvement, `restart_fraction` of the population is replaced with fresh random individuals while preserving the best solution found.
-   `ODE_RESTART_MODE` (`legacy`, the default, or `adaptive`) selects the restart mode and is reported in the `de_run_start` header. The four adaptive knobs — `ODE_RESTART_MIN_FRACTION` (0.4), `ODE_RESTART_CAP` (3), `ODE_RESTART_MUTATION_SHARE` (0.5) and `ODE_DIV_THRESHOLD` (0.05) — are resolved with the same invalid-value fallback policy as the other `ODE_*` keys but are not consumed by the search yet (issue #126): both modes currently run the legacy restart.
+   `ODE_RESTART_MODE` (`legacy`, the default, or `adaptive`) selects the restart mode and is reported in the `de_run_start` header. In `adaptive` mode the restart parameters escalate (issue #128): `ODE_RESTART_MIN_FRACTION` (0.4) grows by 0.2 per consecutive restart without a new best up to `ODE_RESTART_FRACTION` (0.8), and after `ODE_RESTART_CAP` (3) consecutive restarts the parameters become refinement-only (fraction 0.2, mutation share 1.0); a `new_best` resets the ladder. `ODE_RESTART_MUTATION_SHARE` (0.5) is the hybrid share below the cap. Only the escalated fraction is consumed today: the share is logged and unit-tested, but the adaptive routine that applies it — including elite mutations in refinement-only — is still pending (issue #127). Adaptive mode therefore runs the escalated fraction through the legacy random replacement; `ODE_DIV_THRESHOLD` (0.05) is not consumed yet (issue #129). Legacy mode stays bit-reproducible.
 - There is no CI. For behaviorally neutral DE changes, compare fixed-seed runs
   with `scripts/ab_experiment.sh --seed 42 --timeout 300`.
 
@@ -109,10 +113,12 @@
   RAII redirect that swaps `std::cout` once at startup and restores it on
   exit.
 - `tests/test_grid.cpp`, `tests/test_population.cpp`,
-  `tests/test_funbobj_const.cpp`, and `tests/test_ode_cases.cpp` include
-  `parse_tree.cpp` directly because `FunbObj` has no header. Their CMake rules
-  intentionally compile with `-DODE_NO_MAIN` and keep `parse_tree.cpp` off the
-  compile line; do not "simplify" this into compiling that source twice.
+  `tests/test_funbobj_const.cpp`, `tests/test_ode_cases.cpp`,
+  `tests/test_per_case_config.cpp`, and `tests/test_restart_escalation.cpp`
+  include `parse_tree.cpp` directly because `FunbObj` has no header. Their
+  CMake rules intentionally compile with `-DODE_NO_MAIN` and keep
+  `parse_tree.cpp` off the compile line; do not "simplify" this into
+  compiling that source twice.
 - Interpreter operand blanking to `NAN` is deliberate. Invalid/incomplete or
   x-independent trees receive `INFINITY` fitness rather than throwing, and
   `fitness()` caches per individual: individuals are replaced whole, never

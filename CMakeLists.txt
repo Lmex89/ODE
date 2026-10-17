@@ -33,7 +33,6 @@ add_compile_options(-Wall -O3)
 add_executable(ode-solver
     src/dualfunctions.cpp
     src/semilla.cpp
-    src/log_mode.cpp
     src/parse_tree.cpp
 )
 
@@ -56,13 +55,6 @@ add_test(NAME test_dual COMMAND test_dual)
 add_executable(test_semilla src/semilla.cpp tests/test_semilla.cpp)
 target_include_directories(test_semilla PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME test_semilla COMMAND test_semilla)
-
-# test_log_mode (issue #111): resolucion de ODE_LOG/ODE_LOG_FILE; solo
-# log_mode.cpp. La redireccion de stdout en si se prueba sobre el binario
-# real en scripts/check_log_redirect.py.
-add_executable(test_log_mode src/log_mode.cpp tests/test_log_mode.cpp)
-target_include_directories(test_log_mode PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-add_test(NAME test_log_mode COMMAND test_log_mode)
 
 # test_mutation (issue #5), test_crossover (issue #6) y test_token (issue #31)
 # enlazan parse_tree.cpp (ahi viven Mutation y Recombination) y, con el, sus

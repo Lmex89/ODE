@@ -104,7 +104,7 @@ echo "  sha256 semilla.cpp  : $(sha256sum "$REPO/src/semilla.cpp" | cut -d' ' -f
 #    con src/. Ambos producen binarios en sus respectivos directorios.
 # -------------------------------------------------------------------------
 ( cd "$OUTDIR/antes"   && $CXX $FLAGS dualfunctions.cpp semilla.cpp parse_tree.cpp -o main.exe )
-( cd "$OUTDIR/despues" && mkdir -p build && $CXX $FLAGS src/dualfunctions.cpp src/semilla.cpp src/log_mode.cpp src/parse_tree.cpp -o build/ode-solver )
+( cd "$OUTDIR/despues" && mkdir -p build && $CXX $FLAGS src/dualfunctions.cpp src/semilla.cpp src/parse_tree.cpp -o build/ode-solver )
 echo "  md5 antes/despues  : $(md5sum "$OUTDIR/antes/main.exe" | cut -d' ' -f1) / $(md5sum "$OUTDIR/despues/build/ode-solver" | cut -d' ' -f1)"
 
 # -------------------------------------------------------------------------
@@ -197,14 +197,7 @@ for SEED in $SEEDS; do
         else
             BIN="./build/ode-solver"
         fi
-        # El build nuevo escribe a ode-solver.log por defecto (issue #111):
-        # ODE_LOG=terminal le devuelve la salida a stdout para capturarla en
-        # $LOG. El build historico de A no conoce ODE_LOG, asi que no se toca.
-        LOG_MODE_ENV=""
-        if [[ "$V" == "despues" ]]; then
-            LOG_MODE_ENV="ODE_LOG=terminal"
-        fi
-        ( cd "$OUTDIR/$V" && env $LOG_MODE_ENV ODE_SEED="$SEED" timeout "$TIMEOUT_S" $BIN > "$LOG" 2>&1 ) || STATUS=$?
+        ( cd "$OUTDIR/$V" && ODE_SEED="$SEED" timeout "$TIMEOUT_S" $BIN > "$LOG" 2>&1 ) || STATUS=$?
         ESTADO="termino"                  # el loop termino por si solo
         if [[ $STATUS -eq 124 ]]; then
             ESTADO="timeout"              # lo corto `timeout`

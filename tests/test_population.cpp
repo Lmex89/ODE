@@ -388,6 +388,238 @@ static void test_reinicio_sin_record_no_toca_el_indice_reservado() {
                poblacion[indice_record].vecvalue() == original);
 }
 
+// -------------------------------------------------------------------------
+// Slice 8 (issue #127): reinicio adaptativo. A diferencia del legacy, no
+// reemplaza posiciones arbitrarias del arreglo: ordena por fitness y
+// reemplaza solo a los peores, asi que los sobrevivientes son los individuos
+// realmente mas aptos. El reinicio legacy de arriba queda intacto.
+// -------------------------------------------------------------------------
+
+// poblacion_fixture: arma individuos {TOKEN_MUL, TOKEN_CONSTk, TOKEN_X}
+// (notacion prefija: `19 k 11` = k*x) para las constantes recibidas. Para el
+// caso 0, F(k*x) = integral(k*x)^2 + 10*(k-1)^2 (las demas penalizaciones de
+// la ec. (4) son cero porque y(0)=0 y la de y'(0)=k la fija la constante),
+// que crece estrictamente con k: el fixture tiene un orden de fitness
+// conocido a mano, sin recalcular nada con la implementacion. En Python seria
+// `[FunbObj([19, k, 11], 0, 1, 0) for k in constantes]`.
+static vector<FunbObj> poblacion_fixture(const vector<int>& constantes) {
+    vector<FunbObj> poblacion;
+    for (size_t i = 0; i < constantes.size(); i++){
+        const int token_constante = TOKEN_CONST1 + (constantes[i] - 1);
+        poblacion.push_back(FunbObj({static_cast<ldouble>(TOKEN_MUL),
+                                     static_cast<ldouble>(token_constante),
+                                     static_cast<ldouble>(TOKEN_X)}, 0, 1, 0));
+    }
+    return poblacion;
+}
+
+// copia_vectores: fotografia de los vectores antes del reinicio, para saber
+// quien sobrevivio intacto. En Python seria
+// `antes = [ind.vecvalue() for ind in poblacion]`.
+static vector<vector<ldouble>> copia_vectores(const vector<FunbObj>& poblacion) {
+    vector<vector<ldouble>> copia;
+    for (size_t i = 0; i < poblacion.size(); i++){
+        copia.push_back(poblacion[i].vecvalue());
+    }
+    return copia;
+}
+
+static void test_reinicio_adaptativo_conserva_los_mejores() {
+    srand(20261017);
+
+    // La poblacion baraja los k a proposito: los mas aptos no estan en las
+    // primeras posiciones (ese es el quirk que el modo legacy conserva).
+    vector<FunbObj> poblacion = poblacion_fixture({3, 1, 5, 2, 4});
+    const vector<vector<ldouble>> antes = copia_vectores(poblacion);
+
+    // Premisa del fixture: la fitness real respeta k=1 < k=2 < ... < k=5
+    // (F(k) = k^2/3 + 10 + 10*(k-1)^2, calculada a mano). Si esto falla, el
+    // resto del test no probaria nada.
+    check_bool("fixture: F(k=1) < F(k=2) < ... < F(k=5)",
+               poblacion[1].fitness() < poblacion[3].fitness() &&
+               poblacion[3].fitness() < poblacion[0].fitness() &&
+               poblacion[0].fitness() < poblacion[4].fitness() &&
+               poblacion[4].fitness() < poblacion[2].fitness());
+
+    // Record = vector del mejor historico: el k=1 (indice 1).
+    const vector<ldouble> record = poblacion[1].vecvalue();
+
+    const int reemplazados =
+        reiniciar_poblacion_adaptativo(poblacion, record, {0.4L, 0.5L, 3, 0});
+
+    check_int("el reinicio adaptativo reemplaza el 40% (2 de 5)", reemplazados, 2);
+    check_bool("conserva el tamano de la poblacion", poblacion.size() == 5);
+
+    // Sobreviven los 3 mas aptos (k=1, k=2, k=3), sin cambios.
+    check_bool("sobrevive intacto el k=1 (indice 1)",
+               poblacion[1].vecvalue() == antes[1]);
+    check_bool("sobrevive intacto el k=2 (indice 3)",
+               poblacion[3].vecvalue() == antes[3]);
+    check_bool("sobrevive intacto el k=3 (indice 0)",
+               poblacion[0].vecvalue() == antes[0]);
+
+    // Se reemplazan exactamente los peores (k=4 en el indice 4 y k=5 en el
+    // indice 2): ninguna posicion arbitraria se toca.
+    check_bool("se reemplaza el k=4 (segundo peor, indice 4)",
+               poblacion[4].vecvalue() != antes[4]);
+    check_bool("se reemplaza el k=5 (peor, indice 2)",
+               poblacion[2].vecvalue() != antes[2]);
+
+    check_bool("el record sigue presente en la poblacion",
+               poblacion[1].vecvalue() == record);
+}
+
+static void test_reinicio_adaptativo_inyecta_el_record() {
+    srand(20261018);
+
+    // Fixture {2, 1, 4, 3}: el orden por fitness es k=1 (indice 1), k=2
+    // (indice 0), k=3 (indice 3), k=4 (indice 2). Con fraccion 0.5 se
+    // conservan 2 y se reemplazan 2.
+    vector<FunbObj> poblacion = poblacion_fixture({2, 1, 4, 3});
+    const vector<vector<ldouble>> antes = copia_vectores(poblacion);
+
+    // Record simulado que NO esta en la poblacion (el caso real de una corrida
+    // estancada donde el record historico no ocupa el indice reservado): la
+    // expresion 1+x, mas apta que cualquier k*x del fixture.
+    const vector<ldouble> record = {static_cast<ldouble>(TOKEN_ADD),
+                                    static_cast<ldouble>(TOKEN_CONST1),
+                                    static_cast<ldouble>(TOKEN_X)};
+
+    const int reemplazados =
+        reiniciar_poblacion_adaptativo(poblacion, record, {0.5L, 0.5L, 3, 0});
+
+    check_int("inyecta el record reemplazando 2 de 4", reemplazados, 2);
+
+    bool record_presente = false;
+    for (size_t i = 0; i < poblacion.size(); i++){
+        if (poblacion[i].vecvalue() == record) record_presente = true;
+    }
+    check_bool("el record ausente entra a la poblacion durante el reinicio",
+               record_presente);
+
+    // La inyeccion no sacrifica al mejor: el k=1 sigue intacto.
+    check_bool("el mejor real (k=1, indice 1) sobrevive intacto",
+               poblacion[1].vecvalue() == antes[1]);
+    // Los reemplazados siguen siendo los peores (k=3 y k=4).
+    check_bool("se reemplaza el k=3 (indice 3)",
+               poblacion[3].vecvalue() != antes[3]);
+    check_bool("se reemplaza el k=4 (peor, indice 2)",
+               poblacion[2].vecvalue() != antes[2]);
+
+    // Un record vacio (la corrida nunca encontro fitness finito) no inyecta
+    // nada: los sobrevivientes quedan exactamente como estaban.
+    srand(20261018);
+    vector<FunbObj> otra = poblacion_fixture({2, 1, 4, 3});
+    const vector<vector<ldouble>> antes_otra = copia_vectores(otra);
+    const vector<ldouble> sin_record;
+
+    reiniciar_poblacion_adaptativo(otra, sin_record, {0.5L, 0.5L, 3, 0});
+
+    check_bool("sin record, los 2 sobrevivientes quedan intactos",
+               otra[1].vecvalue() == antes_otra[1] &&
+               otra[0].vecvalue() == antes_otra[0]);
+}
+
+// -------------------------------------------------------------------------
+// Slice 9 (issue #127): composicion hibrida de los reemplazos. Una parte son
+// mutaciones puntuales de 1-2 tokens de un elite (los sobrevivientes) y el
+// resto individuos uniformes nuevos, segun ODE_RESTART_MUTATION_SHARE.
+// -------------------------------------------------------------------------
+
+// distancia_hamming: posiciones en que difieren dos vectores. En Python seria
+// `sum(1 for a, b in zip(x, y) if a != b)`.
+static int distancia_hamming(const vector<ldouble>& a, const vector<ldouble>& b) {
+    const size_t n = (a.size() < b.size()) ? a.size() : b.size();
+    int distancia = 0;
+    for (size_t i = 0; i < n; i++){
+        if (a[i] != b[i]) distancia++;
+    }
+    return distancia;
+}
+
+// mutaciones_puntuales: de los indices reemplazados, cuantos quedaron a 1-2
+// cambios de algun sobreviviente (la firma de una mutacion puntual de elite;
+// con vectores de 20 tokens al azar, un uniforme nuevo no cae tan cerca). En
+// Python seria `sum(min(distancia(r, s) for s in sobrevivientes) in (1, 2)
+// for r in reemplazados)`.
+static int mutaciones_puntuales(const vector<FunbObj>& poblacion,
+                                const vector<int>& reemplazados_idx,
+                                const vector<int>& sobrevivientes_idx) {
+    int mutaciones = 0;
+    for (size_t r = 0; r < reemplazados_idx.size(); r++){
+        int mejor = 1000;
+        for (size_t s = 0; s < sobrevivientes_idx.size(); s++){
+            const int d = distancia_hamming(
+                poblacion[reemplazados_idx[r]].vecvalue(),
+                poblacion[sobrevivientes_idx[s]].vecvalue());
+            if (d < mejor) mejor = d;
+        }
+        if (mejor >= 1 && mejor <= 2) mutaciones++;
+    }
+    return mutaciones;
+}
+
+static void test_reinicio_adaptativo_compone_reemplazos_hibridos() {
+    ConfigBusqueda config;
+    config.poblacion = 10;
+    config.dimension = 20;
+
+    // Tres escenarios con la misma poblacion base y la misma semilla: el
+    // unico cambio es la cuota de mutacion. 0.5 se parte 2+2, 1.0 es todo
+    // mutacion de elite y 0.0 todo uniforme: asi la composicion se verifica
+    // sin depender de clasificar a ojo un sorteo probabilistico.
+    // En Python seria una lista de dicts o namedtuples.
+    struct Escenario {
+        long double share;
+        int mutaciones_esperadas;
+        const char* nombre;
+    };
+    const Escenario escenarios[] = {
+        {0.5L, 2, "share 0.5"},
+        {1.0L, 4, "share 1.0"},
+        {0.0L, 0, "share 0.0"},
+    };
+
+    for (size_t esc = 0; esc < 3; esc++){
+        const Escenario& e = escenarios[esc];
+        srand(20261019);
+
+        vector<FunbObj> poblacion;
+        createPopulation(poblacion, config, 0);
+        const vector<vector<ldouble>> antes = copia_vectores(poblacion);
+        const vector<ldouble> record;  // sin record: aca importa la composicion
+
+        const int reemplazados = reiniciar_poblacion_adaptativo(
+            poblacion, record, {0.4L, e.share, config.dimension, 0});
+
+        // Sobreviviente = vector intacto; reemplazado = vector cambiado.
+        vector<int> sobrevivientes_idx;
+        vector<int> reemplazados_idx;
+        bool longitudes_ok = true;
+        for (size_t i = 0; i < poblacion.size(); i++){
+            if (poblacion[i].vecvalue() == antes[i]){
+                sobrevivientes_idx.push_back(static_cast<int>(i));
+            } else {
+                reemplazados_idx.push_back(static_cast<int>(i));
+            }
+            if (poblacion[i].vecvalue().size() != 20) longitudes_ok = false;
+        }
+
+        const string etiqueta = string(e.nombre) + ": ";
+        check_int(etiqueta + "reemplaza 4 de 10", reemplazados, 4);
+        check_bool(etiqueta + "todos los reemplazos conservan 20 tokens",
+                   longitudes_ok);
+        check_int(etiqueta + "mutaciones de elite esperadas",
+                  mutaciones_puntuales(poblacion, reemplazados_idx,
+                                       sobrevivientes_idx),
+                  e.mutaciones_esperadas);
+        check_int(etiqueta + "uniformes nuevos (el resto)",
+                  4 - mutaciones_puntuales(poblacion, reemplazados_idx,
+                                           sobrevivientes_idx),
+                  4 - e.mutaciones_esperadas);
+    }
+}
+
 int main() {
     std::cout << "== test_population: issues #11 y #28 (semillero y configuracion) ==\n";
     test_createPopulation_tamano_uniforme();
@@ -402,6 +634,9 @@ int main() {
     test_reinicio_reemplaza_el_80_por_ciento();
     test_reinicio_restaura_el_record();
     test_reinicio_sin_record_no_toca_el_indice_reservado();
+    test_reinicio_adaptativo_conserva_los_mejores();
+    test_reinicio_adaptativo_inyecta_el_record();
+    test_reinicio_adaptativo_compone_reemplazos_hibridos();
     std::cout << (g_fallos == 0 ? "OK" : "FALLARON") << ": "
               << (g_checks - g_fallos) << "/" << g_checks << " asserts\n";
     return g_fallos == 0 ? 0 : 1;  // como el exit code de pytest

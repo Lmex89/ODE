@@ -210,7 +210,7 @@ ODE_CASE=2 ODE_SEED=42 ./build/ode-solver   # hyperbolic case: y'' - y = 0, solu
 ODE_POP=200 ODE_GEN=1000 ./build/ode-solver # override population size / generation cap
 ODE_DIM=40 ./build/ode-solver               # override the individual dimension
 ODE_WARM_START=1 ODE_SEED=42 ./build/ode-solver  # start from the five prototype seeds
-ODE_RESTART_MODE=adaptive ODE_SEED=42 ./build/ode-solver  # adaptive mode (plumbed; same behavior for now)
+ODE_RESTART_MODE=adaptive ODE_SEED=42 ./build/ode-solver  # adaptive restarts (elite-preserving, hybrid)
 ```
 
 `ODE_SEED` fixes the `srand()` seed and the chosen value is printed in the
@@ -232,13 +232,17 @@ not 20, the default). The startup line reports the effective configuration
 
 Stagnation restarts are controlled by `ODE_STALE_LIMIT` (default 500
 generations without a new best) and `ODE_RESTART_FRACTION` (default 0.8, the
-share of the population replaced). `ODE_RESTART_MODE` selects the restart mode
-(`legacy`, the default, or `adaptive`) and the startup line reports the
-effective `restart_mode=`. The adaptive knobs — `ODE_RESTART_MIN_FRACTION`
-(0.4), `ODE_RESTART_CAP` (3), `ODE_RESTART_MUTATION_SHARE` (0.5) and
-`ODE_DIV_THRESHOLD` (0.05) — are accepted and validated like the other `ODE_*`
-keys, but the adaptive behavior is not active yet: both modes currently run
-the legacy restart.
+share of the population replaced in `legacy` mode). `ODE_RESTART_MODE` selects
+the restart mode (`legacy`, the default, or `adaptive`) and the startup line
+reports the effective `restart_mode=`. In `adaptive` mode a restart keeps the
+fittest `100% − ODE_RESTART_MIN_FRACTION` of the population (0.4; the all-time
+record always survives) and replaces only the worst share: `ODE_RESTART_MUTATION_SHARE`
+(0.5) of the replacements are 1–2-token point mutations of elites and the rest
+fresh uniform individuals. Each `restart |` line reports `trigger=stale`,
+`fraction=`, `kept=` and `replaced=`. `ODE_RESTART_CAP` (3) and
+`ODE_DIV_THRESHOLD` (0.05) are accepted and validated like the other `ODE_*`
+keys but are not consumed by the search yet (escalation and diversity trigger
+land with the remaining tickets of #125).
 
 The program logs one structured line per event (`[  0.12s] [INFO ] gen=1
 best=... best_ever=... expr=...`), plus `new_best` records, a final `solution`

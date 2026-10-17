@@ -648,6 +648,124 @@ int reiniciar_poblacion(vector<FunbObj>& poblacion, int indice_record,
     return reemplazados;
 }
 
+// ParametrosReinicioAdaptativo: opciones de un reinicio adaptativo puntual
+// (issue #127). Es un struct para no seguir sumando argumentos sueltos a la
+// rutina (regla I.23 de docs/cpp-standards.md: `FunbObj(vecval, start, stop,
+// caso)` ya esta en el limite). `fraccion` y `cuota_mutacion` viajan por
+// reinicio porque el issue #128 las escala entre reinicios consecutivos;
+// `dimension` y `caso` los comparte toda la corrida.
+struct ParametrosReinicioAdaptativo {
+    long double fraccion = 0.4L;        // parte de la poblacion que se reemplaza
+    long double cuota_mutacion = 0.5L;  // parte de los reemplazos que muta elites
+    int dimension = DIMENSION_DEFECTO;  // longitud de los uniformes nuevos
+    int caso = 0;                       // ODE que evalua fitness()
+};
+
+// mutacion_puntual: copia `base` (el vector de un elite) y sustituye 1 o 2
+// posiciones al azar por tokens nuevos distintos de los que habia, de modo
+// que el cambio sea exactamente de 1-2 tokens y la longitud se conserve. Es
+// la mutacion de refinamiento local del reinicio adaptativo (issue #127), no
+// la mutacion DE/rand/1 del paper. En Python seria
+// `copia = list(base); posiciones = random.sample(range(len(copia)), 1 + random.randint(0, 1)); ...`.
+vector<ldouble> mutacion_puntual(const vector<ldouble>& base){
+    vector<ldouble> copia(base);
+    const int n = static_cast<int>(copia.size());
+    if (n == 0) return copia;
+
+    // 1 o 2 cambios, nunca mas posiciones que tokens tiene el vector.
+    int cambios = 1 + static_cast<int>(rand() % 2);
+    if (cambios > n) cambios = n;
+
+    // Primera posicion al azar y token nuevo distinto del anterior. El
+    // do-while es como el de indices_distintos: el alfabeto tiene 29 tokens,
+    // asi que el reintento termina (no hay bucle infinito posible).
+    const int primera = static_cast<int>(rand() % n);
+    int nuevo = 0;
+    do { nuevo = random_token(); } while (nuevo == static_cast<int>(copia[primera]));
+    copia[primera] = nuevo;
+
+    if (cambios == 2){
+        // Segunda posicion distinta de la primera: se sortea sobre n-1 y se
+        // corre un lugar si cayo a la derecha de la primera (evita el bucle
+        // de rechazo y consume exactamente un rand()).
+        int segunda = static_cast<int>(rand() % (n - 1));
+        if (segunda >= primera) segunda++;
+        do { nuevo = random_token(); } while (nuevo == static_cast<int>(copia[segunda]));
+        copia[segunda] = nuevo;
+    }
+
+    return copia;
+}
+
+// reiniciar_poblacion_adaptativo: reinicio por estancamiento del modo
+// adaptativo (issue #127). A diferencia del legacy, ordena la poblacion por
+// fitness y reemplaza SOLO a los peores `fraccion`, de modo que los
+// sobrevivientes son los individuos realmente mas aptos. Devuelve cuantos
+// reemplazo (el campo `replaced=` del log `restart |`); `parametros` trae la
+// fraccion, la cuota de mutacion, la longitud de los individuos uniformes y
+// el caso de la ODE (ver ParametrosReinicioAdaptativo). El reinicio legacy
+// conserva su firma y su comportamiento.
+// En Python seria
+// `reemplazados = reiniciar_poblacion_adaptativo(poblacion, record, parametros)`.
+int reiniciar_poblacion_adaptativo(vector<FunbObj>& poblacion,
+                                   const vector<ldouble>& record,
+                                   const ParametrosReinicioAdaptativo& parametros) {
+    const int tam = static_cast<int>(poblacion.size());
+
+    // Orden estable por fitness (menor = mejor). stable_sort conserva el orden
+    // original en los empates: con la misma semilla se eligen los mismos
+    // indices. En Python seria
+    // `orden = sorted(range(tam), key=lambda i: poblacion[i].fitness())`.
+    vector<int> orden(tam);
+    for (int i = 0; i < tam; i++) orden[i] = i;
+    stable_sort(orden.begin(), orden.end(), [&poblacion](int a, int b){
+        return poblacion[a].fitness() < poblacion[b].fitness();
+    });
+
+    // La fraccion se trunca igual que en el reinicio legacy (int(f*n)), pero
+    // se deja siempre al menos un sobreviviente (el mejor/record) aunque
+    // `parametros.fraccion` llegue a 1.
+    int cantidad = static_cast<int>(parametros.fraccion * tam);
+    if (cantidad > tam - 1) cantidad = tam - 1;
+    if (cantidad < 0) cantidad = 0;
+    const int conservados = tam - cantidad;
+
+    // El record (mejor historico) sobrevive siempre. Si su vector ya esta
+    // entre los conservados no se toca (no se duplica); si no, ocupa el
+    // ultimo lugar conservado, el peor de los sobrevivientes, que por
+    // definicion de record tiene fitness mayor o igual. Un record vacio
+    // significa que la corrida nunca encontro fitness finito: no se inyecta
+    // nada. En Python seria `if record and record not in sobrevivientes:`.
+    if (!record.empty() && conservados > 0){
+        bool presente = false;
+        for (int k = 0; k < conservados && !presente; k++){
+            if (poblacion[orden[k]].vecvalue() == record) presente = true;
+        }
+        if (!presente){
+            poblacion[orden[conservados - 1]] = FunbObj(record, 0, 1, parametros.caso);
+        }
+    }
+
+    // Composicion hibrida (issue #127): la cuota `parametros.cuota_mutacion`
+    // de los reemplazos son mutaciones puntuales de 1-2 tokens de un
+    // sobreviviente (refinamiento local alrededor de las elites, record
+    // incluido); el resto son individuos uniformes nuevos (exploracion). El
+    // reparto se trunca igual que la fraccion.
+    const int mutaciones = static_cast<int>(parametros.cuota_mutacion * cantidad);
+    for (int k = conservados; k < tam; k++){
+        if (k - conservados < mutaciones){
+            const vector<ldouble> elite =
+                poblacion[orden[rand() % conservados]].vecvalue();
+            poblacion[orden[k]] = FunbObj(mutacion_puntual(elite), 0, 1, parametros.caso);
+        } else {
+            poblacion[orden[k]] =
+                FunbObj(vector_population(parametros.dimension), 0, 1, parametros.caso);
+        }
+    }
+
+    return cantidad;
+}
+
 
 // mutacion_rand1: nucleo de la mutacion DE/rand/1/bin, ecuacion (7) del paper:
 //
@@ -1160,18 +1278,44 @@ int main() {
             generaciones_sin_mejora++;
         }
 
-        // Reinicio adaptativo: si la búsqueda se estanca (sin mejoras en
-        // stale_limit generaciones), se reemplaza el restart_fraction de la
-        // población con nuevos individuos aleatorios, restaurando el mejor
-        // histórico. Esto inyecta diversidad fresca para escapar de mínimos
-        // locales. En Python sería `if generaciones_sin_mejora >= stale_limit: reiniciar_poblacion()`.
+        // Reinicio por estancamiento: si la búsqueda se estanca (sin mejoras
+        // en stale_limit generaciones) se renueva parte de la población,
+        // restaurando el mejor histórico (diversidad fresca contra los mínimos
+        // locales). El modo lo elige ODE_RESTART_MODE: `legacy` es el
+        // comportamiento historico y `adaptive` el reinicio elitista con
+        // composicion hibrida (issue #127). En Python sería
+        // `if generaciones_sin_mejora >= stale_limit: reiniciar...`.
         if (generaciones_sin_mejora >= stale_limit){
-            // `mejor` es el indice del mejor de la generacion actual (el que
-            // el reemplazo respeta); ademas el helper restaura alli el record
-            // historico `Bestvect`, porque en una corrida estancada el mejor
-            // del momento no es el record (issue #82).
-            const int reemplazados = reiniciar_poblacion(Population, mejor, Bestvect, config, caso);
+            int reemplazados = 0;
+            long double fraccion = config.restart_fraction;
+            if (config.restart_mode == ModoReinicio::adaptive){
+                // El modo adaptativo conserva a los mas aptos y reemplaza
+                // solo a los peores: la fraccion efectiva es la minima
+                // (issue #127); la escalada entre reinicios consecutivos
+                // llega en el issue #128.
+                fraccion = config.restart_min_fraction;
+                const ParametrosReinicioAdaptativo parametros{
+                    fraccion, config.restart_mutation_share,
+                    config.dimension, caso};
+                reemplazados = reiniciar_poblacion_adaptativo(
+                    Population, Bestvect, parametros);
+            } else {
+                // `mejor` es el indice del mejor de la generacion actual (el
+                // que el reemplazo respeta); ademas el helper restaura alli el
+                // record historico `Bestvect`, porque en una corrida estancada
+                // el mejor del momento no es el record (issue #82).
+                reemplazados = reiniciar_poblacion(Population, mejor, Bestvect, config, caso);
+            }
+            // Una sola linea `restart |` para ambos modos: `trigger=` y
+            // `fraction=` dejan auditable que disparo el reinicio y con que
+            // fuerza, y `kept=` cuenta los sobrevivientes (issue #127). Las
+            // claves viejas (`gen`, `stagnant_gens`, `replaced`) conservan su
+            // nombre para el awk de scripts/ab_experiment.sh.
+            const int conservados = static_cast<int>(Population.size()) - reemplazados;
             log_info() << "restart | gen=" << gen << " stagnant_gens=" << generaciones_sin_mejora
+                       << " trigger=stale"
+                       << " fraction=" << fmt_fijo(fraccion, 2)
+                       << " kept=" << conservados
                        << " replaced=" << reemplazados << '\n';
             cout.flush();
             // Resetear el contador para que no se reinicie en la siguiente generación.

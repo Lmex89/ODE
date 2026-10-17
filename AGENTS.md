@@ -91,7 +91,7 @@
   dimension 20, 5,000 generations); warm start (20-token seeds) activates
   only when the dimension is 20 (the default).
    `ODE_STALE_LIMIT` (default 500) and `ODE_RESTART_FRACTION` (default 0.8) control the restart mechanism: after `stale_limit` generations without improvement, `restart_fraction` of the population is replaced with fresh random individuals while preserving the best solution found.
-   `ODE_RESTART_MODE` (`legacy`, the default, or `adaptive`) selects the restart mode and is reported in the `de_run_start` header. The four adaptive knobs — `ODE_RESTART_MIN_FRACTION` (0.4), `ODE_RESTART_CAP` (3), `ODE_RESTART_MUTATION_SHARE` (0.5) and `ODE_DIV_THRESHOLD` (0.05) — are resolved with the same invalid-value fallback policy as the other `ODE_*` keys but are not consumed by the search yet (issue #126): both modes currently run the legacy restart.
+   `ODE_RESTART_MODE` (`legacy`, the default, or `adaptive`) selects the restart mode and is reported in the `de_run_start` header. In `adaptive` mode each restart keeps the fittest `100% − ODE_RESTART_MIN_FRACTION` of the population (0.4, the record always survives) and replaces only the worst share, whose `ODE_RESTART_MUTATION_SHARE` (0.5) are 1–2-token point mutations of elites and the rest fresh uniform individuals; the `restart |` line reports `trigger=stale`, `fraction=`, `kept=` and `replaced=`. `ODE_RESTART_CAP` (3) and `ODE_DIV_THRESHOLD` (0.05) are resolved with the same invalid-value fallback policy as the other `ODE_*` keys but are not consumed by the search yet (they arrive with the escalation and diversity tickets of #125).
 - There is no CI. For behaviorally neutral DE changes, compare fixed-seed runs
   with `scripts/ab_experiment.sh --seed 42 --timeout 300`.
 

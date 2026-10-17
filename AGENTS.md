@@ -22,7 +22,7 @@
   historical files in `docs/legacy/` (the backup
   `docs/legacy/parse_tree_bckp.cpp` and the notebook
   `docs/legacy/Untitled.ipynb`).
-- `ctest --test-dir build` builds and runs the 11 C++ tests registered in
+- `ctest --test-dir build` builds and runs the 12 C++ tests registered in
   `CMakeLists.txt`: each test file under `tests/` is its own executable, and
   its exit code is nonzero exactly when an assert fails (the same contract
   as pytest). For a focused test, build its target and run it directly:
@@ -33,9 +33,13 @@
   repo tree and `CMakeLists.txt`).
 - The notebook/log checkers run standalone (they are not registered with
   ctest): `python3 scripts/check_dual_validation.py` (executes the
-  notebook's validation cells, no SageMath needed) and
-  `python3 scripts/check_run_log.py` (runs the solver in its short
-  deterministic mode and validates the structured log).
+  notebook's validation cells, no SageMath needed),
+  `python3 scripts/check_run_log.py` (runs the solver with
+  `ODE_LOG=terminal` in its short deterministic mode and validates the
+  structured log) and `python3 scripts/check_log_redirect.py` (runs the
+  solver in a temporary directory and checks the output destination:
+  `ode-solver.log` by default, stdout with `ODE_LOG=terminal`, and the
+  terminal fallback with a warning when the file cannot be opened).
 - `python3 scripts/check_all_cases.py` runs tests for ODE cases 3-7
   (damped oscillator, forced oscillator, resonance, Legendre, Hermite) in two modes:
   - `--mode smoke` (default): `ODE_GEN=200`, `ODE_SEED=42`. Validates that each
@@ -66,8 +70,12 @@
   installation or Docker with the pinned image. It is appropriate for changes
   to dual-number math or the notebook.
 - The search is stochastic and its default 5,000 generations can be noisy.
-  Use a fixed seed and a short cap for a reproducible smoke run:
-  `ODE_SEED=42 ODE_GEN=200 timeout 60 ./build/ode-solver | tail -30`.
+  By default the solver writes its log to `ode-solver.log` in the working
+  directory (truncated on each run), so a run that only redirects stdout with
+  a pipe would appear empty; `ODE_LOG=terminal` sends the log to stdout and
+  `ODE_LOG_FILE=<path>` overrides the file. Use a fixed seed and a short cap
+  for a reproducible smoke run:
+  `ODE_LOG=terminal ODE_SEED=42 ODE_GEN=200 timeout 60 ./build/ode-solver | tail -30`.
   `ODE_CASE=1` selects the paper case, `ODE_CASE=2` the hyperbolic case,
   `ODE_CASE=3` the damped oscillator, `ODE_CASE=4` the forced oscillator,
   `ODE_CASE=5` the resonance case, `ODE_CASE=6` the Legendre equation
@@ -87,8 +95,10 @@
 - `src/parse_tree.cpp` owns `main()` (behind `ODE_NO_MAIN` for tests), the DE
   loop, `FunbObj` fitness, mutation, and crossover. `src/dualfunctions.{h,cpp}`
   interprets prefix token vectors as `[y, y', y'']`; `src/semilla.{h,cpp}`
-  resolves `ODE_SEED`; `src/token.h` is the token vocabulary, arity,
-  rendering, and random-token source of truth.
+  resolves `ODE_SEED`; `src/log_mode.{h,cpp}` resolves the output destination
+  (`ODE_LOG`/`ODE_LOG_FILE`) and redirects `stdout` once at startup;
+  `src/token.h` is the token vocabulary, arity, rendering, and random-token
+  source of truth.
   `docs/legacy/parse_tree_bckp.cpp` is a historical copy that also defines
   `main()`: never add it to a build.
 - `tests/test_grid.cpp`, `tests/test_population.cpp`,
@@ -122,7 +132,9 @@
   signature (`signature | author=Lmex`) last. Keep the `seed`, `gen`,
   `generations`, `best`, `expr`, `vector`, `status`, and `elapsed_cpu_s` keys:
   `scripts/ab_experiment.sh` parses them. Use explicit formatting, `\n` plus
-  `flush()`, and no raw `cout` in production numerical code.
+  `flush()`, and no raw `cout` in production numerical code. The whole log is
+  redirected once at startup (`ODE_LOG=terminal` keeps stdout; see
+  `src/log_mode.{h,cpp}`), so checkers that read stdout set that variable.
 
 ## Commits and issues
 

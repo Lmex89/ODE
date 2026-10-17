@@ -2,7 +2,8 @@
 """Verifica el contrato del log de una corrida real de build/ode-solver (issue #44).
 
 Comprueba tres cosas sobre la salida completa de una corrida corta y
-deterministica (ODE_SEED=42, ODE_CASE=1, ODE_GEN=1):
+deterministica (ODE_SEED=42, ODE_CASE=1, ODE_GEN=1, con ODE_LOG=terminal
+para leerla por stdout; issue #111):
 
 1. Toda linea non-empty sale por los helpers log_info()/log_warn(): formato
    "[<t>s] [NIVEL] ..." documentado en parse_tree.cpp.
@@ -48,7 +49,10 @@ FIRMA_AUTOR = "signature | author=Lmex"
 def correr_main():
     """Ejecuta build/ode-solver en su modo corto y determinista. En Python seria
     subprocess.run([...], env=os.environ | {...}, capture_output=True)."""
-    entorno = dict(os.environ, ODE_SEED="42", ODE_CASE="1", ODE_GEN="1")
+    # ODE_LOG=terminal (issue #111): sin la variable, la corrida escribe a
+    # ode-solver.log y este checker no tendria nada que validar en stdout.
+    entorno = dict(os.environ, ODE_SEED="42", ODE_CASE="1", ODE_GEN="1",
+                   ODE_LOG="terminal")
     return subprocess.run(
         [BINARIO],
         env=entorno,

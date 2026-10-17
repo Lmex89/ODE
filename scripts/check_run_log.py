@@ -48,7 +48,12 @@ FIRMA_AUTOR = "signature | author=Lmex"
 def correr_main():
     """Ejecuta build/ode-solver en su modo corto y determinista. En Python seria
     subprocess.run([...], env=os.environ | {...}, capture_output=True)."""
-    entorno = dict(os.environ, ODE_SEED="42", ODE_CASE="1", ODE_GEN="1")
+    # ODE_LOG=terminal (issue #114): desde #112 el solver escribe en
+    # ode-solver.log por defecto, pero este checker valida el contrato sobre
+    # stdout. Se fuerza el modo terminal aunque el entorno del usuario diga otra
+    # cosa, porque la ultima clave de dict() gana.
+    entorno = dict(os.environ, ODE_SEED="42", ODE_CASE="1", ODE_GEN="1",
+                   ODE_LOG="terminal")
     return subprocess.run(
         [BINARIO],
         env=entorno,

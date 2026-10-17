@@ -16,9 +16,11 @@ deterministicas (ODE_SEED=42, ODE_CASE=1):
 5. La linea restart | informa trigger=, fraction=, kept= y replaced= (issue
    #127): el disparador de estancamiento con la fraccion efectiva y cuantos
    individuos sobrevivieron. En legacy la fraccion es ODE_RESTART_FRACTION
-   (0.80) y en adaptive la fraccion minima (0.40) del reinicio adaptativo.
-   Las cifras esperadas asumen los defaults (poblacion 100, fracciones
-   0.80/0.40): el checker aisla ODE_POP y las fracciones del entorno.
+   (0.80) y en adaptive la del primer reinicio del episodio (0.40, antes de
+   que la escalera de #128 suba). ODE_GEN=2 + ODE_STALE_LIMIT=1 producen
+   exactamente un reinicio. Las cifras esperadas asumen los defaults
+   (poblacion 100, fracciones 0.80/0.40): el checker aisla ODE_POP y las
+   fracciones del entorno.
 
 En Python seria el equivalente a un test de integracion de pytest que ejecuta
 el entry point como subproceso y valida su stdout.
@@ -75,8 +77,10 @@ def correr_main(con_modo=None, extra_env=None):
     # no cambie el conteo (issue #134, revision).
     for clave in ("ODE_POP", "ODE_RESTART_FRACTION", "ODE_RESTART_MIN_FRACTION"):
         entorno.pop(clave, None)
-    # ODE_STALE_LIMIT=1 + ODE_GEN>=2 (issue #127) hacen disparar un reinicio
-    # deterministico: la gen 1 fija un record y la gen 2 se estanca.
+    # ODE_STALE_LIMIT=1 + ODE_GEN=2 (issue #127) hacen disparar exactamente un
+    # reinicio deterministico: la gen 1 fija un record y la gen 2 se estanca y
+    # reinicia (el primero del episodio; la escalera de #128 subiria la
+    # fraccion en los siguientes, que no llegan a ocurrir).
     if extra_env:
         entorno.update(extra_env)
     return subprocess.run(
@@ -149,12 +153,13 @@ def errores_del_log(lineas, modo_esperado, reinicio_esperado):
 
 def main():
     # Dos corridas (issue #126/#127): sin ODE_RESTART_MODE (default legacy) y
-    # con ODE_RESTART_MODE=adaptive. Ambas fuerzan un reinicio deterministico
-    # (ODE_STALE_LIMIT=1, ODE_GEN=3) y deben informar su modo en la cabecera y
-    # las cifras del reinicio en la linea restart |: legacy conserva su
-    # fraccion 0.80 y adaptive usa la fraccion minima 0.40.
+    # con ODE_RESTART_MODE=adaptive. Ambas fuerzan un unico reinicio
+    # deterministico (ODE_STALE_LIMIT=1, ODE_GEN=2) y deben informar su modo
+    # en la cabecera y las cifras del reinicio en la linea restart |: legacy
+    # conserva su fraccion 0.80 y adaptive usa el primer escalon de la escalera
+    # (0.40).
     errores = []
-    reinicio_env = {"ODE_STALE_LIMIT": "1", "ODE_GEN": "3"}
+    reinicio_env = {"ODE_STALE_LIMIT": "1", "ODE_GEN": "2"}
     for nombre, con_modo, modo_esperado, reinicio_esperado in (
         ("default (legacy)", None, "legacy", ("0.80", "20", "80")),
         ("adaptive", "adaptive", "adaptive", ("0.40", "60", "40")),

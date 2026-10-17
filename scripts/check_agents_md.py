@@ -62,6 +62,7 @@ REQUERIDOS = (
     "ODE_LOG_FILE",
     "ode-solver.log",
     "scripts/check_log_redirect.py",
+    "scripts/check_restart_escalation.py",
 )
 
 # Contratos que DEBEN preservarse: si falta alguno, el documento perdio

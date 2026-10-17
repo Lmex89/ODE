@@ -38,6 +38,11 @@
   validates the structured log), and `python3 scripts/check_log_redirect.py`
   (runs the binary in temporary directories to verify the default
   `ode-solver.log` and `ODE_LOG=terminal`).
+- `python3 scripts/check_ab_experiment.py` runs `scripts/ab_experiment.sh` in
+  its short deterministic mode (`ODE_GEN=200`, seed 42, a 20s timeout per run)
+  and validates that `metricas.tsv` extracts metrics for both builds: the
+  current build in terminal mode and the historical `bc70e95` build left
+  untouched. It compiles both revisions, so it takes around a minute.
 - `python3 scripts/check_all_cases.py` runs tests for ODE cases 3-7
   (damped oscillator, forced oscillator, resonance, Legendre, Hermite) in two modes:
   - `--mode smoke` (default): `ODE_GEN=200`, `ODE_SEED=42`. Validates that each

@@ -22,7 +22,7 @@
   historical files in `docs/legacy/` (the backup
   `docs/legacy/parse_tree_bckp.cpp` and the notebook
   `docs/legacy/Untitled.ipynb`).
-- `ctest --test-dir build` builds and runs the 9 C++ tests registered in
+- `ctest --test-dir build` builds and runs the 10 C++ tests registered in
   `CMakeLists.txt`: each test file under `tests/` is its own executable, and
   its exit code is nonzero exactly when an assert fails (the same contract
   as pytest). For a focused test, build its target and run it directly:
@@ -43,11 +43,13 @@
 - The search is stochastic and its default 5,000 generations can be noisy.
   Use a fixed seed and a short cap for a reproducible smoke run:
   `ODE_SEED=42 ODE_GEN=200 timeout 60 ./build/ode-solver | tail -30`.
-  `ODE_CASE=1` selects the paper case, `ODE_CASE=2` the hyperbolic case
-  (unset/0: the toy ODE). `ODE_POP`, `ODE_DIM`, `ODE_GEN`, and
-  `ODE_WARM_START=1` override the defaults (100 individuals, dimension 20,
-  5,000 generations); warm start (20-token seeds) activates only when the
-  dimension is 20 (the default).
+  `ODE_CASE=1` selects the paper case, `ODE_CASE=2` the hyperbolic case,
+  `ODE_CASE=3` the damped oscillator, `ODE_CASE=4` the forced oscillator,
+  `ODE_CASE=5` the resonance case (unset/0: the toy ODE). Cases 6-7
+  (Legendre/Hermite) are reserved for issue #104. `ODE_POP`, `ODE_DIM`,
+  `ODE_GEN`, and `ODE_WARM_START=1` override the defaults (100 individuals,
+  dimension 20, 5,000 generations); warm start (20-token seeds) activates
+  only when the dimension is 20 (the default).
 - There is no CI. For behaviorally neutral DE changes, compare fixed-seed runs
   with `scripts/ab_experiment.sh --seed 42 --timeout 300`.
 
@@ -60,11 +62,11 @@
   rendering, and random-token source of truth.
   `docs/legacy/parse_tree_bckp.cpp` is a historical copy that also defines
   `main()`: never add it to a build.
-- `tests/test_grid.cpp`, `tests/test_population.cpp`, and
-  `tests/test_funbobj_const.cpp` include `parse_tree.cpp` directly because
-  `FunbObj` has no header. Their CMake rules intentionally compile with
-  `-DODE_NO_MAIN` and keep `parse_tree.cpp` off the compile line; do not
-  "simplify" this into compiling that source twice.
+- `tests/test_grid.cpp`, `tests/test_population.cpp`,
+  `tests/test_funbobj_const.cpp`, and `tests/test_ode_cases.cpp` include
+  `parse_tree.cpp` directly because `FunbObj` has no header. Their CMake rules
+  intentionally compile with `-DODE_NO_MAIN` and keep `parse_tree.cpp` off the
+  compile line; do not "simplify" this into compiling that source twice.
 - Interpreter operand blanking to `NAN` is deliberate. Invalid/incomplete or
   x-independent trees receive `INFINITY` fitness rather than throwing, and
   `fitness()` caches per individual: individuals are replaced whole, never

@@ -76,7 +76,13 @@ class FunbObj{
     //   2 = caso hiperbolico (issue #61): y'' - y = 0, y(0)=1, y'(0)=0,
     //       con solucion exacta cosh(x); la busqueda solo puede alcanzarlo
     //       desde que existe TOKEN_COSH.
-    //   3..7 = casos nuevos (issues #103/#104). ODE_CASE ya los acepta
+    //   3 = oscilador amortiguado (issue #103): y'' + 2y' + 2y = 0,
+    //       y(0)=1, y'(0)=-1, solucion e^(-x)*cos(x)
+    //   4 = oscilador forzado (issue #103): y'' + y = e^x,
+    //       y(0)=0, y'(0)=0, solucion (e^x - cos(x) - sin(x))/2
+    //   5 = resonancia (issue #103): y'' - y = e^x,
+    //       y(0)=0, y'(0)=0, solucion (2x*e^x - e^x + e^(-x))/4
+    //   6..7 = casos Legendre/Hermite (issue #104): el parser ya los acepta
     //       (issue #102) y las condiciones iniciales por caso (incluidas
     //       y(0)=-1/2 de Legendre y y(0)=-2 de Hermite) se asignan en el
     //       switch de fitness(); sus residuales llegan con esos tickets.
@@ -198,6 +204,20 @@ class FunbObj{
             // Caso 2 (issue #61): y'' - y = 0, la ecuacion hiperbolica. En
             // Python seria `res += (y2 - y)**2`.
             res +=pow(fitnessval[2] - fitnessval[0],2) ;
+        } else if (_caso == 3){
+            // Caso 3 (issue #103): oscilador amortiguado y'' + 2y' + 2y = 0.
+            // En Python seria `res += (y2 + 2*y1 + 2*y0)**2`.
+            res +=pow(fitnessval[2] + 2.0L*fitnessval[1] + 2.0L*fitnessval[0],2) ;
+        } else if (_caso == 4){
+            // Caso 4 (issue #103): oscilador forzado y'' + y = eˣ.
+            // En Python seria `res += (y2 + y0 - exp(x))**2`.
+            ldouble x = _xrange[i][0];
+            res +=pow(fitnessval[2] + fitnessval[0] - exp(x),2) ;
+        } else if (_caso == 5){
+            // Caso 5 (issue #103): resonancia y'' - y = eˣ.
+            // En Python seria `res += (y2 - y0 - exp(x))**2`.
+            ldouble x = _xrange[i][0];
+            res +=pow(fitnessval[2] - fitnessval[0] - exp(x),2) ;
         } else {
             // Caso 0 (juguete del prototipo): y'' + y = 0.
             res +=pow(fitnessval[2] + fitnessval[0],2) ;
@@ -227,6 +247,18 @@ class FunbObj{
                     y0_objetivo  = 1.0L;
                     dy0_objetivo = 0.0L;
                     break;
+                case 3:   // oscilador amortiguado (issue #103): y'' + 2y' + 2y = 0
+                    y0_objetivo  = 1.0L;
+                    dy0_objetivo = -1.0L;
+                    break;
+                case 4:   // oscilador forzado (issue #103): y'' + y = eˣ
+                    y0_objetivo  = 0.0L;
+                    dy0_objetivo = 0.0L;
+                    break;
+                case 5:   // resonancia (issue #103): y'' - y = eˣ
+                    y0_objetivo  = 0.0L;
+                    dy0_objetivo = 0.0L;
+                    break;
                 case 6:   // Legendre (issue #104): y(0) = -1/2, y'(0) = 0
                     y0_objetivo  = -0.5L;
                     dy0_objetivo = 0.0L;
@@ -235,7 +267,7 @@ class FunbObj{
                     y0_objetivo  = -2.0L;
                     dy0_objetivo = 0.0L;
                     break;
-                default:  // caso 0, y 3-5 (issue #103): conservan (1,1)
+                default:  // caso 0: conserva (1,1)
                     break;
             }
             res +=10*pow((a_start[0] - y0_objetivo),2) + 10*pow((a_start[1] - dy0_objetivo),2);
@@ -820,7 +852,13 @@ int main() {
     //                   y(0)=0, y'(0)=1, solucion exacta Si(x)
     //   2            -> caso hiperbolico (issue #61): y'' - y = 0,
     //                   y(0)=1, y'(0)=0, solucion exacta cosh(x)
-    //   3..7         -> casos nuevos (issues #103/#104): el parser ya los
+    //   3            -> oscilador amortiguado (issue #103): y'' + 2y' + 2y = 0,
+    //                   y(0)=1, y'(0)=-1, solucion e^(-x)*cos(x)
+    //   4            -> oscilador forzado (issue #103): y'' + y = e^x,
+    //                   y(0)=0, y'(0)=0, solucion (e^x - cos(x) - sin(x))/2
+    //   5            -> resonancia (issue #103): y'' - y = e^x,
+    //                   y(0)=0, y'(0)=0, solucion (2x*e^x - e^x + e^(-x))/4
+    //   6..7         -> casos Legendre/Hermite (issue #104): el parser ya los
     //                   acepta (issue #102) y cada uno lleva sus condiciones
     //                   iniciales en fitness(); sus residuales se implementan
     //                   en los tickets siguientes.
@@ -891,6 +929,12 @@ int main() {
         cout << "paper, ec. (18): x*y'' + y' - cos(x) = 0, y(0)=0, y'(0)=1";
     } else if (caso == 2){
         cout << "hiperbolico (issue #61): y'' - y = 0, y(0)=1, y'(0)=0, solucion cosh(x)";
+    } else if (caso == 3){
+        cout << "oscilador amortiguado (issue #103): y'' + 2y' + 2y = 0, y(0)=1, y'(0)=-1, solucion e^(-x)*cos(x)";
+    } else if (caso == 4){
+        cout << "oscilador forzado (issue #103): y'' + y = e^x, y(0)=0, y'(0)=0, solucion (e^x - cos(x) - sin(x))/2";
+    } else if (caso == 5){
+        cout << "resonancia (issue #103): y'' - y = e^x, y(0)=0, y'(0)=0, solucion (2x*e^x - e^x + e^(-x))/4";
     } else {
         cout << "juguete: y'' + y = 0, y(0)=1, y'(0)=1";
     }

@@ -77,7 +77,7 @@ endforeach()
 # header): parse_tree.cpp NO se compila aparte o habria simbolos duplicados.
 # Necesitan src/ en el include path (asi resuelven tanto el .cpp incluido
 # como sus headers) y -DODE_NO_MAIN para que gane el main() del test.
-foreach(nombre IN ITEMS test_funbobj_const test_grid test_population)
+foreach(nombre IN ITEMS test_funbobj_const test_grid test_population test_ode_cases)
     add_executable(${nombre}
         src/semilla.cpp
         src/dualfunctions.cpp

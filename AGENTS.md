@@ -33,9 +33,11 @@
   repo tree and `CMakeLists.txt`).
 - The notebook/log checkers run standalone (they are not registered with
   ctest): `python3 scripts/check_dual_validation.py` (executes the
-  notebook's validation cells, no SageMath needed) and
-  `python3 scripts/check_run_log.py` (runs the solver in its short
-  deterministic mode and validates the structured log).
+  notebook's validation cells, no SageMath needed),
+  `python3 scripts/check_run_log.py` (runs the solver in terminal mode and
+  validates the structured log), and `python3 scripts/check_log_redirect.py`
+  (runs the binary in temporary directories to verify the default
+  `ode-solver.log` and `ODE_LOG=terminal`).
 - `python3 scripts/check_all_cases.py` runs tests for ODE cases 3-7
   (damped oscillator, forced oscillator, resonance, Legendre, Hermite) in two modes:
   - `--mode smoke` (default): `ODE_GEN=200`, `ODE_SEED=42`. Validates that each
@@ -65,9 +67,14 @@
   the entire notebook (`docs/legacy/Untitled.ipynb`) using a local `sage`
   installation or Docker with the pinned image. It is appropriate for changes
   to dual-number math or the notebook.
+- The solver writes its complete run log to `ode-solver.log` in the current
+  working directory by default, truncating it on each run; stdout stays empty.
+  `ODE_LOG=terminal` sends the log to stdout and creates no file, while
+  `ODE_LOG_FILE=<path>` overrides the file path. If the file cannot be opened,
+  the run falls back to stdout and warns with `log_open_failed | path=...`.
 - The search is stochastic and its default 5,000 generations can be noisy.
   Use a fixed seed and a short cap for a reproducible smoke run:
-  `ODE_SEED=42 ODE_GEN=200 timeout 60 ./build/ode-solver | tail -30`.
+  `ODE_SEED=42 ODE_GEN=200 ODE_LOG=terminal timeout 60 ./build/ode-solver | tail -30`.
   `ODE_CASE=1` selects the paper case, `ODE_CASE=2` the hyperbolic case,
   `ODE_CASE=3` the damped oscillator, `ODE_CASE=4` the forced oscillator,
   `ODE_CASE=5` the resonance case, `ODE_CASE=6` the Legendre equation
@@ -91,6 +98,10 @@
   rendering, and random-token source of truth.
   `docs/legacy/parse_tree_bckp.cpp` is a historical copy that also defines
   `main()`: never add it to a build.
+- `src/salida.{h,cpp}` owns the output destination: `resolver_salida()` maps
+  `ODE_LOG`/`ODE_LOG_FILE` to a mode and path, and `RedireccionSalida` is the
+  RAII redirect that swaps `std::cout` once at startup and restores it on
+  exit.
 - `tests/test_grid.cpp`, `tests/test_population.cpp`,
   `tests/test_funbobj_const.cpp`, and `tests/test_ode_cases.cpp` include
   `parse_tree.cpp` directly because `FunbObj` has no header. Their CMake rules

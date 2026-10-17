@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Verifica el contrato de AGENTS.md con el layout CMake (issue #52).
+"""Verifica el contrato de AGENTS.md con el layout CMake (issue #52) y la
+salida a log (issue #116).
 
 Despues de #48-#51, los fuentes viven en src/, los tests en tests/, los
 archivos historicos en docs/legacy/ y el ejecutable es build/ode-solver.
 AGENTS.md debe describir ese flujo (cmake/ctest) y no el layout plano
-anterior (Makefile, main.exe, test_*.exe en la raiz).
+anterior (Makefile, main.exe, test_*.exe en la raiz). Desde #112 el solver
+escribe en ode-solver.log por defecto, asi que los ejemplos que canalizan
+stdout tambien deben pedir ODE_LOG=terminal.
 
-Tres seams de verificacion, siempre contra fuentes de verdad externas al
+Cuatro seams de verificacion, siempre contra fuentes de verdad externas al
 propio documento:
 
 1. Contenido estatico: sin menciones a main.exe ni comandos `make`, con el
    flujo CMake documentado (cmake -B build, cmake --build build,
-   ctest --test-dir build, build/ode-solver).
+   ctest --test-dir build, build/ode-solver) y las variables de salida
+   ODE_LOG/ODE_LOG_FILE.
 
 2. Contratos preservados: las secciones y reglas que no debian cambiar
    (navegacion con codegraph, logging estructurado, Conventional Commits).
@@ -19,6 +23,10 @@ propio documento:
 3. Realidad del repo: cada ruta citada existe en el arbol, y lo que el
    documento afirma del build concuerda con CMakeLists.txt (target
    ode-solver y numero de tests).
+
+4. Ejemplos de corrida: una linea que canaliza build/ode-solver con `|` debe
+   forzar ODE_LOG=terminal; en modo archivo (el default) stdout queda vacio
+   y el pipe no recibiria nada.
 
 En Python seria el equivalente a un test de contrato: valida que la guia
 de agentes y el repo real no se hayan desincronizado, sin ejecutar el
@@ -50,6 +58,10 @@ REQUERIDOS = (
     "src/",
     "tests/",
     "docs/legacy/",
+    "ODE_LOG=terminal",
+    "ODE_LOG_FILE",
+    "ode-solver.log",
+    "scripts/check_log_redirect.py",
 )
 
 # Contratos que DEBEN preservarse: si falta alguno, el documento perdio
@@ -85,6 +97,11 @@ RE_RUTA = re.compile(r"(?<![\w/])((?:src|tests|docs|scripts)/[\w./{},-]+)")
 RE_TESTS_DOC = re.compile(r"(\d+)\s+C\+\+ tests?")
 
 RE_BACKTICKS = re.compile(r"`([^`]+)`")
+
+# Ejemplo de corrida que canaliza stdout: "./build/ode-solver | tail -30".
+# Desde #112 el default escribe en ode-solver.log y deja stdout vacio, asi que
+# la linea debe forzar ODE_LOG=terminal.
+RE_EJEMPLO_PIPE = re.compile(r"build/ode-solver[^|\n]*\|")
 
 
 def leer_texto(path):
@@ -131,6 +148,23 @@ def verificar_contenido(texto):
         if patron not in texto:
             errores.append(f"AGENTS.md perdio el contrato preservado: {patron!r}")
 
+    return errores
+
+
+def verificar_ejemplos_salida(texto):
+    """Seam 4: si un ejemplo canaliza stdout, debe pedir ODE_LOG=terminal.
+
+    Se revisa linea a linea (no por spans de backticks) porque un backtick
+    suelto en el documento desplaza el emparejamiento y ocultaria el ejemplo.
+    En Python seria `for linea in texto.splitlines(): if "|" in linea ...`.
+    """
+    errores = []
+    for linea in texto.splitlines():
+        if RE_EJEMPLO_PIPE.search(linea) and "ODE_LOG=terminal" not in linea:
+            errores.append(
+                "AGENTS.md canaliza stdout sin ODE_LOG=terminal: "
+                f"{linea.strip()!r}"
+            )
     return errores
 
 
@@ -204,6 +238,7 @@ def main():
 
     errores = []
     errores.extend(verificar_contenido(texto))
+    errores.extend(verificar_ejemplos_salida(texto))
     errores.extend(verificar_rutas(texto))
     errores.extend(verificar_cmake(texto))
 
@@ -214,7 +249,7 @@ def main():
 
     print(
         "check_agents_md: PASS | AGENTS.md documenta el flujo CMake "
-        "(build/ode-solver), no menciona el layout plano y sus rutas existen"
+        "(build/ode-solver), la salida ODE_LOG/ODE_LOG_FILE y sus rutas existen"
     )
     return 0
 

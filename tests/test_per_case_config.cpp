@@ -49,6 +49,15 @@ static void check_int(const std::string& nombre, int recibido, int esperado) {
     }
 }
 
+// check_decimal: igualdad entre long double con epsilon (evita problemas de
+// precision de la coma flotante). En Python seria
+// `assert abs(got - esperado) < 1e-9, f"...{got}..."`.
+static void check_decimal(const std::string& nombre, long double recibido,
+                          long double esperado) {
+    const long double epsilon = 1e-9L;
+    check_bool(nombre, std::abs(recibido - esperado) < epsilon);
+}
+
 // -------------------------------------------------------------------------
 // Tests: resolver_config acepta caso y devuelve defaults por caso.
 // -------------------------------------------------------------------------
@@ -139,6 +148,78 @@ void test_resolver_config_restart_defaults() {
 }
 
 // -------------------------------------------------------------------------
+// Tests: claves del reinicio adaptativo (issue #126).
+// -------------------------------------------------------------------------
+
+// Seam 3: resolver_config devuelve los defaults de las cinco claves nuevas.
+// Atrapa: defaults incorrectos para modo, fraccion minima, tope, share o umbral.
+void test_resolver_config_adaptive_defaults() {
+    // Sin variables de entorno: modo legacy, min 0.4, cap 3, share 0.5, div 0.05.
+    ConfigBusqueda config = resolver_config(nullptr, nullptr, nullptr, nullptr, 0);
+
+    check_bool("restart_mode default legacy",
+               config.restart_mode == ModoReinicio::legacy);
+    check_decimal("restart_min_fraction default", config.restart_min_fraction, 0.4L);
+    check_int("restart_cap default", config.restart_cap, 3);
+    check_decimal("restart_mutation_share default", config.restart_mutation_share, 0.5L);
+    check_decimal("div_threshold default", config.div_threshold, 0.05L);
+}
+
+// Seam 3: env vars sobreescriben las cinco claves nuevas. Los valores son
+// todos distintos entre si y de los defaults para que un argumento
+// posicional mal ordenado rompa el test.
+// Atrapa: las claves no se parsean o se asignan al campo equivocado.
+void test_resolver_config_adaptive_overrides() {
+    ConfigBusqueda config = resolver_config("120", "22", "6000", "0", 0,
+                                            "300", "0.9",
+                                            "adaptive", "0.6", "5", "0.75", "0.02");
+
+    // Las claves anteriores siguen leyendose en su posicion original.
+    check_int("stale_limit sigue leyendose", config.stale_limit, 300);
+    check_decimal("restart_fraction sigue leyendose", config.restart_fraction, 0.9L);
+    // Las cinco claves nuevas toman el valor del entorno.
+    check_bool("restart_mode adaptive",
+               config.restart_mode == ModoReinicio::adaptive);
+    check_decimal("restart_min_fraction override", config.restart_min_fraction, 0.6L);
+    check_int("restart_cap override", config.restart_cap, 5);
+    check_decimal("restart_mutation_share override", config.restart_mutation_share, 0.75L);
+    check_decimal("div_threshold override", config.div_threshold, 0.02L);
+}
+
+// Seam 3: valores invalidos caen a los defaults, igual que las claves ODE_*
+// existentes (una variable invalida se ignora, no rompe la corrida).
+// Atrapa: el parser acepta valores fuera del contrato o el modo no es exacto.
+void test_resolver_config_adaptive_invalid() {
+    // Modo inexistente y modo mal capitalizado: el unico valor valido es
+    // exactamente "adaptive"; todo lo demas vuelve a legacy.
+    ConfigBusqueda modo_raros = resolver_config(nullptr, nullptr, nullptr, nullptr, 0,
+                                                nullptr, nullptr,
+                                                "bogus", nullptr, nullptr,
+                                                nullptr, nullptr);
+    check_bool("restart_mode bogus usa legacy",
+               modo_raros.restart_mode == ModoReinicio::legacy);
+
+    ConfigBusqueda modo_mayusculas = resolver_config(nullptr, nullptr, nullptr, nullptr, 0,
+                                                     nullptr, nullptr,
+                                                     "Adaptive", nullptr, nullptr,
+                                                     nullptr, nullptr);
+    check_bool("restart_mode Adaptive usa legacy (exacto)",
+               modo_mayusculas.restart_mode == ModoReinicio::legacy);
+
+    // Numericos invalidos: texto no numerico, tope por debajo del minimo (1),
+    // string vacio y numero con sufijo -> cada uno usa su default.
+    ConfigBusqueda config = resolver_config(nullptr, nullptr, nullptr, nullptr, 0,
+                                            nullptr, nullptr,
+                                            nullptr, "abc", "0", "", "0.05x");
+    check_decimal("restart_min_fraction invalida usa 0.4",
+                  config.restart_min_fraction, 0.4L);
+    check_int("restart_cap 0 usa 3", config.restart_cap, 3);
+    check_decimal("restart_mutation_share invalida usa 0.5",
+                  config.restart_mutation_share, 0.5L);
+    check_decimal("div_threshold invalido usa 0.05", config.div_threshold, 0.05L);
+}
+
+// -------------------------------------------------------------------------
 // main() ejecuta los tests y devuelve codigo de salida.
 // -------------------------------------------------------------------------
 
@@ -150,6 +231,9 @@ int main() {
     test_resolver_config_env_override();
     test_resolver_config_restart_params();
     test_resolver_config_restart_defaults();
+    test_resolver_config_adaptive_defaults();
+    test_resolver_config_adaptive_overrides();
+    test_resolver_config_adaptive_invalid();
     
     std::cout << "\n--- resumen: " << g_checks << " checks, "
               << g_fallos << " fallos ---\n";

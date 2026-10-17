@@ -327,11 +327,20 @@ constexpr int GENERACIONES_MINIMAS = 1;
 // Longitud de las cinco semillas warm start escritas a mano.
 constexpr int DIMENSION_SEMILLAS = 20;
 
+// ModoReinicio: modo de reinicio por estancamiento (issue #126). En Python
+// seria `class ModoReinicio(Enum): LEGACY = "legacy"; ADAPTIVE = "adaptive"`.
+// Por ahora el modo solo se resuelve y se informa en la cabecera del log: el
+// reinicio adaptativo en si se conecta en los tickets siguientes del #125.
+enum class ModoReinicio { legacy, adaptive };
+
 // ConfigBusqueda: los parametros de la corrida en una estructura en vez de
 // argumentos sueltos (regla I.23 de docs/cpp-standards.md: firmas cortas).
 // Los `= valor` son los defaults, como en un dataclass de Python.
 // stale_limit: generaciones sin mejora antes de reiniciar poblacion.
 // restart_fraction: proporcion de individuos que se reemplazan en un reinicio.
+// Los cinco campos siguientes son las claves del reinicio adaptativo
+// (issue #126): se resuelven y se guardan, pero la busqueda aun no las
+// consume.
 struct ConfigBusqueda {
     int poblacion = POBLACION_DEFECTO;
     int dimension = DIMENSION_DEFECTO;
@@ -339,6 +348,11 @@ struct ConfigBusqueda {
     bool warm_start = false;
     int stale_limit = 500;
     long double restart_fraction = 0.8L;
+    ModoReinicio restart_mode = ModoReinicio::legacy;
+    long double restart_min_fraction = 0.4L;
+    int restart_cap = 3;
+    long double restart_mutation_share = 0.5L;
+    long double div_threshold = 0.05L;
 };
 
 // config_entera: lee una variable de entorno ya obtenida con getenv() (en
@@ -391,6 +405,21 @@ bool config_bandera(const char* valor_env, bool respaldo) {
     return respaldo;
 }
 
+// config_modo_reinicio: lee el modo de reinicio (issue #126). "adaptive"
+// activa el modo nuevo; cualquier otro valor (o la ausencia) devuelve legacy.
+// En Python seria `{"adaptive": ModoReinicio.ADAPTIVE}.get(valor, LEGACY)`.
+ModoReinicio config_modo_reinicio(const char* valor_env) {
+    if (valor_env == nullptr) return ModoReinicio::legacy;
+    if (strcmp(valor_env, "adaptive") == 0) return ModoReinicio::adaptive;
+    return ModoReinicio::legacy;
+}
+
+// nombre_modo_reinicio: texto del modo para la cabecera del log. En Python
+// seria `modo.name.lower()`.
+const char* nombre_modo_reinicio(ModoReinicio modo) {
+    return modo == ModoReinicio::adaptive ? "adaptive" : "legacy";
+}
+
 // defaults_por_caso: devuelve los defaults de (poblacion, dimension,
 // generaciones) segun el caso ODE. El paper (Mex et al. 2015) tunnea estos
 // parametros por caso: los casos 0-2 usan defaults originales (100/20/5000),
@@ -415,14 +444,23 @@ DefaultsCaso defaults_por_caso(int caso) {
 
 // resolver_config: arma la configuracion efectiva de la corrida a partir de
 // los valores crudos de ODE_POP/ODE_DIM/ODE_GEN/ODE_WARM_START/ODE_STALE_LIMIT/
-// ODE_RESTART_FRACTION. main() lee el entorno con getenv() y se los pasa
+// ODE_RESTART_FRACTION y, desde el issue #126, ODE_RESTART_MODE/
+// ODE_RESTART_MIN_FRACTION/ODE_RESTART_CAP/ODE_RESTART_MUTATION_SHARE/
+// ODE_DIV_THRESHOLD. main() lee el entorno con getenv() y se los pasa
 // (por eso es una funcion pura y testeable, igual que resolver_semilla).
 // Los defaults por caso (paper practice) son el fallback para pop/dim/gen.
+// Los parametros nuevos van al final con default nullptr: los llamadores que
+// no los pasan (tests viejos incluidos) compilan sin cambios.
 ConfigBusqueda resolver_config(const char* pop_env, const char* dim_env,
                                const char* gen_env, const char* warm_env,
                                int caso = 0,
                                const char* stale_env = nullptr,
-                               const char* fraction_env = nullptr) {
+                               const char* fraction_env = nullptr,
+                               const char* restart_mode_env = nullptr,
+                               const char* restart_min_fraction_env = nullptr,
+                               const char* restart_cap_env = nullptr,
+                               const char* restart_mutation_share_env = nullptr,
+                               const char* div_threshold_env = nullptr) {
     DefaultsCaso defaults = defaults_por_caso(caso);
     ConfigBusqueda config;
     config.poblacion = config_entera(pop_env, defaults.poblacion, POBLACION_MINIMA);
@@ -440,6 +478,17 @@ ConfigBusqueda resolver_config(const char* pop_env, const char* dim_env,
     // tunnea estos parametros por caso, pero aqui se controlan via env vars.
     config.stale_limit = config_entera(stale_env, 500, 1);
     config.restart_fraction = config_decimal(fraction_env, 0.8L);
+
+    // Claves del reinicio adaptativo (issue #126): se resuelven y se guardan
+    // en la config, pero la busqueda aun no las consume (el reinicio
+    // adaptativo se conecta en los tickets siguientes del #125). Mismo
+    // criterio de fallback que las claves existentes: invalido -> default.
+    // El tope de reinicios usa el minimo 1, igual que stale_limit.
+    config.restart_mode = config_modo_reinicio(restart_mode_env);
+    config.restart_min_fraction = config_decimal(restart_min_fraction_env, 0.4L);
+    config.restart_cap = config_entera(restart_cap_env, 3, 1);
+    config.restart_mutation_share = config_decimal(restart_mutation_share_env, 0.5L);
+    config.div_threshold = config_decimal(div_threshold_env, 0.05L);
 
     return config;
 }
@@ -965,7 +1014,12 @@ int main() {
                                             getenv("ODE_GEN"), getenv("ODE_WARM_START"),
                                             caso,
                                             getenv("ODE_STALE_LIMIT"),
-                                            getenv("ODE_RESTART_FRACTION"));
+                                            getenv("ODE_RESTART_FRACTION"),
+                                            getenv("ODE_RESTART_MODE"),
+                                            getenv("ODE_RESTART_MIN_FRACTION"),
+                                            getenv("ODE_RESTART_CAP"),
+                                            getenv("ODE_RESTART_MUTATION_SHARE"),
+                                            getenv("ODE_DIV_THRESHOLD"));
 
     // Una sola poblacion (issue #6): antes habia dos (Population1/Population2)
     // que se cruzaban entre si; DE/rand/1/bin (paper) evoluciona una unica
@@ -997,8 +1051,9 @@ int main() {
     // tamano real de la poblacion ya creada; `warm_start=` es el valor efectivo
     // (con ODE_DIM distinto de 20 la bandera se ignora, ver resolver_config).
     // `stale_limit` y `restart_fraction` son los parametros de reinicio
-    // adaptativo (issue #108), configurables via ODE_STALE_LIMIT y
-    // ODE_RESTART_FRACTION.
+    // (issue #108), configurables via ODE_STALE_LIMIT y ODE_RESTART_FRACTION.
+    // `restart_mode` es el modo efectivo resuelto por resolver_config
+    // (issue #126): por ahora informativo, la busqueda aun no lo ramifica.
     log_info() << "de_run_start | seed=" << semilla
                << " case=" << caso
                << " population=" << Population.size()
@@ -1008,7 +1063,8 @@ int main() {
                << " fitness_target=" << fmt_ciencia(eps)
                << " max_generations=" << max_gen
                << " stale_limit=" << stale_limit
-               << " restart_fraction=" << fmt_fijo(config.restart_fraction, 2) << '\n';
+               << " restart_fraction=" << fmt_fijo(config.restart_fraction, 2)
+               << " restart_mode=" << nombre_modo_reinicio(config.restart_mode) << '\n';
 
     // Descripcion legible del caso: el dato maquina es el campo `case=` de
     // arriba; este renglon es la explicacion y va como texto libre (sin

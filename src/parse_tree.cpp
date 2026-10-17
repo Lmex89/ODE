@@ -218,6 +218,19 @@ class FunbObj{
             // En Python seria `res += (y2 - y0 - exp(x))**2`.
             ldouble x = _xrange[i][0];
             res +=pow(fitnessval[2] - fitnessval[0] - exp(x),2) ;
+        } else if (_caso == 6){
+            // Caso 6 (issue #104): Legendre (1-x²)y'' - 2xy' + 6y = 0.
+            // Primer caso con coeficientes variables: el residual usa x del
+            // punto de la rejilla (_xrange[i][0]). En Python seria
+            // `res += ((1 - x**2)*y2 - 2*x*y1 + 6*y0)**2`.
+            ldouble x = _xrange[i][0];
+            res +=pow((1.0L - x*x)*fitnessval[2] - 2.0L*x*fitnessval[1] + 6.0L*fitnessval[0],2) ;
+        } else if (_caso == 7){
+            // Caso 7 (issue #104): Hermite y'' - 2xy' + 4y = 0.
+            // Segundo caso con coeficientes variables. En Python seria
+            // `res += (y2 - 2*x*y1 + 4*y0)**2`.
+            ldouble x = _xrange[i][0];
+            res +=pow(fitnessval[2] - 2.0L*x*fitnessval[1] + 4.0L*fitnessval[0],2) ;
         } else {
             // Caso 0 (juguete del prototipo): y'' + y = 0.
             res +=pow(fitnessval[2] + fitnessval[0],2) ;
@@ -935,6 +948,10 @@ int main() {
         cout << "oscilador forzado (issue #103): y'' + y = e^x, y(0)=0, y'(0)=0, solucion (e^x - cos(x) - sin(x))/2";
     } else if (caso == 5){
         cout << "resonancia (issue #103): y'' - y = e^x, y(0)=0, y'(0)=0, solucion (2x*e^x - e^x + e^(-x))/4";
+    } else if (caso == 6){
+        cout << "Legendre (issue #104): (1-x²)y'' - 2xy' + 6y = 0, y(0)=-1/2, y'(0)=0, solucion P₂(x)=(3x²-1)/2";
+    } else if (caso == 7){
+        cout << "Hermite (issue #104): y'' - 2xy' + 4y = 0, y(0)=-2, y'(0)=0, solucion H₂(x)=4x²-2";
     } else {
         cout << "juguete: y'' + y = 0, y(0)=1, y'(0)=1";
     }

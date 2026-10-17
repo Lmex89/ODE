@@ -36,6 +36,26 @@
   notebook's validation cells, no SageMath needed) and
   `python3 scripts/check_run_log.py` (runs the solver in its short
   deterministic mode and validates the structured log).
+- `python3 scripts/check_all_cases.py` runs the smoke test for ODE cases 3-7
+  (damped oscillator, forced oscillator, resonance, Legendre, Hermite) with
+  `ODE_GEN=200`, `ODE_SEED=42`. It validates that each case completes, produces
+  finite fitness, and improves over the first generation. Output format:
+  ```
+  Smoke test: cases [3, 4, 5, 6, 7], gen=200, seed=42
+  
+  ============================================================
+  Summary:
+    Case 3: PASS
+    Case 4: PASS
+    Case 5: PASS
+    Case 6: PASS
+    Case 7: PASS
+  ============================================================
+  check_all_cases: PASS
+  ```
+  Exit code is 0 if all cases pass, non-zero otherwise. This validates that the
+  residuals are well-defined and the DE search improves; strict convergence
+  checking (`status=converged`, `best < 1e-5`) is owned by #108.
 - `scripts/run_sage_dual_validation.sh` is the Sage counterpart: it executes
   the entire notebook (`docs/legacy/Untitled.ipynb`) using a local `sage`
   installation or Docker with the pinned image. It is appropriate for changes

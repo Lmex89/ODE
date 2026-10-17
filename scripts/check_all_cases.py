@@ -66,8 +66,6 @@ def correr_caso(caso, modo="smoke", seed=SEED):
     
     Uses per-case config in convergence mode, fixed config in smoke mode.
     """
-    # ODE_LOG=terminal (issue #111): este checker parsea stdout; con el
-    # default nuevo la corrida escribiria solo a ode-solver.log.
     if modo == "convergence":
         config = CASO_CONFIGS.get(caso, CASO_CONFIGS[0])
         entorno = dict(
@@ -77,7 +75,6 @@ def correr_caso(caso, modo="smoke", seed=SEED):
             ODE_POP=str(config["pop"]),
             ODE_DIM=str(config["dim"]),
             ODE_GEN=str(config["gen"]),
-            ODE_LOG="terminal",
         )
         timeout = TIMEOUT_CONVERGENCIA
     else:
@@ -86,7 +83,6 @@ def correr_caso(caso, modo="smoke", seed=SEED):
             ODE_SEED=str(seed),
             ODE_CASE=str(caso),
             ODE_GEN=str(GENERACIONES),
-            ODE_LOG="terminal",
         )
         timeout = TIMEOUT
     

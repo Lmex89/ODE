@@ -13,7 +13,6 @@
 #include <iomanip>
 #include "dualfunctions.h"
 #include "semilla.h"
-#include "log_mode.h"
 #include "token.h"
 
 using namespace std;
@@ -905,22 +904,6 @@ int main() {
     // Arranque del reloj de CPU: alimenta el timestamp de cada linea y el
     // tiempo total del resumen (en Python: t0 = time.process_time()).
     g_log_t0 = clock();
-
-    // Destino de la salida (issue #111): por defecto todo el log va a
-    // `ode-solver.log` en el directorio actual; ODE_LOG=terminal lo devuelve
-    // a stdout y ODE_LOG_FILE cambia la ruta. La redireccion se instala
-    // aqui, una sola vez y antes de la primera linea, intercambiando el
-    // buffer de cout por el del archivo (ver log_mode.h); asi ningun texto
-    // libre de mas abajo (p. ej. la descripcion de ode_case) queda afuera.
-    // Si el archivo no abre, se avisa por WARN y la corrida sigue por la
-    // terminal: una ruta mala nunca pierde el log en silencio.
-    ConfigLog config_log = resolver_log(getenv("ODE_LOG"), getenv("ODE_LOG_FILE"));
-    RedireccionLog redireccion_log(config_log);
-    if (config_log.salida == SalidaLog::Archivo && !redireccion_log.redirigida()) {
-        log_warn() << "log_file_unavailable | path=" << config_log.ruta
-                   << " fallback=terminal" << '\n';
-        cout.flush();
-    }
 
     // Semilla controlada por ODE_SEED (issue #4): con ODE_SEED=42 todas las
     // corridas salen identicas (mismo fitness, mismo vector), que es lo que

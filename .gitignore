@@ -16,7 +16,6 @@ __pycache__/
 # Run outputs
 out
 out.txt
-ode-solver.log
 
 # Tool/machine artifacts
 .inteopt.txt

@@ -69,7 +69,7 @@ The expected solution for the default ODE `y'' + y = 0` with `y(0) = y'(0) = 1` 
 ```bash
 cmake -B build                              # configure (reads CMakeLists.txt)
 cmake --build build                         # compile -> build/ode-solver
-ODE_LOG=terminal ODE_SEED=42 ./build/ode-solver | tail -30   # reproducible run (seed 42)
+ODE_SEED=42 ./build/ode-solver | tail -30   # reproducible run (seed 42)
 ctest --test-dir build                      # run the test suite
 ```
 
@@ -113,13 +113,6 @@ default toy ODE; `1`: paper's Case 1, `x·y'' + y' − cos(x) = 0` with `y(0)=0`
 `y'(0)=1`; `2`: hyperbolic case, `y'' − y = 0` with `y(0)=1`, `y'(0)=0` and
 exact solution `cosh(x)`); the same line carries `case=N`.
 
-By default the whole log is written to `ode-solver.log` in the working
-directory (truncated on every run), so it is still there after the process
-exits. `ODE_LOG=terminal` sends the output to stdout instead — without
-creating a file — and `ODE_LOG_FILE=<path>` changes the file's name and
-location. If the file cannot be opened (for example an unwritable path), the
-run warns and falls back to the terminal instead of losing the log.
-
 The search configuration defaults to the paper's Case 1 values —
 `population=100`, `dimension=20`, `max_generations=5000` — and each one can be
 overridden with `ODE_POP`, `ODE_DIM`, and `ODE_GEN`. Values
@@ -134,11 +127,10 @@ The program logs one structured line per event (`[  0.12s] [INFO ] gen=1
 best=... best_ever=... expr=...`), plus `new_best` records, a final `solution`
 line and a `de_run_end` summary. It typically converges in seconds but may run
 up to the generation cap (`max_generations=5000` by default). Output can be
-very verbose; the log goes to the default file, and `ODE_LOG=terminal` plus
-`tail` shows only the last lines live:
+very verbose — consider piping through `tail`:
 
 ```bash
-ODE_LOG=terminal ./build/ode-solver | tail -30
+./build/ode-solver | tail -30
 ```
 
 ### Testing
@@ -147,24 +139,23 @@ ODE_LOG=terminal ./build/ode-solver | tail -30
 ctest --test-dir build
 ```
 
-This runs the 12 C++ tests registered in `CMakeLists.txt` (all targets are built by the preceding `cmake --build build`). For a focused test:
+This runs the 9 C++ tests registered in `CMakeLists.txt` (all targets are built by the preceding `cmake --build build`). For a focused test:
 
 ```bash
 cmake --build build --target test_mutation
 ./build/test_mutation
 ```
 
-`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()`/`sinh2dual()`/`cosh2dual()`/`tanh2dual()` derivatives, the `x²`/`x³` leaves, and the constant π/e leaves). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_log_mode.cpp` asserts the `ODE_LOG`/`ODE_LOG_FILE` resolution rule (file mode by default, only the exact string `terminal` switches to stdout, custom and empty paths). `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..29`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_population.cpp` asserts the initial population (exact size, per-individual dimension, tokens inside the `1..29` alphabet, opt-in warm start, fixed-seed determinism) and the search-configuration resolver (default dimension 20, `ODE_POP`/`ODE_DIM`/`ODE_GEN` overrides, invalid-value fallback, warm-start/dimension coupling). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included) and the paper's fitness functional (eq. (4): squared residuals, `λ₁ = λ₂ = 10`, the `Δx = 1/99` integration factor, the Case 1 (`ODE_CASE=1`) and hyperbolic Case 2 (`ODE_CASE=2`) residuals, and independently computed expected values for valid candidates). `test_token.cpp` asserts the public token-alphabet contract (codes `1..29`, arity per token, rendering, validity predicates, `random_token()` bounds). `test_funbobj_const.cpp` asserts that `FunbObj` accessors are const-correct. `test_header_hygiene.cpp` asserts that `dualfunctions.h` is self-contained and uses const references for read-only parameters. The tests link only what each one needs and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp`, `test_token.cpp`, `test_grid.cpp`, `test_population.cpp` and `test_funbobj_const.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp`, `test_population.cpp` and `test_funbobj_const.cpp` include `parse_tree.cpp` directly to reach the header-less `FunbObj`).
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()`/`sinh2dual()`/`cosh2dual()`/`tanh2dual()` derivatives, the `x²`/`x³` leaves, and the constant π/e leaves). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..29`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_population.cpp` asserts the initial population (exact size, per-individual dimension, tokens inside the `1..29` alphabet, opt-in warm start, fixed-seed determinism) and the search-configuration resolver (default dimension 20, `ODE_POP`/`ODE_DIM`/`ODE_GEN` overrides, invalid-value fallback, warm-start/dimension coupling). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included) and the paper's fitness functional (eq. (4): squared residuals, `λ₁ = λ₂ = 10`, the `Δx = 1/99` integration factor, the Case 1 (`ODE_CASE=1`) and hyperbolic Case 2 (`ODE_CASE=2`) residuals, and independently computed expected values for valid candidates). `test_token.cpp` asserts the public token-alphabet contract (codes `1..29`, arity per token, rendering, validity predicates, `random_token()` bounds). `test_funbobj_const.cpp` asserts that `FunbObj` accessors are const-correct. `test_header_hygiene.cpp` asserts that `dualfunctions.h` is self-contained and uses const references for read-only parameters. The tests link only what each one needs and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp`, `test_token.cpp`, `test_grid.cpp`, `test_population.cpp` and `test_funbobj_const.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp`, `test_population.cpp` and `test_funbobj_const.cpp` include `parse_tree.cpp` directly to reach the header-less `FunbObj`).
 
 The notebook/log checkers run standalone (they are not registered with ctest):
 
 ```bash
 python3 scripts/check_dual_validation.py
 python3 scripts/check_run_log.py
-python3 scripts/check_log_redirect.py
 ```
 
-`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver with `ODE_LOG=terminal` in its short deterministic mode and validates the structured log. `check_log_redirect.py` runs the solver in a temporary directory and checks the output destination: `ode-solver.log` by default, stdout with `ODE_LOG=terminal`, and the terminal fallback with a warning when the file cannot be opened.
+`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log.
 
 The SageMath notebook validation needs a real SageMath kernel:
 
@@ -196,13 +187,11 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `src/dualfunctions.cpp` | Implementation of 2dual operations (sin, cos, tan, sinh, cosh, tanh, exp, log, pow, etc.) and tree evaluation |
 | `src/token.h` | Header-only token alphabet: codes, arity, rendering, predicates and random draws |
 | `src/semilla.h` / `src/semilla.cpp` | Run-seed control: resolves `ODE_SEED`, falling back to the clock |
-| `src/log_mode.h` / `src/log_mode.cpp` | Output destination: resolves `ODE_LOG`/`ODE_LOG_FILE` and redirects the log to the file |
 | `docs/legacy/parse_tree_bckp.cpp` | Reference backup — **do not compile** (also defines `main()`) |
 | `tests/test_dual.cpp` | Dual-number evaluation tests |
 | `tests/test_mutation.cpp` | DE/rand/1/bin mutation tests |
 | `tests/test_crossover.cpp` | Binomial crossover tests |
 | `tests/test_semilla.cpp` | `ODE_SEED` resolution tests |
-| `tests/test_log_mode.cpp` | `ODE_LOG`/`ODE_LOG_FILE` resolution tests |
 | `tests/test_grid.cpp` | Evaluation-grid tests |
 | `tests/test_population.cpp` | Population and configuration tests |
 | `tests/test_token.cpp` | Token-alphabet contract tests |
@@ -211,8 +200,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `scripts/ab_experiment.sh` | Reproducible A/B experiment (pre-fix vs post-fix, same seed) |
 | `docs/ab-experiment.md` | A/B comparison report and conclusions |
 | `scripts/check_dual_validation.py` | Executes the notebook's validation cells without SageMath |
-| `scripts/check_run_log.py` | Validates the structured log from a solver run (terminal mode) |
-| `scripts/check_log_redirect.py` | Checks the output destination: default file, `ODE_LOG=terminal`, fallback |
+| `scripts/check_run_log.py` | Validates the structured log from a solver run |
 | `scripts/run_sage_dual_validation.sh` | Execute the complete notebook in SageMath and verify its output |
 | `scripts/check_sage_dual_validation.py` | Check the executed notebook's 48-case PASS/FAIL result |
 | `docs/sage-dual-validation.md` | SageMath command, environment, and captured evidence |

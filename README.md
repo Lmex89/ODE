@@ -288,9 +288,10 @@ python3 scripts/check_dual_validation.py
 python3 scripts/check_run_log.py
 python3 scripts/check_restart_escalation.py
 python3 scripts/check_diversity_trigger.py
+python3 scripts/check_restart_ab.py
 ```
 
-`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log. `check_restart_escalation.py` forces adaptive restarts and validates the sequence the DE loop logs (`fraction=`, `replaced=`, `mutation_share=` and the reset on `new_best`). `check_diversity_trigger.py` forces the diversity channel and validates `trigger=diversity`, its stale-window reset, the shared escalation ladder, `trigger=stale` with the channel off, and the legacy restart parameters.
+`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log. `check_restart_escalation.py` forces adaptive restarts and validates the sequence the DE loop logs (`fraction=`, `replaced=`, `mutation_share=` and the reset on `new_best`). `check_diversity_trigger.py` forces the diversity channel and validates `trigger=diversity`, its stale-window reset, the shared escalation ladder, `trigger=stale` with the channel off, and the legacy restart parameters. `check_restart_ab.py` runs the legacy-vs-adaptive A/B script in short mode and validates its comparison table, the per-mode `restart_mode=` wiring and the identical budgets.
 
 The SageMath notebook validation needs a real SageMath kernel:
 
@@ -307,9 +308,26 @@ flags, runs both with identical `ODE_SEED` values, and writes a metrics table
 (fitness, vector, generations, times). Results and conclusions are documented in
 [docs/ab-experiment.md](docs/ab-experiment.md).
 
+`scripts/restart_ab.sh` compares the restart modes instead: it runs the *same*
+binary (`build/ode-solver`) twice per seed with identical budgets (case,
+population, dimension, generations, `ODE_STALE_LIMIT`), once with
+`ODE_RESTART_MODE=legacy` and once with `adaptive`. It pins the adaptive knobs
+to their documented defaults, so the only difference between the two rows of a
+seed is the mode. It prints a paired per-seed summary — best fitness of each
+mode, which mode wins and the CPU time of each — and writes the same metrics
+table.
+
 ```bash
 scripts/ab_experiment.sh --seed 42 --timeout 300
+scripts/restart_ab.sh --seed "1 42 2026"              # legacy vs adaptive
+scripts/check_restart_ab.py                           # short deterministic check
 ```
+
+Both experiments share their runner pieces: the log parser
+`scripts/metricas.awk` and the helpers `scripts/ab_common.sh` /
+`scripts/ab_common.py`; their checkers (`scripts/check_ab_experiment.py` and
+`scripts/check_restart_ab.py`) validate the extraction in short deterministic
+mode.
 
 ## Files
 
@@ -335,6 +353,11 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `tests/test_funbobj_const.cpp` | `FunbObj` const-correctness tests |
 | `tests/test_header_hygiene.cpp` | Header self-containment and const-reference tests |
 | `scripts/ab_experiment.sh` | Reproducible A/B experiment (pre-fix vs post-fix, same seed) |
+| `scripts/check_ab_experiment.py` | Short deterministic check of the before/after experiment |
+| `scripts/restart_ab.sh` | Legacy-vs-adaptive restart A/B on the same binary (issue #130) |
+| `scripts/check_restart_ab.py` | Short deterministic check of the restart A/B |
+| `scripts/metricas.awk` | Shared log parser that fills `metricas.tsv` for both experiments |
+| `scripts/ab_common.sh` / `scripts/ab_common.py` | Runner helpers shared by the two experiments and their checkers |
 | `docs/ab-experiment.md` | A/B comparison report and conclusions |
 | `scripts/check_dual_validation.py` | Executes the notebook's validation cells without SageMath |
 | `scripts/check_run_log.py` | Validates the structured log from a solver run |

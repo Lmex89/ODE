@@ -288,9 +288,10 @@ python3 scripts/check_dual_validation.py
 python3 scripts/check_run_log.py
 python3 scripts/check_restart_escalation.py
 python3 scripts/check_diversity_trigger.py
+python3 scripts/check_restart_ab.py
 ```
 
-`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log. `check_restart_escalation.py` forces adaptive restarts and validates the sequence the DE loop logs (`fraction=`, `replaced=`, `mutation_share=` and the reset on `new_best`). `check_diversity_trigger.py` forces the diversity channel and validates `trigger=diversity`, its stale-window reset, the shared escalation ladder, `trigger=stale` with the channel off, and the legacy restart parameters.
+`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log. `check_restart_escalation.py` forces adaptive restarts and validates the sequence the DE loop logs (`fraction=`, `replaced=`, `mutation_share=` and the reset on `new_best`). `check_diversity_trigger.py` forces the diversity channel and validates `trigger=diversity`, its stale-window reset, the shared escalation ladder, `trigger=stale` with the channel off, and the legacy restart parameters. `check_restart_ab.py` runs the legacy-vs-adaptive A/B script in short mode and validates its comparison table, the per-mode `restart_mode=` wiring and the identical budgets.
 
 The SageMath notebook validation needs a real SageMath kernel:
 
@@ -307,9 +308,22 @@ flags, runs both with identical `ODE_SEED` values, and writes a metrics table
 (fitness, vector, generations, times). Results and conclusions are documented in
 [docs/ab-experiment.md](docs/ab-experiment.md).
 
+`scripts/restart_ab.sh` compares the restart modes instead: it runs the *same*
+binary (`build/ode-solver`) twice per seed with identical budgets (case,
+population, dimension, generations, `ODE_STALE_LIMIT`), once with
+`ODE_RESTART_MODE=legacy` and once with `adaptive`, and writes the same metrics
+table. It pins the adaptive knobs to their documented defaults, so the only
+difference between the two rows of a seed is the mode.
+
 ```bash
 scripts/ab_experiment.sh --seed 42 --timeout 300
+scripts/restart_ab.sh --seed "1 42 2026"              # legacy vs adaptive
+scripts/check_restart_ab.py                           # short deterministic check
 ```
+
+Both experiments share the log parser `scripts/metricas.awk`; their checkers
+(`scripts/check_ab_experiment.py` and `scripts/check_restart_ab.py`) validate
+the extraction in short deterministic mode.
 
 ## Files
 

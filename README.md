@@ -210,7 +210,7 @@ ODE_CASE=2 ODE_SEED=42 ./build/ode-solver   # hyperbolic case: y'' - y = 0, solu
 ODE_POP=200 ODE_GEN=1000 ./build/ode-solver # override population size / generation cap
 ODE_DIM=40 ./build/ode-solver               # override the individual dimension
 ODE_WARM_START=1 ODE_SEED=42 ./build/ode-solver  # start from the five prototype seeds
-ODE_RESTART_MODE=adaptive ODE_SEED=42 ./build/ode-solver  # adaptive restart (escalating parameters)
+ODE_RESTART_MODE=adaptive ODE_SEED=42 ./build/ode-solver  # adaptive restart (escalating, elite-preserving, hybrid)
 ```
 
 `ODE_SEED` fixes the `srand()` seed and the chosen value is printed in the
@@ -232,20 +232,29 @@ not 20, the default). The startup line reports the effective configuration
 
 Stagnation restarts are controlled by `ODE_STALE_LIMIT` (default 500
 generations without a new best) and `ODE_RESTART_FRACTION` (default 0.8, the
-share of the population replaced). `ODE_RESTART_MODE` selects the restart mode
-(`legacy`, the default, or `adaptive`) and the startup line reports the
-effective `restart_mode=`. In `adaptive` mode the restart parameters escalate
-(issue #128): `ODE_RESTART_MIN_FRACTION` (default 0.4) grows by 0.2 per
-consecutive restart without a new best up to `ODE_RESTART_FRACTION` (default
-0.8), and after `ODE_RESTART_CAP` (default 3) consecutive restarts they become
-refinement-only (fraction 0.2, mutation share 1.0). A new best resets the
-ladder; `ODE_RESTART_MUTATION_SHARE` (default 0.5) is the hybrid share below
-the cap. Only the escalated fraction is consumed today: the share is logged
-and unit-tested, but the adaptive restart routine that applies it — including
-elite mutations in refinement-only — is still pending (issue #127), so
-adaptive mode runs the escalated fraction through the legacy random
-replacement. `ODE_DIV_THRESHOLD` (default 0.05) is not consumed yet (issue
-#129). Legacy mode keeps the historical restart verbatim.
+share of the population replaced in `legacy` mode). `ODE_RESTART_MODE` selects
+the restart mode (`legacy`, the default, or `adaptive`) and the startup line
+reports the effective `restart_mode=`. In `adaptive` mode the restart
+parameters escalate (issue #128): `ODE_RESTART_MIN_FRACTION` (default 0.4)
+grows by 0.2 per consecutive restart without a new best up to
+`ODE_RESTART_FRACTION` (default 0.8), and after `ODE_RESTART_CAP` (default 3)
+consecutive restarts they become refinement-only (fraction 0.2, mutation share
+1.0). A new best resets the ladder; `ODE_RESTART_MUTATION_SHARE` (default 0.5)
+is the hybrid share below the cap. Each adaptive restart then keeps the
+fittest `100% − fraction` of the population (issue #127) and replaces only the
+worst share: `mutation_share` of the replacements are 1–2-token point
+mutations of elites and the rest fresh uniform individuals, and the all-time
+record survives every restart (re-injected among the replacements when it was
+outside the population). Each `restart |` line reports
+`trigger=stale|diversity`, `fraction=`, `kept=` and `replaced=`, plus
+`mutation_share=` in adaptive mode. Adaptive mode also watches fitness
+diversity (issue #129): each generation it computes the coefficient of
+variation (population std / mean) over the finite fitnesses, and when at least
+25% of the population is finite, a finite record exists, and the CV is below
+`ODE_DIV_THRESHOLD` (default 0.05), the diversity trigger fires through the
+same restart routine and escalation state. Its `restart |` line reports
+`trigger=diversity`; any restart resets the stale-generation window. Legacy
+mode keeps the historical restart verbatim and ignores `ODE_DIV_THRESHOLD`.
 
 The program logs one structured line per event (`[  0.12s] [INFO ] gen=1
 best=... best_ever=... expr=...`), plus `new_best` records, a final `solution`
@@ -263,14 +272,14 @@ very verbose — consider piping through `tail`:
 ctest --test-dir build
 ```
 
-This runs the 13 C++ tests registered in `CMakeLists.txt` (all targets are built by the preceding `cmake --build build`). For a focused test:
+This runs the 14 C++ tests registered in `CMakeLists.txt` (all targets are built by the preceding `cmake --build build`). For a focused test:
 
 ```bash
 cmake --build build --target test_mutation
 ./build/test_mutation
 ```
 
-`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()`/`sinh2dual()`/`cosh2dual()`/`tanh2dual()` derivatives, the `x²`/`x³` leaves, and the constant π/e leaves). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..29`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_population.cpp` asserts the initial population (exact size, per-individual dimension, tokens inside the `1..29` alphabet, opt-in warm start, fixed-seed determinism) and the search-configuration resolver (default dimension 20, `ODE_POP`/`ODE_DIM`/`ODE_GEN` overrides, invalid-value fallback, warm-start/dimension coupling). `test_restart_escalation.cpp` asserts the adaptive restart ladder (0.4 → 0.6 → 0.8, refinement-only after `ODE_RESTART_CAP`, reset on a new best, configured cap and mutation share). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included) and the paper's fitness functional (eq. (4): squared residuals, `λ₁ = λ₂ = 10`, the `Δx = 1/99` integration factor, the Case 1 (`ODE_CASE=1`) and hyperbolic Case 2 (`ODE_CASE=2`) residuals, and independently computed expected values for valid candidates). `test_token.cpp` asserts the public token-alphabet contract (codes `1..29`, arity per token, rendering, validity predicates, `random_token()` bounds). `test_funbobj_const.cpp` asserts that `FunbObj` accessors are const-correct. `test_header_hygiene.cpp` asserts that `dualfunctions.h` is self-contained and uses const references for read-only parameters. The tests link only what each one needs and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp`, `test_token.cpp`, `test_grid.cpp`, `test_population.cpp`, `test_restart_escalation.cpp` and `test_funbobj_const.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp`, `test_population.cpp`, `test_restart_escalation.cpp` and `test_funbobj_const.cpp` include `parse_tree.cpp` directly to reach the header-less `FunbObj`).
+`test_dual.cpp` asserts the dual-number evaluation pipeline (token arities, `parsv()` on known functions, NaN for incomplete expressions, `tan2dual()`/`sinh2dual()`/`cosh2dual()`/`tanh2dual()` derivatives, the `x²`/`x³` leaves, and the constant π/e leaves). `test_semilla.cpp` asserts the `ODE_SEED` resolution rule. `test_mutation.cpp` asserts the DE/rand/1/bin mutation operator (`v = x_r1 + F*(x_r2 - x_r3)` with `F` in `[0,1]`, token rounding/clamping to `1..29`, distinct random base individuals, vector-size safety). `test_crossover.cpp` asserts the binomial crossover (`gen_binomial()` decision per gene, trial size and leftover tokens, forced `j_rand` index, mutant-gene fraction ≈ `Cr`, `x`-token repair). `test_population.cpp` asserts the initial population (exact size, per-individual dimension, tokens inside the `1..29` alphabet, opt-in warm start, fixed-seed determinism) and the search-configuration resolver (default dimension 20, `ODE_POP`/`ODE_DIM`/`ODE_GEN` overrides, invalid-value fallback, warm-start/dimension coupling). `test_restart_escalation.cpp` asserts the adaptive restart ladder (0.4 → 0.6 → 0.8, refinement-only after `ODE_RESTART_CAP`, reset on a new best, configured cap and mutation share). `test_diversity_trigger.cpp` asserts the diversity detector (CV over finite fitnesses only, the ≥25%-finite guard, the finite-record guard, and the strict `ODE_DIV_THRESHOLD` boundary). `test_grid.cpp` asserts the evaluation grid (`x_rango()` returns exactly `npoints` equally spaced points with both endpoints included) and the paper's fitness functional (eq. (4): squared residuals, `λ₁ = λ₂ = 10`, the `Δx = 1/99` integration factor, the Case 1 (`ODE_CASE=1`) and hyperbolic Case 2 (`ODE_CASE=2`) residuals, and independently computed expected values for valid candidates). `test_token.cpp` asserts the public token-alphabet contract (codes `1..29`, arity per token, rendering, validity predicates, `random_token()` bounds). `test_funbobj_const.cpp` asserts that `FunbObj` accessors are const-correct. `test_header_hygiene.cpp` asserts that `dualfunctions.h` is self-contained and uses const references for read-only parameters. The tests link only what each one needs and do not run the evolutionary loop; `test_mutation.cpp`, `test_crossover.cpp`, `test_token.cpp`, `test_grid.cpp`, `test_population.cpp`, `test_restart_escalation.cpp`, `test_diversity_trigger.cpp` and `test_funbobj_const.cpp` need `parse_tree.cpp` and are built with `-DODE_NO_MAIN` so the test's own `main()` runs (`test_grid.cpp`, `test_population.cpp`, `test_restart_escalation.cpp`, `test_diversity_trigger.cpp` and `test_funbobj_const.cpp` include `parse_tree.cpp` directly to reach the header-less `FunbObj`).
 
 The notebook/log checkers run standalone (they are not registered with ctest):
 
@@ -278,9 +287,10 @@ The notebook/log checkers run standalone (they are not registered with ctest):
 python3 scripts/check_dual_validation.py
 python3 scripts/check_run_log.py
 python3 scripts/check_restart_escalation.py
+python3 scripts/check_diversity_trigger.py
 ```
 
-`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log. `check_restart_escalation.py` forces adaptive restarts and validates the sequence the DE loop logs (`fraction=`, `replaced=`, `mutation_share=` and the reset on `new_best`).
+`check_dual_validation.py` executes the notebook's validation cells in plain Python (no SageMath kernel needed). `check_run_log.py` runs the solver in its short deterministic mode and validates the structured log. `check_restart_escalation.py` forces adaptive restarts and validates the sequence the DE loop logs (`fraction=`, `replaced=`, `mutation_share=` and the reset on `new_best`). `check_diversity_trigger.py` forces the diversity channel and validates `trigger=diversity`, its stale-window reset, the shared escalation ladder, `trigger=stale` with the channel off, and the legacy restart parameters.
 
 The SageMath notebook validation needs a real SageMath kernel:
 
@@ -320,6 +330,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `tests/test_grid.cpp` | Evaluation-grid tests |
 | `tests/test_population.cpp` | Population and configuration tests |
 | `tests/test_restart_escalation.cpp` | Adaptive restart escalation tests |
+| `tests/test_diversity_trigger.cpp` | Diversity-trigger CV and guard tests |
 | `tests/test_token.cpp` | Token-alphabet contract tests |
 | `tests/test_funbobj_const.cpp` | `FunbObj` const-correctness tests |
 | `tests/test_header_hygiene.cpp` | Header self-containment and const-reference tests |
@@ -328,6 +339,7 @@ scripts/ab_experiment.sh --seed 42 --timeout 300
 | `scripts/check_dual_validation.py` | Executes the notebook's validation cells without SageMath |
 | `scripts/check_run_log.py` | Validates the structured log from a solver run |
 | `scripts/check_restart_escalation.py` | Validates the adaptive restart wiring in the DE loop |
+| `scripts/check_diversity_trigger.py` | Validates the diversity trigger and shared restart channel |
 | `scripts/run_sage_dual_validation.sh` | Execute the complete notebook in SageMath and verify its output |
 | `scripts/check_sage_dual_validation.py` | Check the executed notebook's 48-case PASS/FAIL result |
 | `docs/sage-dual-validation.md` | SageMath command, environment, and captured evidence |

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Verifica el contrato de AGENTS.md con el layout CMake (issue #52) y la
-salida a log (issue #116).
+"""Verifica el contrato de AGENTS.md con el layout CMake (issue #52), la
+salida a log (issue #116) y las claves del reinicio adaptativo (issue #130).
 
 Despues de #48-#51, los fuentes viven en src/, los tests en tests/, los
 archivos historicos en docs/legacy/ y el ejecutable es build/ode-solver.
@@ -9,13 +9,15 @@ anterior (Makefile, main.exe, test_*.exe en la raiz). Desde #112 el solver
 escribe en ode-solver.log por defecto, asi que los ejemplos que canalizan
 stdout tambien deben pedir ODE_LOG=terminal.
 
-Cuatro seams de verificacion, siempre contra fuentes de verdad externas al
+Cinco seams de verificacion, siempre contra fuentes de verdad externas al
 propio documento:
 
 1. Contenido estatico: sin menciones a main.exe ni comandos `make`, con el
    flujo CMake documentado (cmake -B build, cmake --build build,
-   ctest --test-dir build, build/ode-solver) y las variables de salida
-   ODE_LOG/ODE_LOG_FILE.
+   ctest --test-dir build, build/ode-solver), las variables de salida
+   ODE_LOG/ODE_LOG_FILE, el A/B de reinicios (scripts/restart_ab.sh y su
+   checker) y las piezas compartidas de los A/B (scripts/metricas.awk,
+   scripts/ab_common.sh, scripts/ab_common.py).
 
 2. Contratos preservados: las secciones y reglas que no debian cambiar
    (navegacion con codegraph, logging estructurado, Conventional Commits).
@@ -27,6 +29,10 @@ propio documento:
 4. Ejemplos de corrida: una linea que canaliza build/ode-solver con `|` debe
    forzar ODE_LOG=terminal; en modo archivo (el default) stdout queda vacio
    y el pipe no recibiria nada.
+
+5. Claves del reinicio adaptativo (issue #125/#130): las cinco variables
+   nuevas (mas ODE_RESTART_FRACTION, que pasa a ser el tope) y sus defaults
+   deben estar documentadas, cada una en la linea que el documento le dedica.
 
 En Python seria el equivalente a un test de contrato: valida que la guia
 de agentes y el repo real no se hayan desincronizado, sin ejecutar el
@@ -63,6 +69,11 @@ REQUERIDOS = (
     "ode-solver.log",
     "scripts/check_log_redirect.py",
     "scripts/check_restart_escalation.py",
+    "scripts/restart_ab.sh",
+    "scripts/check_restart_ab.py",
+    "scripts/metricas.awk",
+    "scripts/ab_common.sh",
+    "scripts/ab_common.py",
 )
 
 # Contratos que DEBEN preservarse: si falta alguno, el documento perdio
@@ -103,6 +114,31 @@ RE_BACKTICKS = re.compile(r"`([^`]+)`")
 # Desde #112 el default escribe en ode-solver.log y deja stdout vacio, asi que
 # la linea debe forzar ODE_LOG=terminal.
 RE_EJEMPLO_PIPE = re.compile(r"build/ode-solver[^|\n]*\|")
+
+# Claves del reinicio adaptativo (issues #125/#130) y su default. El valor por
+# defecto es el que resuelve resolver_config (src/parse_tree.cpp) cuando la
+# variable falta o es invalida; el documento debe nombrar cada clave y su
+# default en la misma linea, con el estilo "`ODE_RESTART_MIN_FRACTION` (0.4)"
+# o "`ODE_RESTART_MODE` (`legacy`, the default, ...)".
+CLAVES_REINICIO_ADAPTATIVO = (
+    ("ODE_RESTART_MODE", "legacy"),
+    ("ODE_RESTART_MIN_FRACTION", "0.4"),
+    ("ODE_RESTART_FRACTION", "0.8"),
+    ("ODE_RESTART_CAP", "3"),
+    ("ODE_RESTART_MUTATION_SHARE", "0.5"),
+    ("ODE_DIV_THRESHOLD", "0.05"),
+)
+
+# Default documentado: "(0.4)" o "(`legacy`, ...)". El cierre ")" o la coma
+# despues del valor (con backticks opcionales) evitan el falso positivo de
+# subcadena (que "3" valide "(30)"). En Python seria
+# re.search(r"\(`?VALOR`?\s*[,)]", linea).
+RE_DEFAULT_DOC = r"\(\s*`?{}\s*`?[,)]"
+
+
+def patron_default(valor):
+    """Regex del default documentado entre parentesis."""
+    return re.compile(RE_DEFAULT_DOC.format(re.escape(valor)))
 
 
 def leer_texto(path):
@@ -231,6 +267,29 @@ def verificar_cmake(texto):
     return errores
 
 
+def verificar_claves_reinicio(texto):
+    """Seam 5: cada clave del reinicio adaptativo con su default documentado.
+
+    La guia debe nombrar las cinco claves del #125 (mas ODE_RESTART_FRACTION,
+    que cambio de rol a tope) y el default en la misma linea, entre parentesis
+    (el estilo del documento: "`ODE_RESTART_MIN_FRACTION` (0.4) ..."). El
+    patron exige el cierre ")" o una coma tras el valor, para que "3" no
+    valide un "(30)". En Python seria
+    `any(clave in linea and patron.search(linea) for linea in lineas)`.
+    """
+    errores = []
+    lineas = texto.splitlines()
+    for clave, por_defecto in CLAVES_REINICIO_ADAPTATIVO:
+        patron = patron_default(por_defecto)
+        if not any(clave in linea and patron.search(linea)
+                   for linea in lineas):
+            errores.append(
+                f"AGENTS.md no documenta {clave} con su default "
+                f"{por_defecto!r} entre parentesis en la misma linea"
+            )
+    return errores
+
+
 def main():
     texto = leer_texto(AGENTS_MD)
     if not texto:
@@ -242,6 +301,7 @@ def main():
     errores.extend(verificar_ejemplos_salida(texto))
     errores.extend(verificar_rutas(texto))
     errores.extend(verificar_cmake(texto))
+    errores.extend(verificar_claves_reinicio(texto))
 
     if errores:
         for error in errores:

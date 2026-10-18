@@ -22,7 +22,7 @@
   historical files in `docs/legacy/` (the backup
   `docs/legacy/parse_tree_bckp.cpp` and the notebook
   `docs/legacy/Untitled.ipynb`).
-- `ctest --test-dir build` builds and runs the 14 C++ tests registered in
+- `ctest --test-dir build` builds and runs the 15 C++ tests registered in
   `CMakeLists.txt`: each test file under `tests/` is its own executable, and
   its exit code is nonzero exactly when an assert fails (the same contract
   as pytest). For a focused test, build its target and run it directly:
@@ -124,7 +124,8 @@
   exit.
 - `tests/test_grid.cpp`, `tests/test_population.cpp`,
   `tests/test_funbobj_const.cpp`, `tests/test_ode_cases.cpp`,
-  `tests/test_per_case_config.cpp`, and `tests/test_restart_escalation.cpp`
+  `tests/test_per_case_config.cpp`, `tests/test_restart_escalation.cpp`,
+  `tests/test_diversity_trigger.cpp`, and `tests/test_restart_lifecycle.cpp`
   include `parse_tree.cpp` directly because `FunbObj` has no header. Their
   CMake rules intentionally compile with `-DODE_NO_MAIN` and keep
   `parse_tree.cpp` off the compile line; do not "simplify" this into

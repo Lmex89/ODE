@@ -768,6 +768,68 @@ bool dispara_reinicio_por_diversidad(const ResumenDiversidad& resumen,
     return resumen.coeficiente_variacion < umbral;
 }
 
+// -------------------------------------------------------------------------
+// ControlReinicio: ciclo de vida del reinicio (issue #138).
+//
+// Es la costura entre el bucle DE y la decision de reiniciar: main() le
+// entrega los hechos ya calculados de cada generacion y recibe un valor; el
+// modulo no conoce Population/FunbObj, no reemplaza individuos y no registra
+// log. La configuracion de la corrida se copia una sola vez en el constructor
+// para que las llamadas por generacion solo lleven hechos. En Python seria
+// una clase con estado propio (`self.config`) y un metodo `decidir`.
+// -------------------------------------------------------------------------
+
+// DisparadorReinicio: canal que motivo la decision. `ninguno` es "no
+// reiniciar"; `stale` y `diversity` coinciden con los valores historicos del
+// campo `trigger=` del log (issues #125 y #129). En Python seria un Enum.
+enum class DisparadorReinicio { ninguno, stale, diversity };
+
+// DecisionReinicio: valor devuelto por ControlReinicio::decidir(). El campo
+// `disparador` distingue "no reinicio" de un reinicio real sin usar punteros
+// nulos; `parametros` solo tiene sentido cuando hay reinicio. En Python seria
+// un dataclass con `trigger: DisparadorReinicio = NINGUNO` y `parametros`.
+struct DecisionReinicio {
+    DisparadorReinicio disparador = DisparadorReinicio::ninguno;
+    ParametrosReinicio parametros{};
+
+    // hay_reinicio: predicado legible para main() y para los tests; evita
+    // comparar contra `ninguno` en cada consumidor. En Python seria
+    // `return self.disparador is not DisparadorReinicio.NINGUNO`.
+    bool hay_reinicio() const {
+        return disparador != DisparadorReinicio::ninguno;
+    }
+};
+
+// ControlReinicio: estado del ciclo de vida de una corrida. La configuracion
+// se guarda por valor y es inmutable (`const`); el escalador es el unico
+// colaborador con estado y se conserva entre generaciones. En Python seria
+// `class ControlReinicio: def __init__(self, config): self.config = config`.
+class ControlReinicio {
+    public:
+    // El constructor recibe la configuracion resuelta una sola vez (issue
+    // #138); no lee el entorno ni modifica la configuracion recibida. En
+    // Python seria `def __init__(self, config: ConfigBusqueda)`.
+    explicit ControlReinicio(const ConfigBusqueda& config) : config_(config) {}
+
+    // decidir: recibe los hechos de una generacion y devuelve la decision.
+    // En esta primera rebanada (issue #138) el esqueleto aun no implementa
+    // las reglas: siempre devuelve "no reinicio". Las rebanadas siguientes
+    // consumen `nuevo_record` y `diversidad` y usan `escalador_`. En Python
+    // seria `return DecisionReinicio()`.
+    DecisionReinicio decidir(bool nuevo_record,
+                             const ResumenDiversidad& diversidad) {
+        // Se marcan como no usados de forma explicita: la costura ya existe,
+        // pero el esqueleto todavia no la consume.
+        (void)nuevo_record;
+        (void)diversidad;
+        return DecisionReinicio{};
+    }
+
+    private:
+    const ConfigBusqueda config_;
+    EscaladorReinicio escalador_;
+};
+
 // parte_entera: cuantos elementos representa la fraccion `fraccion` de un
 // total `total`, truncando hacia abajo. Es el int(f*n) que el reinicio usa
 // tanto para la fraccion de reemplazo como para la cuota de mutacion, en un

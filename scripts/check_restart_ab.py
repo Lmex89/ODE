@@ -12,7 +12,8 @@ gen=200, stale_limit=20, 30s de timeout por corrida) y valida:
 
 1. La tabla comparativa: `metricas.tsv` tiene una fila por modo (legacy y
    adaptive) con los ocho campos estandar extraidos (sin "?") y valores
-   plausibles, y la tabla se imprime en stdout.
+   plausibles; en stdout se imprime el metricas.tsv completo y el resumen
+   pareado por semilla (fitness de cada modo, `mejor` y CPU).
 2. El cableado por modo: cada log capturado reporta su `restart_mode=`
    efectivo en `de_run_start` y al menos una linea `restart |`, es decir el
    A/B ejercita de verdad el mecanismo de reinicio en ambos modos.
@@ -20,21 +21,29 @@ gen=200, stale_limit=20, 30s de timeout por corrida) y valida:
    `max_generations=`, `stale_limit=`, `population=` y `case=`, y los valores
    pedidos por flags (`--gen`, `--stale-limit`) llegan al binario.
 
-En Python seria el equivalente a un test de integracion de pytest que corre
-el script del experimento como subproceso y valida su tabla de resultados, el
-mismo patron que `check_ab_experiment.py`.
+Las piezas comunes con `check_ab_experiment.py` (entorno, corrida, lectura de
+metricas.tsv y clave=valor del log) viven en scripts/ab_common.py. En Python
+seria el equivalente a un test de integracion de pytest que corre el script
+del experimento como subproceso y valida su tabla de resultados, el mismo
+patron que `check_ab_experiment.py`.
 """
 
-import math
-import os
 import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+from ab_common import (
+    REPO_ROOT,
+    correr_script,
+    es_finito,
+    estado_valido,
+    leer_metricas,
+    pares_clave_valor,
+)
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+
 EXPERIMENTO = REPO_ROOT / "scripts" / "restart_ab.sh"
 
 SEMILLA = "42"
@@ -56,56 +65,24 @@ CAMPOS_PRESUPUESTO = ("max_generations", "stale_limit", "population", "case")
 
 RE_DE_RUN_START = re.compile(r"de_run_start \|")
 RE_REINICIO = re.compile(r"restart \|")
-RE_CLAVE_VALOR = re.compile(r"(\w+)=([^\s]+)")
-
-
-def entorno_controlado():
-    """Copia os.environ sin las variables ODE_* (un ODE_GEN u ODE_CASE del
-    shell cambiaria las corridas del script) y fija ODE_GEN para que el
-    binario corra con el presupuesto corto; el script fija ODE_SEED,
-    ODE_RESTART_MODE y ODE_STALE_LIMIT en cada corrida via flags."""
-    entorno = {clave: valor for clave, valor in os.environ.items()
-               if not clave.startswith("ODE_")}
-    return entorno
 
 
 def correr_experimento(directorio):
-    """Corre scripts/restart_ab.sh en modo corto con el outdir temporal."""
-    return subprocess.run(
-        ["bash", str(EXPERIMENTO),
-         "--seed", SEMILLA,
+    """Corre scripts/restart_ab.sh en modo corto con el outdir temporal.
+
+    El presupuesto corto va por flags (--gen, --stale-limit); `correr_script`
+    deja el entorno limpio de ODE_* (el script fija ODE_SEED, ODE_RESTART_MODE
+    y ODE_STALE_LIMIT en cada corrida via flags).
+    """
+    return correr_script(
+        EXPERIMENTO,
+        ["--seed", SEMILLA,
          "--gen", GEN_CORTO,
          "--stale-limit", STALE_CORTO,
          "--timeout", TIMEOUT_CORRIDA,
          "--outdir", str(directorio)],
-        cwd=REPO_ROOT,
-        env=entorno_controlado(),
-        capture_output=True,
-        text=True,
-        timeout=TIMEOUT_SCRIPT,
-        check=False,
+        TIMEOUT_SCRIPT,
     )
-
-
-def es_finito(texto):
-    """True si el campo extraido es un numero finito; "?" no lo es."""
-    try:
-        return math.isfinite(float(texto))
-    except (TypeError, ValueError):
-        return False
-
-
-def leer_metricas(directorio):
-    """metricas.tsv como dict version -> dict(campo -> valor)."""
-    ruta = Path(directorio) / "metricas.tsv"
-    lineas = [linea for linea in ruta.read_text(encoding="utf-8").splitlines()
-              if linea.strip()]
-    cabecera = lineas[0].split("\t")
-    filas = {}
-    for linea in lineas[1:]:
-        fila = dict(zip(cabecera, linea.split("\t")))
-        filas[fila["version"]] = fila
-    return filas
 
 
 def errores_tabla(filas, salida):
@@ -128,9 +105,14 @@ def errores_tabla(filas, salida):
             errores.append(
                 f"{modo}: semilla extraida {fila.get('semilla')!r}"
             )
-        if fila.get("estado") != "termino":
+        estado = fila.get("estado", "")
+        if not estado_valido(estado):
             errores.append(
-                f"{modo}: la corrida no termino (estado={fila.get('estado')!r})"
+                f"{modo}: estado fuera del vocabulario ({estado!r})"
+            )
+        elif estado != "termino":
+            errores.append(
+                f"{modo}: la corrida no termino (estado={estado!r})"
             )
         if fila.get("convergio", "") not in ("si", "no"):
             errores.append(
@@ -153,11 +135,22 @@ def errores_tabla(filas, salida):
                 f"({GEN_CORTO})"
             )
 
-    # La tabla impresa en stdout: encabezado estandar y ambos modos.
+    # La tabla impresa en stdout: encabezado estandar, ambos modos y el
+    # resumen pareado por semilla (una fila de seis columnas por semilla).
     for esperado in ("mejor_fitness", "generaciones", "tiempo_cpu",
                      "legacy", "adaptive"):
         if esperado not in salida:
             errores.append(f"la tabla impresa no contiene {esperado!r}")
+    for esperado in ("fitness_legacy", "fitness_adaptive"):
+        if esperado not in salida:
+            errores.append(f"el resumen impreso no contiene {esperado!r}")
+    filas_resumen = [linea.split() for linea in salida.splitlines()]
+    if not any(len(campos) == 6 and campos[0] == SEMILLA
+               for campos in filas_resumen):
+        errores.append(
+            f"el resumen impreso no trae una fila de 6 columnas para la "
+            f"semilla {SEMILLA}"
+        )
 
     return errores
 
@@ -166,7 +159,7 @@ def leer_linea_arranque(texto):
     """Primera linea `de_run_start` del log, como dict clave -> valor."""
     for linea in texto.splitlines():
         if RE_DE_RUN_START.search(linea):
-            return dict(RE_CLAVE_VALOR.findall(linea))
+            return pares_clave_valor(linea)
     return {}
 
 
@@ -286,7 +279,8 @@ def main():
         return 1
 
     print("check_restart_ab: PASS | metricas.tsv compara legacy y adaptive "
-          "con presupuestos identicos y reinicios en ambos modos")
+          "con presupuestos identicos, resumen por semilla y reinicios en "
+          "ambos modos")
     return 0
 
 

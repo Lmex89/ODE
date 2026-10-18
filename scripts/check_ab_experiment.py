@@ -16,20 +16,27 @@ Punto de regresion del issue: desde #112 el solver escribe en ode-solver.log
 por defecto y deja stdout vacio; sin ODE_LOG=terminal la corrida de "despues"
 llega vacia al redirect del experimento y metricas.tsv sale toda en "?".
 
-En Python seria el equivalente a un test de integracion de pytest que corre el
-script del experimento como subproceso y valida su tabla de resultados.
+Las piezas comunes con check_restart_ab.py (entorno, corrida, lectura de
+metricas.tsv) viven en scripts/ab_common.py. En Python seria el equivalente a
+un test de integracion de pytest que corre el script del experimento como
+subproceso y valida su tabla de resultados.
 """
 
-import math
-import os
 import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+from ab_common import (
+    REPO_ROOT,
+    correr_script,
+    entorno_controlado,
+    es_finito,
+    leer_metricas,
+)
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+
 EXPERIMENTO = REPO_ROOT / "scripts" / "ab_experiment.sh"
 
 SEMILLA = "42"
@@ -54,51 +61,20 @@ EVIDENCIA_ANTES = ("Seed: ", "BestCurrent", "****-> : ", "f(x)= ")
 RE_VECTOR_HISTORICO = re.compile(r"^\[[0-9]+[, \]]")
 
 
-def entorno_controlado():
-    """Copia os.environ sin las variables ODE_* (un ODE_CASE u ODE_LOG del
-    shell cambiaria la corrida) y fija ODE_GEN para que "despues" termine
-    dentro del timeout; el script fija ODE_SEED en cada corrida."""
-    entorno = {clave: valor for clave, valor in os.environ.items()
-               if not clave.startswith("ODE_")}
-    entorno["ODE_GEN"] = GEN_CORTO
-    return entorno
-
-
 def correr_experimento(directorio):
-    """Corre scripts/ab_experiment.sh con el outdir temporal."""
-    return subprocess.run(
-        ["bash", str(EXPERIMENTO),
-         "--seed", SEMILLA,
+    """Corre scripts/ab_experiment.sh con el outdir temporal.
+
+    Fija ODE_GEN para que "despues" termine dentro del timeout (el script no
+    tiene flag de generaciones); el script fija ODE_SEED en cada corrida.
+    """
+    return correr_script(
+        EXPERIMENTO,
+        ["--seed", SEMILLA,
          "--timeout", TIMEOUT_CORRIDA,
          "--outdir", str(directorio)],
-        cwd=REPO_ROOT,
-        env=entorno_controlado(),
-        capture_output=True,
-        text=True,
-        timeout=TIMEOUT_SCRIPT,
-        check=False,
+        TIMEOUT_SCRIPT,
+        entorno_controlado({"ODE_GEN": GEN_CORTO}),
     )
-
-
-def es_finito(texto):
-    """True si el campo extraido es un numero finito; "?" no lo es."""
-    try:
-        return math.isfinite(float(texto))
-    except ValueError:
-        return False
-
-
-def leer_metricas(directorio):
-    """metricas.tsv como dict version -> dict(campo -> valor)."""
-    ruta = Path(directorio) / "metricas.tsv"
-    lineas = [linea for linea in ruta.read_text(encoding="utf-8").splitlines()
-              if linea.strip()]
-    cabecera = lineas[0].split("\t")
-    filas = {}
-    for linea in lineas[1:]:
-        fila = dict(zip(cabecera, linea.split("\t")))
-        filas[fila["version"]] = fila
-    return filas
 
 
 def errores_despues(directorio, filas):

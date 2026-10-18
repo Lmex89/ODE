@@ -19,6 +19,9 @@
 #   - antes-seedN.log, despues-seedN.log         salida completa de cada corrida
 #   - metricas.tsv                               tabla de la comparacion
 #
+# El arnes comun (cabecera de metricas.tsv, estado de salida, parser del log)
+# vive en scripts/ab_common.sh, compartido con scripts/restart_ab.sh.
+#
 # Uso:
 #   scripts/ab_experiment.sh [--seed "1 42 2026"] [--timeout 300]
 #                            [--outdir DIR] [--before REV]
@@ -31,9 +34,13 @@ set -euo pipefail
 
 REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 
+# Arnes compartido con scripts/restart_ab.sh: estado_de_status, crear_metricas,
+# extraer_metricas, wall_de y mostrar_metricas.
+source "$REPO/scripts/ab_common.sh"
+
 # Valores por defecto, sobreescribibles por variables de entorno o por flags.
 BEFORE_REV=${BEFORE_REV:-bc70e95}   # revision sin los fixes del issue #2
-SEEDS=${SEEDS:-"1 42 2026"}         # una corrida de A y de B por semilla
+SEMILLAS=${SEMILLAS:-"1 42 2026"}   # una corrida de A y de B por semilla
 TIMEOUT_S=${TIMEOUT_S:-300}         # segundos maximos por corrida
 OUTDIR=${OUTDIR:-}
 
@@ -51,7 +58,7 @@ FIN
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --seed)    SEEDS="$2";      shift 2 ;;
+        --seed)    SEMILLAS="$2";   shift 2 ;;
         --timeout) TIMEOUT_S="$2";  shift 2 ;;
         --outdir)  OUTDIR="$2";     shift 2 ;;
         --before)  BEFORE_REV="$2"; shift 2 ;;
@@ -71,7 +78,7 @@ FLAGS="-std=c++17 -Wall -O3"   # los mismos del Makefile
 echo "== Experimento A/B (issue #4) =="
 echo "  version B (despues): $(git -C "$REPO" rev-parse --short HEAD)  $(git -C "$REPO" log -1 --format=%s)"
 echo "  version A (antes)  : $BEFORE_REV"
-echo "  semillas           : $SEEDS"
+echo "  semillas           : $SEMILLAS"
 echo "  timeout por corrida: ${TIMEOUT_S}s"
 echo "  compilador         : $($CXX --version | head -1)"
 echo "  resultados en      : $OUTDIR"
@@ -110,22 +117,16 @@ echo "  sha256 semilla.cpp  : $(sha256sum "$REPO/src/semilla.cpp" | cut -d' ' -f
 echo "  md5 antes/despues  : $(md5sum "$OUTDIR/antes/main.exe" | cut -d' ' -f1) / $(md5sum "$OUTDIR/despues/build/ode-solver" | cut -d' ' -f1)"
 
 # -------------------------------------------------------------------------
-# 4) Correr A y B con cada semilla y extraer las metricas del log.
-#    El parser de los dos formatos de log (historico y nuevo) vive en
-#    scripts/metricas.awk (issue #130), compartido con scripts/restart_ab.sh;
-#    su cabecera documenta las claves y la regla de convergencia.
+# 4) Correr A y B con cada semilla y extraer las metricas del log. El parser
+#    de los dos formatos de log (historico y nuevo) vive en
+#    scripts/metricas.awk (issue #130), compartido con scripts/restart_ab.sh.
 # -------------------------------------------------------------------------
-extraer_metricas() {
-    # $1 = log, $2 = estado ("termino", "timeout" o "error:N").
-    awk -v estado="$2" -f "$REPO/scripts/metricas.awk" "$1"
-}
+METRICAS="$OUTDIR/metricas.tsv"
+crear_metricas "$METRICAS"
 
-METRICS="$OUTDIR/metricas.tsv"
-printf 'version\tsemilla\testado\tconvergio\tgeneraciones\tmejor_fitness\texpresion\tvector\ttiempo_cpu\ttiempo_reloj\n' > "$METRICS"
-
-for SEED in $SEEDS; do
-    for V in antes despues; do
-        LOG="$OUTDIR/$V-seed$SEED.log"
+for SEMILLA in $SEMILLAS; do
+    for VERSION in antes despues; do
+        LOG="$OUTDIR/$VERSION-seed$SEMILLA.log"
         T0=$(date +%s.%N)
         STATUS=0
         # "antes" tiene layout plano (main.exe); "despues" tiene layout nuevo (build/ode-solver).
@@ -133,29 +134,26 @@ for SEED in $SEEDS; do
         # stdout vacio, pero el experimento captura la corrida con el redirect
         # de abajo: "despues" corre con ODE_LOG=terminal (issue #115). "antes"
         # (bc70e95) no conoce ODE_LOG, asi que su invocacion queda intacta.
-        # En Python seria `extra = [] if v == "antes" else ["ODE_LOG=terminal"]`
+        # En Python seria `extra = [] if version == "antes" else ["ODE_LOG=terminal"]`
         # pasado al env de subprocess.run; aqui ENV_SALIDA vacia expande a
         # cero palabras (por eso va sin comillas) y `env` recibe la asignacion
         # como argumento: un word que sale de una expansion no se re-parsea
         # como asignacion de shell.
         ENV_SALIDA=""
-        if [[ "$V" == "antes" ]]; then
-            BIN="./main.exe"
+        if [[ "$VERSION" == "antes" ]]; then
+            BINARIO="./main.exe"
         else
-            BIN="./build/ode-solver"
+            BINARIO="./build/ode-solver"
             ENV_SALIDA="ODE_LOG=terminal"
         fi
-        ( cd "$OUTDIR/$V" && env ODE_SEED="$SEED" $ENV_SALIDA timeout "$TIMEOUT_S" $BIN > "$LOG" 2>&1 ) || STATUS=$?
-        ESTADO="termino"                  # el loop termino por si solo
-        if [[ $STATUS -eq 124 ]]; then
-            ESTADO="timeout"              # lo corto `timeout`
-        elif [[ $STATUS -ne 0 ]]; then
-            ESTADO="error:$STATUS"        # compilacion/ejecucion rota
-        fi
+        ( cd "$OUTDIR/$VERSION" && env ODE_SEED="$SEMILLA" $ENV_SALIDA timeout "$TIMEOUT_S" $BINARIO > "$LOG" 2>&1 ) || STATUS=$?
+        # estado_de_status traduce el codigo: 124 = lo corto `timeout`,
+        # otro distinto de 0 = error:N.
+        ESTADO="$(estado_de_status "$STATUS")"
         T1=$(date +%s.%N)
-        WALL=$(awk -v a="$T0" -v b="$T1" 'BEGIN{printf "%.2f", b-a}')
-        printf '%s\t%s\t%s\n' "$V" "$(extraer_metricas "$LOG" "$ESTADO")" "$WALL" >> "$METRICS"
-        echo "  corrida: $V semilla=$SEED estado=$ESTADO reloj=${WALL}s"
+        WALL="$(wall_de "$T0" "$T1")"
+        printf '%s\t%s\t%s\n' "$VERSION" "$(extraer_metricas "$LOG" "$ESTADO")" "$WALL" >> "$METRICAS"
+        echo "  corrida: $VERSION semilla=$SEMILLA estado=$ESTADO reloj=${WALL}s"
     done
 done
 
@@ -163,6 +161,6 @@ done
 # 5) Mostrar la tabla y dejar el resto en OUTDIR.
 # -------------------------------------------------------------------------
 echo
-column -t -s $'\t' "$METRICS" || cat "$METRICS"
+mostrar_metricas "$METRICAS"
 echo
 echo "logs completos y metricas en: $OUTDIR"

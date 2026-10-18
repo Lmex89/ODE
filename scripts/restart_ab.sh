@@ -17,8 +17,8 @@
 #   - legacy-seedN.log, adaptive-seedN.log   log completo de cada corrida
 #   - metricas.tsv                           tabla comparativa estandar
 #
-# El parser del log es scripts/metricas.awk, el extractor compartido con el
-# experimento antes/despues de scripts/ab_experiment.sh.
+# El parser del log es scripts/metricas.awk y el arnes de corrida vive en
+# scripts/ab_common.sh, ambos compartidos con scripts/ab_experiment.sh.
 #
 # Uso (compilar antes: cmake -B build && cmake --build build):
 #   scripts/restart_ab.sh [--seed "1 42 2026"] [--gen 1000]
@@ -34,11 +34,15 @@ REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 BINARIO="$REPO/build/ode-solver"
 EXTRACTOR="$REPO/scripts/metricas.awk"
 
+# Arnes compartido con scripts/ab_experiment.sh: estado_de_status,
+# crear_metricas, extraer_metricas, wall_de y mostrar_metricas.
+source "$REPO/scripts/ab_common.sh"
+
 # Valores por defecto, sobreescribibles por flags. El presupuesto por defecto
 # (caso 1 del paper, gen 1000, stale_limit 50) mantiene ambos modos dentro de
 # ~35s por corrida y hace disparar reinicios en los dos.
-SEEDS=${SEEDS:-"1 42 2026"}   # una corrida legacy y una adaptive por semilla
-GEN=${GEN:-1000}              # generaciones maximas por corrida
+SEMILLAS=${SEMILLAS:-"1 42 2026"}    # una corrida legacy y una adaptive por semilla
+GENERACIONES=${GENERACIONES:-1000}   # generaciones maximas por corrida
 STALE_LIMIT=${STALE_LIMIT:-50}
 POBLACION=${POBLACION:-100}
 DIMENSION=${DIMENSION:-20}
@@ -64,14 +68,14 @@ FIN
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --seed)        SEEDS="$2";       shift 2 ;;
-        --gen)         GEN="$2";         shift 2 ;;
-        --stale-limit) STALE_LIMIT="$2"; shift 2 ;;
-        --pop)         POBLACION="$2";   shift 2 ;;
-        --dim)         DIMENSION="$2";   shift 2 ;;
-        --case)        CASO="$2";        shift 2 ;;
-        --timeout)     TIMEOUT_S="$2";   shift 2 ;;
-        --outdir)      OUTDIR="$2";      shift 2 ;;
+        --seed)        SEMILLAS="$2";      shift 2 ;;
+        --gen)         GENERACIONES="$2";  shift 2 ;;
+        --stale-limit) STALE_LIMIT="$2";   shift 2 ;;
+        --pop)         POBLACION="$2";     shift 2 ;;
+        --dim)         DIMENSION="$2";     shift 2 ;;
+        --case)        CASO="$2";          shift 2 ;;
+        --timeout)     TIMEOUT_S="$2";     shift 2 ;;
+        --outdir)      OUTDIR="$2";        shift 2 ;;
         -h|--help)     uso; exit 0 ;;
         *) echo "opcion desconocida: $1" >&2; uso >&2; exit 2 ;;
     esac
@@ -96,8 +100,8 @@ SHA_BINARIO=$(sha256sum "$BINARIO" | cut -d' ' -f1)
 echo "== Experimento A/B de reinicios (issue #130): legacy vs adaptive =="
 echo "  revision             : $(git -C "$REPO" rev-parse --short HEAD)  $(git -C "$REPO" log -1 --format=%s)"
 echo "  binario (mismo en A/B): build/ode-solver  sha256=${SHA_BINARIO:0:16}"
-echo "  semillas             : $SEEDS"
-echo "  presupuesto comun    : case=$CASO pop=$POBLACION dim=$DIMENSION gen=$GEN stale_limit=$STALE_LIMIT"
+echo "  semillas             : $SEMILLAS"
+echo "  presupuesto comun    : case=$CASO pop=$POBLACION dim=$DIMENSION gen=$GENERACIONES stale_limit=$STALE_LIMIT"
 echo "  timeout por corrida  : ${TIMEOUT_S}s"
 echo "  resultados en        : $OUTDIR"
 
@@ -107,22 +111,12 @@ if [[ -n "$(git -C "$REPO" status --porcelain)" ]]; then
     echo "  AVISO: hay cambios sin commitear; el binario puede no ser el de HEAD"
 fi
 
-# -------------------------------------------------------------------------
-# extraer_metricas: una fila TSV por corrida. El parser compartido entiende
-# el formato nuevo (claves seed/gen/generations/best/expr/vector/status/
-# elapsed_cpu_s) y el historico; ver la cabecera de scripts/metricas.awk.
-# -------------------------------------------------------------------------
-extraer_metricas() {
-    # $1 = log, $2 = estado ("termino", "timeout" o "error:N").
-    awk -v estado="$2" -f "$EXTRACTOR" "$1"
-}
+METRICAS="$OUTDIR/metricas.tsv"
+crear_metricas "$METRICAS"
 
-METRICS="$OUTDIR/metricas.tsv"
-printf 'version\tsemilla\testado\tconvergio\tgeneraciones\tmejor_fitness\texpresion\tvector\ttiempo_cpu\ttiempo_reloj\n' > "$METRICS"
-
-for SEED in $SEEDS; do
+for SEMILLA in $SEMILLAS; do
     for MODO in legacy adaptive; do
-        LOG="$OUTDIR/$MODO-seed$SEED.log"
+        LOG="$OUTDIR/$MODO-seed$SEMILLA.log"
         T0=$(date +%s.%N)
         STATUS=0
         # Los knobs van explicitos para que la corrida no dependa del shell:
@@ -133,9 +127,9 @@ for SEED in $SEEDS; do
         # subprocess.run([...], env={**os.environ, "ODE_LOG": "terminal", ...}).
         ( cd "$OUTDIR" && env -u ODE_LOG_FILE \
             ODE_LOG=terminal \
-            ODE_SEED="$SEED" \
+            ODE_SEED="$SEMILLA" \
             ODE_CASE="$CASO" \
-            ODE_GEN="$GEN" \
+            ODE_GEN="$GENERACIONES" \
             ODE_POP="$POBLACION" \
             ODE_DIM="$DIMENSION" \
             ODE_WARM_START=0 \
@@ -147,24 +141,49 @@ for SEED in $SEEDS; do
             ODE_RESTART_MUTATION_SHARE=0.5 \
             ODE_DIV_THRESHOLD=0.05 \
             timeout "$TIMEOUT_S" "$BINARIO" > "$LOG" 2>&1 ) || STATUS=$?
-        ESTADO="termino"                  # el loop termino por si solo
-        if [[ $STATUS -eq 124 ]]; then
-            ESTADO="timeout"              # lo corto `timeout`
-        elif [[ $STATUS -ne 0 ]]; then
-            ESTADO="error:$STATUS"        # ejecucion rota
-        fi
+        ESTADO="$(estado_de_status "$STATUS")"
         T1=$(date +%s.%N)
-        WALL=$(awk -v a="$T0" -v b="$T1" 'BEGIN{printf "%.2f", b-a}')
-        printf '%s\t%s\t%s\n' "$MODO" "$(extraer_metricas "$LOG" "$ESTADO")" "$WALL" >> "$METRICS"
-        echo "  corrida: modo=$MODO semilla=$SEED estado=$ESTADO reloj=${WALL}s"
+        WALL="$(wall_de "$T0" "$T1")"
+        printf '%s\t%s\t%s\n' "$MODO" "$(extraer_metricas "$LOG" "$ESTADO")" "$WALL" >> "$METRICAS"
+        echo "  corrida: modo=$MODO semilla=$SEMILLA estado=$ESTADO reloj=${WALL}s"
     done
 done
 
 # -------------------------------------------------------------------------
-# Tabla comparativa: la unica diferencia entre las dos filas de cada semilla
-# es ODE_RESTART_MODE; el resto del presupuesto es comun.
+# resumen_semillas: una fila por semilla pareando los dos modos; `mejor` es el
+# modo de menor mejor_fitness ("empate" si coinciden, "?" si a alguno no se le
+# extrajo). En Python seria un dict por semilla y un bucle que arma la tabla.
+# -------------------------------------------------------------------------
+resumen_semillas() {
+    # $1 = ruta del metricas.tsv.
+    awk -F'\t' '
+        BEGIN {
+            printf "semilla\tfitness_legacy\tfitness_adaptive\tmejor\tcpu_legacy\tcpu_adaptive\n"
+        }
+        $1 == "legacy" { fit_l = $6; cpu_l = $9 }
+        $1 == "adaptive" {
+            fit_a = $6; cpu_a = $9
+            mejor = "?"
+            if (fit_l ~ /^-?[0-9]/ && fit_a ~ /^-?[0-9]/) {
+                if (fit_l + 0 < fit_a + 0) mejor = "legacy"
+                else if (fit_a + 0 < fit_l + 0) mejor = "adaptive"
+                else mejor = "empate"
+            }
+            printf "%s\t%s\t%s\t%s\t%s\t%s\n",
+                   $2, fit_l, fit_a, mejor, cpu_l, cpu_a
+        }' "$1"
+}
+
+# -------------------------------------------------------------------------
+# Tabla comparativa: primero el resumen pareado por semilla y luego el
+# metricas.tsv completo; la unica diferencia entre los dos modos de una
+# semilla es ODE_RESTART_MODE, el resto del presupuesto es comun.
 # -------------------------------------------------------------------------
 echo
-column -t -s $'\t' "$METRICS" || cat "$METRICS"
+echo "== Resumen por semilla (menor fitness = mejor) =="
+RESUMEN="$(resumen_semillas "$METRICAS")"
+printf '%s\n' "$RESUMEN" | column -t -s $'\t' || printf '%s\n' "$RESUMEN"
+echo
+mostrar_metricas "$METRICAS"
 echo
 echo "logs completos y metricas en: $OUTDIR"

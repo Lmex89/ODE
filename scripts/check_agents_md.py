@@ -15,8 +15,9 @@ propio documento:
 1. Contenido estatico: sin menciones a main.exe ni comandos `make`, con el
    flujo CMake documentado (cmake -B build, cmake --build build,
    ctest --test-dir build, build/ode-solver), las variables de salida
-   ODE_LOG/ODE_LOG_FILE y el A/B de reinicios (scripts/restart_ab.sh y su
-   checker).
+   ODE_LOG/ODE_LOG_FILE, el A/B de reinicios (scripts/restart_ab.sh y su
+   checker) y las piezas compartidas de los A/B (scripts/metricas.awk,
+   scripts/ab_common.sh, scripts/ab_common.py).
 
 2. Contratos preservados: las secciones y reglas que no debian cambiar
    (navegacion con codegraph, logging estructurado, Conventional Commits).
@@ -70,6 +71,9 @@ REQUERIDOS = (
     "scripts/check_restart_escalation.py",
     "scripts/restart_ab.sh",
     "scripts/check_restart_ab.py",
+    "scripts/metricas.awk",
+    "scripts/ab_common.sh",
+    "scripts/ab_common.py",
 )
 
 # Contratos que DEBEN preservarse: si falta alguno, el documento perdio
@@ -114,7 +118,8 @@ RE_EJEMPLO_PIPE = re.compile(r"build/ode-solver[^|\n]*\|")
 # Claves del reinicio adaptativo (issues #125/#130) y su default. El valor por
 # defecto es el que resuelve resolver_config (src/parse_tree.cpp) cuando la
 # variable falta o es invalida; el documento debe nombrar cada clave y su
-# default en la misma linea (estilo "`ODE_RESTART_MIN_FRACTION` (0.4) ...").
+# default en la misma linea, con el estilo "`ODE_RESTART_MIN_FRACTION` (0.4)"
+# o "`ODE_RESTART_MODE` (`legacy`, the default, ...)".
 CLAVES_REINICIO_ADAPTATIVO = (
     ("ODE_RESTART_MODE", "legacy"),
     ("ODE_RESTART_MIN_FRACTION", "0.4"),
@@ -123,6 +128,17 @@ CLAVES_REINICIO_ADAPTATIVO = (
     ("ODE_RESTART_MUTATION_SHARE", "0.5"),
     ("ODE_DIV_THRESHOLD", "0.05"),
 )
+
+# Default documentado: "(0.4)" o "(`legacy`, ...)". El cierre ")" o la coma
+# despues del valor (con backticks opcionales) evitan el falso positivo de
+# subcadena (que "3" valide "(30)"). En Python seria
+# re.search(r"\(`?VALOR`?\s*[,)]", linea).
+RE_DEFAULT_DOC = r"\(\s*`?{}\s*`?[,)]"
+
+
+def patron_default(valor):
+    """Regex del default documentado entre parentesis."""
+    return re.compile(RE_DEFAULT_DOC.format(re.escape(valor)))
 
 
 def leer_texto(path):
@@ -255,18 +271,21 @@ def verificar_claves_reinicio(texto):
     """Seam 5: cada clave del reinicio adaptativo con su default documentado.
 
     La guia debe nombrar las cinco claves del #125 (mas ODE_RESTART_FRACTION,
-    que cambio de rol a tope) y el default en la misma linea; el estilo del
-    documento es "`ODE_RESTART_MIN_FRACTION` (0.4) ...". En Python seria
-    `any(clave in linea and default in linea for linea in lineas)`.
+    que cambio de rol a tope) y el default en la misma linea, entre parentesis
+    (el estilo del documento: "`ODE_RESTART_MIN_FRACTION` (0.4) ..."). El
+    patron exige el cierre ")" o una coma tras el valor, para que "3" no
+    valide un "(30)". En Python seria
+    `any(clave in linea and patron.search(linea) for linea in lineas)`.
     """
     errores = []
     lineas = texto.splitlines()
     for clave, por_defecto in CLAVES_REINICIO_ADAPTATIVO:
-        if not any(clave in linea and por_defecto in linea
+        patron = patron_default(por_defecto)
+        if not any(clave in linea and patron.search(linea)
                    for linea in lineas):
             errores.append(
                 f"AGENTS.md no documenta {clave} con su default "
-                f"{por_defecto!r} en la misma linea"
+                f"{por_defecto!r} entre parentesis en la misma linea"
             )
     return errores
 

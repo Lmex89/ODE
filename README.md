@@ -311,9 +311,11 @@ flags, runs both with identical `ODE_SEED` values, and writes a metrics table
 `scripts/restart_ab.sh` compares the restart modes instead: it runs the *same*
 binary (`build/ode-solver`) twice per seed with identical budgets (case,
 population, dimension, generations, `ODE_STALE_LIMIT`), once with
-`ODE_RESTART_MODE=legacy` and once with `adaptive`, and writes the same metrics
-table. It pins the adaptive knobs to their documented defaults, so the only
-difference between the two rows of a seed is the mode.
+`ODE_RESTART_MODE=legacy` and once with `adaptive`. It pins the adaptive knobs
+to their documented defaults, so the only difference between the two rows of a
+seed is the mode. It prints a paired per-seed summary — best fitness of each
+mode, which mode wins and the CPU time of each — and writes the same metrics
+table.
 
 ```bash
 scripts/ab_experiment.sh --seed 42 --timeout 300
@@ -321,9 +323,11 @@ scripts/restart_ab.sh --seed "1 42 2026"              # legacy vs adaptive
 scripts/check_restart_ab.py                           # short deterministic check
 ```
 
-Both experiments share the log parser `scripts/metricas.awk`; their checkers
-(`scripts/check_ab_experiment.py` and `scripts/check_restart_ab.py`) validate
-the extraction in short deterministic mode.
+Both experiments share their runner pieces: the log parser
+`scripts/metricas.awk` and the helpers `scripts/ab_common.sh` /
+`scripts/ab_common.py`; their checkers (`scripts/check_ab_experiment.py` and
+`scripts/check_restart_ab.py`) validate the extraction in short deterministic
+mode.
 
 ## Files
 
@@ -349,6 +353,11 @@ the extraction in short deterministic mode.
 | `tests/test_funbobj_const.cpp` | `FunbObj` const-correctness tests |
 | `tests/test_header_hygiene.cpp` | Header self-containment and const-reference tests |
 | `scripts/ab_experiment.sh` | Reproducible A/B experiment (pre-fix vs post-fix, same seed) |
+| `scripts/check_ab_experiment.py` | Short deterministic check of the before/after experiment |
+| `scripts/restart_ab.sh` | Legacy-vs-adaptive restart A/B on the same binary (issue #130) |
+| `scripts/check_restart_ab.py` | Short deterministic check of the restart A/B |
+| `scripts/metricas.awk` | Shared log parser that fills `metricas.tsv` for both experiments |
+| `scripts/ab_common.sh` / `scripts/ab_common.py` | Runner helpers shared by the two experiments and their checkers |
 | `docs/ab-experiment.md` | A/B comparison report and conclusions |
 | `scripts/check_dual_validation.py` | Executes the notebook's validation cells without SageMath |
 | `scripts/check_run_log.py` | Validates the structured log from a solver run |

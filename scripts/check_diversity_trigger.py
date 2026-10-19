@@ -30,9 +30,12 @@ from pathlib import Path
 
 BINARIO = Path(__file__).resolve().parents[1] / "build" / "ode-solver"
 
-# Poblacion minima (4) con las cuatro primeras semillas warm start: las cuatro
-# son finitas y el reinicio conserva el record, asi que la proporcion finita
-# nunca cae por debajo del 25% y el disparador puede evaluarse cada generacion.
+# Poblacion minima (4) con arranque aleatorio (warm start apagado): las bases
+# exactas del catalogo (#143) convergen en la generacion 1 y el ciclo de
+# reinicios nunca se ejercita. Con la semilla fija 42 la poblacion aleatoria
+# mantiene individuos finitos y el reinicio conserva el record, asi que la
+# proporcion finita no cae por debajo del 25% y el disparador se evalua cada
+# generacion.
 POBLACION = 4
 GENERACIONES = 20
 SEMILLA = 42
@@ -66,7 +69,7 @@ def entorno_base():
         "ODE_GEN": str(GENERACIONES),
         "ODE_POP": str(POBLACION),
         "ODE_DIM": "20",
-        "ODE_WARM_START": "1",
+        "ODE_WARM_START": "0",
         "ODE_RESTART_MODE": "adaptive",
         "ODE_RESTART_MIN_FRACTION": str(MIN_FRACCION),
         "ODE_RESTART_FRACTION": str(MAX_FRACCION),

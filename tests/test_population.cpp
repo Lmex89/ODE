@@ -179,31 +179,86 @@ static void test_warm_start_opt_in() {
 }
 
 // -------------------------------------------------------------------------
-// Slice 4b (issue #142): el catalogo warm start es por caso. En este tracer
-// solo el caso 6 (Legendre) aporta una base: su solucion exacta (3x^2-1)/2.
-// Los demas casos todavia no tienen entradas y no deben sembrar nada.
+// Slice 4b (issues #142-#143): el catalogo warm start es por caso y todos los
+// casos 0..7 aportan cinco bases. La primera es la solucion exacta (o, en el
+// caso 1, la familia de la serie truncada de Si(x)); las otras cuatro son
+// bloques cercanos de la misma familia. Cada base debe ser una expresion
+// prefija completa, depender de x y evaluar a fitness finita.
 // -------------------------------------------------------------------------
 
+// fitness_de_base: evalua una entrada minima del catalogo con la ODE del caso.
+// En Python seria `FunbObj(base, 0, 1, caso).fitness()`.
+static long double fitness_de_base(const vector<ldouble>& base, int caso) {
+    FunbObj individuo(base, 0.0L, 1.0L, caso);
+    return individuo.fitness();
+}
+
 static void test_catalogo_semillas_por_caso() {
-    // La expresion minima, sin relleno: DIV(ADD(MUL(3, x^2), NEG(1)), 2).
-    // Es la solucion exacta P2(x) = (3x^2-1)/2 transcrita a notacion prefija.
+    const int casos[] = {0, 1, 2, 3, 4, 5, 6, 7};
+
+    for (size_t c = 0; c < sizeof(casos) / sizeof(casos[0]); c++) {
+        const int caso = casos[c];
+        const string etiqueta = "caso " + std::to_string(caso) + ": ";
+        const vector<vector<ldouble>>& catalogo = catalogo_semillas(caso);
+
+        check_int(etiqueta + "el catalogo tiene cinco bases",
+                  static_cast<int>(catalogo.size()), 5);
+
+        bool completas = true;
+        bool dependen_de_x = true;
+        bool finitas = true;
+        for (size_t i = 0; i < catalogo.size(); i++) {
+            FunbObj individuo(catalogo[i], 0.0L, 1.0L, caso);
+            if (individuo.represant().find("()") != string::npos) {
+                completas = false;
+            }
+            bool tiene_x = false;
+            for (size_t j = 0; j < catalogo[i].size(); j++) {
+                if (is_x_dependent(static_cast<int>(catalogo[i][j]))) {
+                    tiene_x = true;
+                }
+            }
+            if (!tiene_x) dependen_de_x = false;
+            if (!std::isfinite(individuo.fitness())) finitas = false;
+        }
+        check_bool(etiqueta + "las cinco bases renderizan completas", completas);
+        check_bool(etiqueta + "las cinco bases dependen de x", dependen_de_x);
+        check_bool(etiqueta + "las cinco bases tienen fitness finita", finitas);
+
+        if (caso == 1) {
+            // Si(x) no esta en el alfabeto: la mejor base es la serie truncada
+            // de tres terminos x - x^3/18 + x^5/600. El limite es holgado
+            // porque la serie solo aproxima la integral exacta.
+            long double mejor = INFINITY;
+            for (size_t i = 0; i < catalogo.size(); i++) {
+                const long double fit = fitness_de_base(catalogo[i], caso);
+                if (fit < mejor) mejor = fit;
+            }
+            check_bool(etiqueta +
+                           "la mejor base expresable tiene fitness < 1e-3",
+                       mejor < 1e-3L);
+        } else {
+            // La primera base es la solucion exacta de la ODE del caso.
+            check_bool(etiqueta +
+                           "la base exacta (primera) tiene fitness < 1e-6",
+                       !catalogo.empty() &&
+                           fitness_de_base(catalogo[0], caso) < 1e-6L);
+        }
+    }
+
+    // El test Legendre previo se conserva: su base exacta sigue siendo
+    // DIV(ADD(MUL(3, x^2), NEG(1)), 2) = (3x^2-1)/2.
     const vector<ldouble> legendre = {
         TOKEN_DIV, TOKEN_ADD, TOKEN_MUL, TOKEN_CONST3,
         TOKEN_X2, TOKEN_NEG, TOKEN_CONST1, TOKEN_CONST2};
-
     const vector<vector<ldouble>>& caso6 = catalogo_semillas(6);
-    check_int("el catalogo del caso 6 tiene una base en el tracer",
-              static_cast<int>(caso6.size()), 1);
-    check_bool("la base del caso 6 es la solucion exacta (3x^2-1)/2",
+    check_bool("la base exacta del caso 6 sigue siendo (3x^2-1)/2",
                !caso6.empty() && caso6[0] == legendre);
 
-    // Casos sin bases definidas: lista vacia, no las cinco semillas viejas.
-    const int sin_bases[] = {0, 1, 2, 3, 4, 5, 7};
-    for (size_t i = 0; i < sizeof(sin_bases) / sizeof(sin_bases[0]); i++) {
-        check_bool("el catalogo no inventa bases para el caso " +
-                       std::to_string(sin_bases[i]),
-                   catalogo_semillas(sin_bases[i]).empty());
-    }
+    // Un caso fuera de 0..7 no inventa bases: el contrato del catalogo es
+    // explicito y no depende del clamp de main().
+    check_bool("un caso fuera de 0..7 no inventa bases",
+               catalogo_semillas(8).empty());
 }
 
 // -------------------------------------------------------------------------
@@ -214,41 +269,73 @@ static void test_catalogo_semillas_por_caso() {
 // -------------------------------------------------------------------------
 
 static void test_warm_start_inyecta_el_catalogo_del_caso() {
-    const vector<ldouble> base = {
-        TOKEN_DIV, TOKEN_ADD, TOKEN_MUL, TOKEN_CONST3,
-        TOKEN_X2, TOKEN_NEG, TOKEN_CONST1, TOKEN_CONST2};
-
+    const int casos[] = {0, 1, 2, 3, 4, 5, 6, 7};
     const int dimensiones[] = {20, 25, 30};
-    for (size_t d = 0; d < sizeof(dimensiones) / sizeof(dimensiones[0]); d++) {
-        const int dimension = dimensiones[d];
-        srand(20261022);
 
-        ConfigBusqueda config;
-        config.poblacion = 20;
-        config.dimension = dimension;
-        config.warm_start = true;
+    for (size_t c = 0; c < sizeof(casos) / sizeof(casos[0]); c++) {
+        const int caso = casos[c];
+        const vector<vector<ldouble>>& catalogo = catalogo_semillas(caso);
 
-        vector<FunbObj> poblacion;
-        const int sembradas = createPopulation(poblacion, config, 6);
+        for (size_t d = 0; d < sizeof(dimensiones) / sizeof(dimensiones[0]); d++) {
+            const int dimension = dimensiones[d];
+            // Semilla distinta por (caso, dimension): el test no depende de
+            // que todos los sorteos aleatorios coincidan.
+            srand(20261022 + caso * 100 + dimension);
 
-        vector<ldouble> esperada = base;
-        esperada.resize(dimension, TOKEN_CONST1);
+            ConfigBusqueda config;
+            config.poblacion = 20;
+            config.dimension = dimension;
+            config.warm_start = true;
 
-        const string etiqueta = "dim " + std::to_string(dimension) + ": ";
-        check_int(etiqueta + "inyecta una semilla del catalogo", sembradas, 1);
-        check_bool(etiqueta + "conserva el tamano de la poblacion",
-                   poblacion.size() == 20);
-        check_bool(etiqueta + "la semilla ocupa el indice 0",
-                   poblacion[0].vecvalue() == esperada);
-        check_bool(etiqueta + "la semilla rellenada renderiza completa",
-                   poblacion[0].represant().find("()") == string::npos);
-        check_bool(etiqueta + "la semilla tiene fitness finita y casi cero",
-                   std::isfinite(poblacion[0].fitness()) &&
-                   poblacion[0].fitness() < 1e-6L);
+            vector<FunbObj> poblacion;
+            const int sembradas = createPopulation(poblacion, config, caso);
+
+            const string etiqueta = "caso " + std::to_string(caso) +
+                                    " dim " + std::to_string(dimension) + ": ";
+            check_int(etiqueta + "inyecta las cinco bases", sembradas, 5);
+            check_bool(etiqueta + "conserva el tamano de la poblacion",
+                       poblacion.size() == 20);
+
+            // Las bases ocupan los primeros indices, en el orden del catalogo
+            // y rellenas con constantes 1 hasta la dimension configurada.
+            bool bases_al_frente = true;
+            for (size_t i = 0; i < catalogo.size() && i < poblacion.size(); i++) {
+                vector<ldouble> esperada = catalogo[i];
+                esperada.resize(dimension, TOKEN_CONST1);
+                if (poblacion[i].vecvalue() != esperada) bases_al_frente = false;
+            }
+            check_bool(etiqueta + "las cinco bases ocupan los primeros indices",
+                       bases_al_frente);
+
+            bool completas = true;
+            for (size_t i = 0; i < catalogo.size() && i < poblacion.size(); i++) {
+                if (poblacion[i].represant().find("()") != string::npos) {
+                    completas = false;
+                }
+            }
+            check_bool(etiqueta + "las bases inyectadas renderizan completas",
+                       completas);
+        }
+
+        // Con la poblacion del paper (100) y warm start, las cinco bases del
+        // caso son exactamente el warm_seeds=5 que reporta la cabecera.
+        srand(20262000 + caso);
+        ConfigBusqueda paper;
+        paper.poblacion = 100;
+        paper.dimension = 20;
+        paper.warm_start = true;
+        vector<FunbObj> poblacion_paper;
+        const int sembradas_paper = createPopulation(poblacion_paper, paper, caso);
+        check_int("caso " + std::to_string(caso) +
+                      ": warm_seeds=5 con poblacion 100",
+                  sembradas_paper, 5);
+        check_bool("caso " + std::to_string(caso) +
+                       ": la poblacion sembrada conserva sus 100 individuos",
+                   poblacion_paper.size() == 100);
     }
 
     // Sin consumo de RNG: con la misma semilla, la cola aleatoria de una
-    // corrida caliente es la poblacion fria desplazada una posicion.
+    // corrida caliente es la poblacion fria desplazada cinco posiciones.
     srand(20261023);
     ConfigBusqueda caliente;
     caliente.poblacion = 20;
@@ -264,9 +351,10 @@ static void test_warm_start_inyecta_el_catalogo_del_caso() {
     vector<FunbObj> sin_semilla;
     createPopulation(sin_semilla, frio, 6);
 
+    const size_t semillas = catalogo_semillas(6).size();
     bool cola_igual = true;
-    for (size_t i = 0; i + 1 < con_semilla.size(); i++) {
-        if (con_semilla[i + 1].vecvalue() != sin_semilla[i].vecvalue()) {
+    for (size_t i = 0; i + semillas < con_semilla.size(); i++) {
+        if (con_semilla[i + semillas].vecvalue() != sin_semilla[i].vecvalue()) {
             cola_igual = false;
         }
     }
@@ -281,7 +369,7 @@ static void test_warm_start_inyecta_el_catalogo_del_caso() {
     otro.dimension = 25;
     otro.warm_start = true;
     vector<FunbObj> poblacion_otro;
-    const int sembradas_otro = createPopulation(poblacion_otro, otro, 0);
+    const int sembradas_otro = createPopulation(poblacion_otro, otro, 8);
     check_int("un caso sin catalogo no inyecta semillas", sembradas_otro, 0);
     check_bool("un caso sin catalogo conserva el tamano de la poblacion",
                poblacion_otro.size() == 10);

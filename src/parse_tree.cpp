@@ -786,11 +786,16 @@ enum class DisparadorReinicio { ninguno, stale, diversity };
 
 // DecisionReinicio: valor devuelto por ControlReinicio::decidir(). El campo
 // `disparador` distingue "no reinicio" de un reinicio real sin usar punteros
-// nulos; `parametros` solo tiene sentido cuando hay reinicio. En Python seria
-// un dataclass con `trigger: DisparadorReinicio = NINGUNO` y `parametros`.
+// nulos; `parametros` solo tiene sentido cuando hay reinicio.
+// `generaciones_sin_mejora` lleva la evidencia que el log `restart |` necesita
+// (`stagnant_gens=`): la ventana ya quedo reseteada dentro de decidir(), asi
+// que main() no puede leerla despues. En Python seria un dataclass con
+// `trigger: DisparadorReinicio = NINGUNO`, `parametros` y
+// `generaciones_sin_mejora: int = 0`.
 struct DecisionReinicio {
     DisparadorReinicio disparador = DisparadorReinicio::ninguno;
     ParametrosReinicio parametros{};
+    int generaciones_sin_mejora = 0;
 
     // hay_reinicio: predicado legible para main() y para los tests; evita
     // comparar contra `ninguno` en cada consumidor. En Python seria
@@ -801,8 +806,9 @@ struct DecisionReinicio {
 };
 
 // ControlReinicio: estado del ciclo de vida de una corrida. La configuracion
-// se guarda por valor y es inmutable (`const`); el escalador es el unico
-// colaborador con estado y se conserva entre generaciones. En Python seria
+// se guarda por valor y es inmutable (`const`); la ventana de estancamiento,
+// la bandera de record y el escalador se conservan entre generaciones. En
+// Python seria
 // `class ControlReinicio: def __init__(self, config): self.config = config`.
 class ControlReinicio {
     public:
@@ -811,20 +817,38 @@ class ControlReinicio {
     // Python seria `def __init__(self, config: ConfigBusqueda)`.
     explicit ControlReinicio(const ConfigBusqueda& config) : config_(config) {}
 
-    // decidir: recibe los hechos de una generacion y devuelve la decision.
-    // En esta primera rebanada (issue #139) implementa el tracking de
-    // estancamiento: cuenta generaciones sin new_best y dispara reinicio stale
-    // cuando alcanza el stale_limit. En Python seria:
-    //   if nuevo_record: self.generaciones_sin_mejora = 0
-    //   else: self.generaciones_sin_mejora += 1
-    //   if self.generaciones_sin_mejora >= self.config.stale_limit:
-    //       self.generaciones_sin_mejora = 0
-    //       return DecisionReinicio(trigger=STALE, params=self.escalador.consumir_siguiente())
-    //   return DecisionReinicio()
+    // decidir: recibe los hechos de una generacion (si hubo `new_best` y el
+    // resumen de diversidad ya calculado) y devuelve la decision (issue #139).
+    // Compone las reglas del ciclo:
+    //   - `new_best` marca que hay record y resetea la ventana y la escalera;
+    //   - al llegar a `stale_limit` dispara `stale` (se evalua antes que
+    //     diversidad, asi que tiene prioridad si ambos canales disparan);
+    //   - solo en adaptive, y si pasan los guards de
+    //     `dispara_reinicio_por_diversidad`, dispara `diversity`;
+    //   - en legacy la diversidad no se evalua y el reinicio usa
+    //     `restart_fraction` sin consumir el escalador;
+    //   - cualquier reinicio resetea la ventana de estancamiento.
+    // En Python seria:
+    //   def decidir(self, nuevo_record, diversidad):
+    //       if nuevo_record:
+    //           self.hay_record = True
+    //           self.generaciones_sin_mejora = 0
+    //           self.escalador.nuevo_record()
+    //       else:
+    //           self.generaciones_sin_mejora += 1
+    //       if self.generaciones_sin_mejora >= self.config.stale_limit:
+    //           return self._reiniciar(STALE)
+    //       if self.config.restart_mode is ADAPTIVE and (
+    //               dispara_reinicio_por_diversidad(
+    //                   diversidad, self.hay_record,
+    //                   self.config.div_threshold)):
+    //           return self._reiniciar(DIVERSITY)
+    //       return DecisionReinicio()
     DecisionReinicio decidir(bool nuevo_record,
                              const ResumenDiversidad& diversidad) {
-        // new_best: actualiza el record y resetea ambas ventanas (estancamiento Y escalera).
-        // En Python: if nuevo_record: self.hay_record = True; self.generaciones_sin_mejora = 0; self.escalador.nuevo_record()
+        // `new_best` es el unico hecho que corta el estancamiento: resetea
+        // tanto la ventana como el episodio de reinicios consecutivos. En
+        // Python: `if nuevo_record: ...; self.escalador.nuevo_record()`.
         if (nuevo_record) {
             hay_record_ = true;
             generaciones_sin_mejora_ = 0;
@@ -833,39 +857,48 @@ class ControlReinicio {
             generaciones_sin_mejora_++;
         }
 
-        // Disparar reinicio stale cuando el contador alcanza el limite. En
-        // Python: if self.generaciones_sin_mejora >= self.config.stale_limit
+        // Stale primero: si ambos canales disparan en la misma generacion,
+        // gana el estancamiento y no se encadenan dos reinicios (issue #125).
         if (generaciones_sin_mejora_ >= config_.stale_limit) {
-            // Resetear el contador para el proximo ciclo de estancamiento
-            generaciones_sin_mejora_ = 0;
-
-            // Consumir parametros del escalador (avanza la escalera de fracciones)
-            DecisionReinicio decision;
-            decision.disparador = DisparadorReinicio::stale;
-            decision.parametros = escalador_.consumir_siguiente(config_);
-            return decision;
+            return reiniciar(DisparadorReinicio::stale);
         }
 
-        // En modo adaptive, evaluar diversidad (issue #139). En Python:
-        // if self.config.restart_mode == ADAPTIVE and dispara_reinicio_por_diversidad(...)
-        if (config_.restart_mode == ModoReinicio::adaptive) {
-            if (dispara_reinicio_por_diversidad(diversidad, hay_record_, config_.div_threshold)) {
-                // Resetear el contador de estancamiento (cualquier reinicio lo resetea)
-                generaciones_sin_mejora_ = 0;
-
-                // Consumir parametros del escalador
-                DecisionReinicio decision;
-                decision.disparador = DisparadorReinicio::diversity;
-                decision.parametros = escalador_.consumir_siguiente(config_);
-                return decision;
-            }
+        // La diversidad solo existe en adaptive (issue #129): en legacy estos
+        // guards ni se evaluan y la corrida historica sigue bit-reproducible.
+        if (config_.restart_mode == ModoReinicio::adaptive &&
+            dispara_reinicio_por_diversidad(diversidad, hay_record_,
+                                            config_.div_threshold)) {
+            return reiniciar(DisparadorReinicio::diversity);
         }
 
-        // Sin reinicio: estancamiento por debajo del limite y diversidad no colapso
+        // Sin reinicio: ventana por debajo del limite y diversidad sin colapso.
         return DecisionReinicio{};
     }
 
     private:
+    // reiniciar: arma la decision de un reinicio real y resetea la ventana,
+    // que ya cumplio su ciclo. En adaptive consume el siguiente escalon del
+    // escalador; en legacy usa la fraccion configurada y no lo toca, porque
+    // el reinicio historico no escala (issue #139). En Python seria
+    // `def _reiniciar(self, trigger): ...`.
+    DecisionReinicio reiniciar(DisparadorReinicio disparador) {
+        // La evidencia se captura antes del reset: main() la usa para el
+        // campo `stagnant_gens=` del log `restart |`.
+        const int estancadas = generaciones_sin_mejora_;
+        generaciones_sin_mejora_ = 0;
+
+        // El ternario elige una sola rama: `consumir_siguiente` solo avanza la
+        // escalera en adaptive, nunca en legacy. La cuota de legacy no la usa
+        // `reiniciar_poblacion`, pero se informa el valor configurado.
+        const ParametrosReinicio parametros =
+            config_.restart_mode == ModoReinicio::adaptive
+                ? escalador_.consumir_siguiente(config_)
+                : ParametrosReinicio{config_.restart_fraction,
+                                     config_.restart_mutation_share};
+
+        return DecisionReinicio{disparador, parametros, estancadas};
+    }
+
     const ConfigBusqueda config_;
     EscaladorReinicio escalador_;
     int generaciones_sin_mejora_ = 0;
@@ -1470,18 +1503,12 @@ int main() {
     // manteniendo el mejor individuo. Esto inyecta diversidad fresca sin perder
     // el mejor hallazgo. configurable via ODE_STALE_LIMIT y ODE_RESTART_FRACTION.
     const int stale_limit = config.stale_limit;
-    int generaciones_sin_mejora = 0;
 
-    // El disparador por diversidad solo existe en modo adaptive (issue #129).
-    // En legacy no se calcula el CV ni se toca el flujo de reinicio: la corrida
-    // historica sigue siendo bit-reproducible. En Python seria
-    // `adaptativo = config.restart_mode == ModoReinicio.ADAPTIVE`.
-    const bool adaptativo = config.restart_mode == ModoReinicio::adaptive;
-
-    // Estado del escalado (issue #128): vive en el bucle DE y solo se consulta
-    // cuando el modo adaptive ejecuta un reinicio. En modo legacy no se usa,
-    // asi que la corrida historica sigue siendo bit-reproducible.
-    EscaladorReinicio escalador;
+    // ControlReinicio (issue #139): el ciclo de vida vive en un solo objeto.
+    // main() ya no lleva su propio contador de estancamiento ni su escalador;
+    // le pasa a decidir() los hechos de la generacion y obedece la decision.
+    // En Python seria `control_reinicio = ControlReinicio(config)`.
+    ControlReinicio control_reinicio(config);
 
     // Cabecera de la corrida (reemplaza el banner de ASCII art): una sola
     // linea con toda la configuracion en clave=valor. `population=` informa el
@@ -1578,7 +1605,11 @@ int main() {
                    << " expr=" << Population[mejor].represant() << '\n';
         cout.flush();
 
-        if (BestCurrent < Bestfit){
+        // `nuevo_record` es el hecho que consume el ciclo de vida: actualiza
+        // el record historico y resetea la ventana y la escalera (issue #139).
+        // En Python seria `nuevo_record = best_current < best_ever`.
+        const bool nuevo_record = BestCurrent < Bestfit;
+        if (nuevo_record){
             Bestfit = BestCurrent;
             Bestvect = Population[mejor].vecvalue();
             // Record nuevo: una sola linea (antes eran cinco con adornos) con
@@ -1588,64 +1619,49 @@ int main() {
                        << " expr=" << parse_tree(Bestvect)
                        << " vector=" << fmt_vector(Bestvect) << '\n';
             cout.flush();
-            // Reinicio del contador de estancamiento: hay un new_best, asi que
-            // la búsqueda está progresando. El escalado tambien vuelve al
-            // primer reinicio suave (issue #128): un record nuevo corta el
-            // episodio de reinicios consecutivos. En Python sería
-            // `generaciones_sin_mejora = 0; escalador.nuevo_record()`.
-            generaciones_sin_mejora = 0;
-            escalador.nuevo_record();
-        } else {
-            // Sin mejora: incremento el contador. En Python sería
-            // `generaciones_sin_mejora += 1`.
-            generaciones_sin_mejora++;
         }
 
-        // Dos disparadores comparten el mismo canal de reinicio (issue #125):
-        // el estancamiento historico y, solo en adaptive, el colapso de
-        // diversidad (issue #129). El de estancamiento tiene prioridad para no
-        // encadenar dos reinicios en la misma generacion. En Python seria
-        // `reiniciar = stagnant or (adaptive and diversity)`.
-        const bool reiniciar_por_estancamiento =
-            generaciones_sin_mejora >= stale_limit;
-
-        bool reiniciar_por_diversidad = false;
-        if (adaptativo && !reiniciar_por_estancamiento){
-            // La muestra es la poblacion de esta generacion; fitness() ya esta
-            // cacheada por la seleccion y el barrido del mejor. En Python seria
-            // `resumen = resumir_diversidad([ind.fitness() for ind in poblacion])`.
+        // El resumen de diversidad solo se calcula en adaptive (issue #129):
+        // en legacy no se evalua y la corrida historica sigue bit-reproducible.
+        // La muestra es la poblacion de esta generacion; fitness() ya esta
+        // cacheada por la seleccion y el barrido del mejor. En Python seria
+        // `resumen = resumir_diversidad([ind.fitness() for ind in poblacion])`.
+        ResumenDiversidad resumen;
+        if (config.restart_mode == ModoReinicio::adaptive){
             vector<ldouble> fitnesses;
             fitnesses.reserve(Population.size());
             for (const FunbObj& individuo : Population){
                 fitnesses.push_back(individuo.fitness());
             }
-            const ResumenDiversidad resumen = resumir_diversidad(fitnesses);
-            // El record existe solo si alguna generacion encontro un fitness
-            // finito (`Bestvect` se llena junto con `Bestfit`).
-            reiniciar_por_diversidad = dispara_reinicio_por_diversidad(
-                resumen, !Bestvect.empty(), config.div_threshold);
+            resumen = resumir_diversidad(fitnesses);
         }
+
+        // El ciclo de vida decide (issue #139): stale tiene prioridad sobre
+        // diversity y cualquier reinicio resetea la ventana de estancamiento.
+        // En Python seria
+        // `decision = control_reinicio.decidir(nuevo_record, resumen)`.
+        const DecisionReinicio decision =
+            control_reinicio.decidir(nuevo_record, resumen);
 
         // El modo lo elige ODE_RESTART_MODE: `legacy` conserva el reinicio
         // historico y `adaptive` usa el reinicio elitista con composicion
         // hibrida (issue #127).
-        if (reiniciar_por_estancamiento || reiniciar_por_diversidad){
+        if (decision.hay_reinicio()){
             int reemplazados = 0;
-            long double fraccion = config.restart_fraction;
+            const long double fraccion = decision.parametros.fraccion;
             string detalle_restart;
             if (config.restart_mode == ModoReinicio::adaptive){
-                // La escalera de #128 decide la fraccion y la cuota de este
-                // reinicio: 0.4 + 0.2 * consecutivos hasta el tope, y
+                // La escalera de #128 ya decidio la fraccion y la cuota de
+                // este reinicio: 0.4 + 0.2 * consecutivos hasta el tope, y
                 // refinamiento-only tras ODE_RESTART_CAP reinicios sin mejora.
-                const ParametrosReinicio escalado = escalador.consumir_siguiente(config);
-                fraccion = escalado.fraccion;
                 const ParametrosReinicioAdaptativo parametros{
-                    escalado.fraccion, escalado.cuota_mutacion,
+                    decision.parametros.fraccion,
+                    decision.parametros.cuota_mutacion,
                     config.dimension, caso};
                 reemplazados = reiniciar_poblacion_adaptativo(
                     Population, Bestvect, parametros);
                 detalle_restart = " mutation_share=" +
-                                  fmt_fijo(escalado.cuota_mutacion, 2);
+                                  fmt_fijo(decision.parametros.cuota_mutacion, 2);
             } else {
                 // `mejor` es el indice del mejor de la generacion actual (el
                 // que el reemplazo respeta); ademas el helper restaura alli el
@@ -1661,20 +1677,20 @@ int main() {
             // colapso de diversidad (issue #129). Las claves viejas (`gen`,
             // `stagnant_gens`, `replaced`) conservan nombre y orden por
             // compatibilidad con los consumidores del log, que leen por clave
-            // (`clave=valor`).
+            // (`clave=valor`). `stagnant_gens=` sale de la decision porque la
+            // ventana ya quedo reseteada dentro de decidir().
             const int conservados = static_cast<int>(Population.size()) - reemplazados;
             const char* trigger =
-                reiniciar_por_diversidad ? "diversity" : "stale";
+                decision.disparador == DisparadorReinicio::diversity
+                    ? "diversity" : "stale";
             log_info() << "restart | gen=" << gen
-                       << " stagnant_gens=" << generaciones_sin_mejora
+                       << " stagnant_gens=" << decision.generaciones_sin_mejora
                        << " replaced=" << reemplazados
                        << " fraction=" << fmt_fijo(fraccion, 2)
                        << detalle_restart
                        << " trigger=" << trigger
                        << " kept=" << conservados << '\n';
             cout.flush();
-            // Resetear el contador para que no se reinicie en la siguiente generación.
-            generaciones_sin_mejora = 0;
         }
 
         if ( Bestfit < eps){

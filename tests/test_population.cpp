@@ -146,62 +146,145 @@ static void test_createPopulation_respeta_la_dimension() {
 }
 
 // -------------------------------------------------------------------------
-// Slice 4 (issue #28): el warm start es opt-in. Por defecto la poblacion es
-// aleatoria uniforme (ecuacion (6) del paper, REVIEW D6); con
-// ODE_WARM_START=1 entran las cinco expresiones escritas a mano del prototipo.
+// Slice 4 (issues #28 y #142): el warm start es opt-in. Por defecto la
+// poblacion es aleatoria uniforme (ecuacion (6) del paper, REVIEW D6); con
+// ODE_WARM_START=1 entran las entradas del catalogo del caso.
 // -------------------------------------------------------------------------
 
 static void test_warm_start_opt_in() {
-    // semillas_warm_start() devuelve la lista por referencia constante (en
-    // Python seria la misma lista del modulo, sin copiarla).
-    const vector<vector<ldouble>>& semillas = semillas_warm_start();
+    // Sin la bandera no entra ninguna entrada del catalogo. srand fijo hace el
+    // sorteo deterministico, asi que la comprobacion no es probabilistica.
+    const vector<ldouble> base = {
+        TOKEN_DIV, TOKEN_ADD, TOKEN_MUL, TOKEN_CONST3,
+        TOKEN_X2, TOKEN_NEG, TOKEN_CONST1, TOKEN_CONST2};
+    vector<ldouble> legendre = base;
+    legendre.resize(20, TOKEN_CONST1);
 
-    check_bool("el prototipo aporta cinco semillas warm start", semillas.size() == 5);
-    bool miden_20 = true;
-    for (size_t i = 0; i < semillas.size(); i++) {
-        if (semillas[i].size() != 20) miden_20 = false;
-    }
-    check_bool("cada semilla mide la dimension del paper (20)", miden_20);
-
-    // Con warm start, las semillas van al frente de la poblacion.
-    srand(20261013);
-    ConfigBusqueda caliente;
-    caliente.poblacion = 10;
-    caliente.warm_start = true;
-    vector<FunbObj> con_semillas;
-    createPopulation(con_semillas, caliente, 0);
-
-    check_bool("warm start produce exactamente la poblacion pedida",
-               con_semillas.size() == 10);
-
-    bool al_frente = true;
-    for (size_t i = 0; i < semillas.size(); i++) {
-        if (con_semillas[i].vecvalue() != semillas[i]) al_frente = false;
-    }
-    check_bool("las cinco semillas estan al frente de la poblacion", al_frente);
-
-    // Ancla independiente: la primera semilla es la expresion `uno` del
-    // prototipo, transcrita aqui como literal para que un cambio accidental de
-    // los datos no pase inadvertido (solo la comprobaria el mismo codigo).
-    vector<ldouble> uno = {18,13,17,11,14,14,11,14,14,14,13,14,14,14,14,14,14,14,14,11};
-    check_bool("la primera semilla es la `uno` del prototipo",
-               con_semillas[0].vecvalue() == uno);
-
-    // Sin warm start ninguna semilla entra. srand fijo hace el sorteo
-    // deterministico, asi que la comprobacion no es probabilistica.
     srand(20261013);
     ConfigBusqueda frio;
     frio.poblacion = 10;
     vector<FunbObj> sin_semillas;
-    createPopulation(sin_semillas, frio, 0);
+    const int sembradas = createPopulation(sin_semillas, frio, 6);
+
+    check_int("sin warm start no se inyectan semillas del catalogo",
+              sembradas, 0);
+    check_bool("sin warm start la poblacion conserva su tamano",
+               sin_semillas.size() == 10);
 
     bool ninguna = true;
     for (size_t i = 0; i < sin_semillas.size(); i++) {
-        for (size_t s = 0; s < semillas.size(); s++) {
-            if (sin_semillas[i].vecvalue() == semillas[s]) ninguna = false;
+        if (sin_semillas[i].vecvalue() == legendre) ninguna = false;
+    }
+    check_bool("sin warm start no aparece la base del catalogo", ninguna);
+}
+
+// -------------------------------------------------------------------------
+// Slice 4b (issue #142): el catalogo warm start es por caso. En este tracer
+// solo el caso 6 (Legendre) aporta una base: su solucion exacta (3x^2-1)/2.
+// Los demas casos todavia no tienen entradas y no deben sembrar nada.
+// -------------------------------------------------------------------------
+
+static void test_catalogo_semillas_por_caso() {
+    // La expresion minima, sin relleno: DIV(ADD(MUL(3, x^2), NEG(1)), 2).
+    // Es la solucion exacta P2(x) = (3x^2-1)/2 transcrita a notacion prefija.
+    const vector<ldouble> legendre = {
+        TOKEN_DIV, TOKEN_ADD, TOKEN_MUL, TOKEN_CONST3,
+        TOKEN_X2, TOKEN_NEG, TOKEN_CONST1, TOKEN_CONST2};
+
+    const vector<vector<ldouble>>& caso6 = catalogo_semillas(6);
+    check_int("el catalogo del caso 6 tiene una base en el tracer",
+              static_cast<int>(caso6.size()), 1);
+    check_bool("la base del caso 6 es la solucion exacta (3x^2-1)/2",
+               !caso6.empty() && caso6[0] == legendre);
+
+    // Casos sin bases definidas: lista vacia, no las cinco semillas viejas.
+    const int sin_bases[] = {0, 1, 2, 3, 4, 5, 7};
+    for (size_t i = 0; i < sizeof(sin_bases) / sizeof(sin_bases[0]); i++) {
+        check_bool("el catalogo no inventa bases para el caso " +
+                       std::to_string(sin_bases[i]),
+                   catalogo_semillas(sin_bases[i]).empty());
+    }
+}
+
+// -------------------------------------------------------------------------
+// Slice 4c (issue #142): createPopulation inyecta las entradas del catalogo
+// del caso al frente de la poblacion, rellenas con constantes 1 hasta la
+// dimension configurada. La inyeccion es determinista y no consume RNG: la
+// cola aleatoria coincide con la de una poblacion fria de la misma semilla.
+// -------------------------------------------------------------------------
+
+static void test_warm_start_inyecta_el_catalogo_del_caso() {
+    const vector<ldouble> base = {
+        TOKEN_DIV, TOKEN_ADD, TOKEN_MUL, TOKEN_CONST3,
+        TOKEN_X2, TOKEN_NEG, TOKEN_CONST1, TOKEN_CONST2};
+
+    const int dimensiones[] = {20, 25, 30};
+    for (size_t d = 0; d < sizeof(dimensiones) / sizeof(dimensiones[0]); d++) {
+        const int dimension = dimensiones[d];
+        srand(20261022);
+
+        ConfigBusqueda config;
+        config.poblacion = 20;
+        config.dimension = dimension;
+        config.warm_start = true;
+
+        vector<FunbObj> poblacion;
+        const int sembradas = createPopulation(poblacion, config, 6);
+
+        vector<ldouble> esperada = base;
+        esperada.resize(dimension, TOKEN_CONST1);
+
+        const string etiqueta = "dim " + std::to_string(dimension) + ": ";
+        check_int(etiqueta + "inyecta una semilla del catalogo", sembradas, 1);
+        check_bool(etiqueta + "conserva el tamano de la poblacion",
+                   poblacion.size() == 20);
+        check_bool(etiqueta + "la semilla ocupa el indice 0",
+                   poblacion[0].vecvalue() == esperada);
+        check_bool(etiqueta + "la semilla rellenada renderiza completa",
+                   poblacion[0].represant().find("()") == string::npos);
+        check_bool(etiqueta + "la semilla tiene fitness finita y casi cero",
+                   std::isfinite(poblacion[0].fitness()) &&
+                   poblacion[0].fitness() < 1e-6L);
+    }
+
+    // Sin consumo de RNG: con la misma semilla, la cola aleatoria de una
+    // corrida caliente es la poblacion fria desplazada una posicion.
+    srand(20261023);
+    ConfigBusqueda caliente;
+    caliente.poblacion = 20;
+    caliente.dimension = 20;
+    caliente.warm_start = true;
+    vector<FunbObj> con_semilla;
+    createPopulation(con_semilla, caliente, 6);
+
+    srand(20261023);
+    ConfigBusqueda frio;
+    frio.poblacion = 20;
+    frio.dimension = 20;
+    vector<FunbObj> sin_semilla;
+    createPopulation(sin_semilla, frio, 6);
+
+    bool cola_igual = true;
+    for (size_t i = 0; i + 1 < con_semilla.size(); i++) {
+        if (con_semilla[i + 1].vecvalue() != sin_semilla[i].vecvalue()) {
+            cola_igual = false;
         }
     }
-    check_bool("sin warm start no aparece ninguna semilla fija", ninguna);
+    check_bool("la inyeccion no consume RNG (la cola aleatoria coincide)",
+               cola_igual);
+
+    // Un caso sin entradas en el catalogo no siembra nada, aunque el warm
+    // start este activo.
+    srand(20261024);
+    ConfigBusqueda otro;
+    otro.poblacion = 10;
+    otro.dimension = 25;
+    otro.warm_start = true;
+    vector<FunbObj> poblacion_otro;
+    const int sembradas_otro = createPopulation(poblacion_otro, otro, 0);
+    check_int("un caso sin catalogo no inyecta semillas", sembradas_otro, 0);
+    check_bool("un caso sin catalogo conserva el tamano de la poblacion",
+               poblacion_otro.size() == 10);
 }
 
 // -------------------------------------------------------------------------
@@ -291,15 +374,16 @@ static void test_config_invalida_usa_respaldo() {
               resolver_config("17abc", nullptr, nullptr, nullptr).poblacion, 100);
 }
 
-static void test_config_warm_start_requiere_dimension_20() {
-    // Las cinco semillas warm start miden 20 tokens: con otra dimension no son
-    // individuos validos para el emparejamiento gen a gen de
-    // Mutation()/Recombination(), asi que la peticion se ignora (el valor
-    // efectivo queda registrado en la linea de arranque).
+static void test_warm_start_cualquier_dimension() {
+    // El warm start ya no depende de que la dimension sea 20: las entradas del
+    // catalogo se rellenan con constantes 1 hasta la dimension configurada.
     ConfigBusqueda config = resolver_config(nullptr, "30", nullptr, "1");
 
     check_int("la dimension pedida se conserva (30)", config.dimension, 30);
-    check_bool("ODE_WARM_START=1 se ignora con ODE_DIM=30", !config.warm_start);
+    check_bool("ODE_WARM_START=1 se respeta con ODE_DIM=30", config.warm_start);
+
+    ConfigBusqueda dim25 = resolver_config(nullptr, "25", nullptr, "1");
+    check_bool("ODE_WARM_START=1 se respeta con ODE_DIM=25", dim25.warm_start);
 }
 
 // -------------------------------------------------------------------------
@@ -716,11 +800,13 @@ int main() {
     test_createPopulation_cantidad_exacta();
     test_createPopulation_respeta_la_dimension();
     test_warm_start_opt_in();
+    test_catalogo_semillas_por_caso();
+    test_warm_start_inyecta_el_catalogo_del_caso();
     test_createPopulation_reproducible();
     test_config_defaults();
     test_config_overrides();
     test_config_invalida_usa_respaldo();
-    test_config_warm_start_requiere_dimension_20();
+    test_warm_start_cualquier_dimension();
     test_reinicio_reemplaza_el_80_por_ciento();
     test_reinicio_restaura_el_record();
     test_reinicio_sin_record_no_toca_el_indice_reservado();

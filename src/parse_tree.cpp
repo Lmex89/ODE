@@ -324,9 +324,6 @@ constexpr int POBLACION_MINIMA = 4;
 constexpr int DIMENSION_MINIMA = 1;
 constexpr int GENERACIONES_MINIMAS = 1;
 
-// Longitud de las cinco semillas warm start escritas a mano.
-constexpr int DIMENSION_SEMILLAS = 20;
-
 // ModoReinicio: modo de reinicio por estancamiento (issue #126). En Python
 // seria `class ModoReinicio(Enum): LEGACY = "legacy"; ADAPTIVE = "adaptive"`.
 // `legacy` conserva el reinicio historico (`reiniciar_poblacion`); `adaptive`
@@ -542,11 +539,12 @@ ConfigBusqueda resolver_config(const char* pop_env, const char* dim_env,
     config.dimension = config_entera(dim_env, defaults.dimension, DIMENSION_MINIMA);
     config.max_generaciones = config_entera(gen_env, defaults.generaciones, GENERACIONES_MINIMAS);
 
-    // Las cinco semillas warm start miden DIMENSION_SEMILLAS tokens: con otra
-    // dimension no valen como individuos (Mutation()/Recombination() emparejan
-    // genes por posicion, B5 de REVIEW.md), asi que se ignora la peticion.
-    config.warm_start = config_bandera(warm_env, false) &&
-                        config.dimension == DIMENSION_SEMILLAS;
+    // El warm start ya no se limita a la dimension historica de 20 tokens:
+    // cada entrada del catalogo se rellena con constantes 1 hasta la dimension
+    // configurada (issue #142). Asi los casos 3-5 (dimensiones 25/30) tambien
+    // pueden sembrarse y Mutation()/Recombination() siguen emparejando genes
+    // por posicion (B5 de REVIEW.md).
+    config.warm_start = config_bandera(warm_env, false);
 
     // Parametros de reinicio (issue #108): stale_limit por defecto 500
     // generaciones, restart_fraction 0.8 (80% de la poblacion). El paper
@@ -607,48 +605,33 @@ vector<long double> vector_population(int tam){
     return ans;
 }
 
-// semillas_warm_start: las cinco expresiones escritas a mano del prototipo.
-// Antes se sembraban SIEMPRE junto a los individuos aleatorios; ahora son un
-// warm start opt-in (ODE_WARM_START=1) para que la inicializacion por defecto
-// sea la aleatoria uniforme de la ecuacion (6) del paper (REVIEW D6). Devuelve
-// la lista por referencia constante para no copiarla en cada uso (en C++ `&`
-// evita la copia; en Python la lista ya se pasaria sin copiar).
-const vector<vector<ldouble>>& semillas_warm_start(){
-    // `static const` se construye una sola vez, como una constante de modulo
-    // en Python, y vive mientras dure el proceso.
-    // Los nombres de token.h son constantes de modulo legibles, equivalentes a
-    // constantes enteras de Python, y evitan repetir los codigos del alfabeto.
-    static const vector<vector<ldouble>> semillas = {
-        {TOKEN_ADD, TOKEN_SIN, TOKEN_SQRT, TOKEN_X, TOKEN_COS, TOKEN_COS,
-         TOKEN_X, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_SIN, TOKEN_COS,
-         TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS,
-         TOKEN_COS, TOKEN_X},                                             // uno
-        {TOKEN_ADD, TOKEN_COS, TOKEN_SIN, TOKEN_SQRT, TOKEN_X, TOKEN_COS,
-         TOKEN_DIV, TOKEN_CONST1, TOKEN_CONST5, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // dos
-        {TOKEN_ADD, TOKEN_SIN, TOKEN_X, TOKEN_SIN, TOKEN_SIN, TOKEN_COS,
-         TOKEN_COS, TOKEN_COS, TOKEN_X, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // tres
-        {TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_SIN, TOKEN_SIN, TOKEN_X,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // cuatro
-        {TOKEN_ADD, TOKEN_SIN, TOKEN_SIN, TOKEN_SIN, TOKEN_X, TOKEN_SIN,
-         TOKEN_X, TOKEN_X, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1}           // c5
+// catalogo_semillas: entradas warm start del caso, en el orden en que se
+// inyectan (bases del caso primero, luego el resto de niveles). Cada entrada es
+// una expresion prefija minima; createPopulation la rellena con constantes 1
+// hasta la dimension configurada. En Python seria un dict
+// `CATALOGO = {6: [ ... ]}` y `CATALOGO.get(caso, [])`.
+const vector<vector<ldouble>>& catalogo_semillas(int caso){
+    // Tracer del issue #142: solo el caso 6 (Legendre) define su base exacta.
+    // Los otros casos devuelven la lista vacia hasta que #143 añada sus bases.
+    static const vector<vector<ldouble>> catalogo_legendre = {
+        // (3*x^2 - 1) / 2, la solucion P2(x) del caso 6.
+        {TOKEN_DIV, TOKEN_ADD, TOKEN_MUL, TOKEN_CONST3,
+         TOKEN_X2, TOKEN_NEG, TOKEN_CONST1, TOKEN_CONST2}
     };
-    return semillas;
+    static const vector<vector<ldouble>> sin_bases;
+
+    if (caso == 6) return catalogo_legendre;
+    return sin_bases;
 }
 
 // createPopulation: llena `Population` (que entra vacia) con exactamente
 // config.poblacion individuos de config.dimension tokens. Es la inicializacion
-// del paper: aleatoria uniforme (ecuacion (6)); las semillas del prototipo
-// solo entran con warm start activo. En Python seria
-// `poblacion += [FunbObj(vector_population(dim), 0, 1, caso) for _ in range(n)]`.
-void createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config, int caso){
+// del paper: aleatoria uniforme (ecuacion (6)) salvo las entradas del catalogo
+// warm start, que solo entran con la bandera activa. Devuelve cuantas entradas
+// del catalogo se inyectaron de verdad (el `warm_seeds=` del log). En Python
+// seria `poblacion += [FunbObj(vector_population(dim), 0, 1, caso) for _ in
+// range(n)]` mas el tramo de semillas.
+int createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config, int caso){
 
     // Precondiciones del inicializador de poblacion:
     // 1. La poblacion entra vacia y se llena con push_back (en Python seria
@@ -660,20 +643,28 @@ void createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config,
     assert(Population.empty());
     assert(config.poblacion >= 1);
 
-    // Warm start: se copian las cinco semillas solo si tienen la dimension
-    // pedida. El chequeo esta tambien en resolver_config (que apaga la
-    // bandera); aqui se compara contra la longitud real de los datos para que
-    // un cambio de las semillas no reintroduzca el desajuste de B5.
-    const vector<vector<ldouble>>& semillas = semillas_warm_start();
-    const int tam_semilla = static_cast<int>(semillas[0].size());
-    const bool usar_semillas = config.warm_start &&
-                               config.dimension == tam_semilla;
-    if (usar_semillas){
-        for (size_t i = 0; i < semillas.size() && static_cast<int>(Population.size()) < config.poblacion; i++){
+    // Warm start: cada entrada del catalogo del caso es una expresion prefija
+    // minima; se rellena con constantes 1 hasta la dimension configurada. El
+    // relleno final no altera la evaluacion porque el interprete consume el
+    // arbol desde el inicio y las hojas sobrantes no participan (mismo patron
+    // que las semillas historicas). Una entrada mas larga que la dimension se
+    // omite: no se puede recortar sin romper el arbol.
+    int semillas_inyectadas = 0;
+    if (config.warm_start){
+        const vector<vector<ldouble>>& catalogo = catalogo_semillas(caso);
+        for (size_t i = 0;
+             i < catalogo.size() &&
+             static_cast<int>(Population.size()) < config.poblacion;
+             i++){
+            if (static_cast<int>(catalogo[i].size()) > config.dimension) continue;
+
+            vector<ldouble> semilla = catalogo[i];
+            semilla.resize(config.dimension, TOKEN_CONST1);
             // `caso` se propaga a cada FunbObj: los tokens no cambian entre
             // casos, solo la ODE que mide fitness(). En Python seria
             // `FunbObj(semilla, 0, 1, caso)`.
-            Population.push_back(FunbObj(semillas[i], 0, 1, caso));
+            Population.push_back(FunbObj(std::move(semilla), 0, 1, caso));
+            semillas_inyectadas++;
         }
     }
 
@@ -683,6 +674,8 @@ void createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config,
     while (static_cast<int>(Population.size()) < config.poblacion){
         Population.push_back(FunbObj(vector_population(config.dimension), 0, 1, caso));
     }
+
+    return semillas_inyectadas;
 }
 
 // ResumenDiversidad: resultado puro de mirar las fitness de una generacion.
@@ -1465,9 +1458,9 @@ int main() {
 
     // Configuracion de la busqueda (issue #28): poblacion, dimension y tope de
     // generaciones del Caso 1 del paper (REVIEW C5-C7), cada uno sobreescribible
-    // con ODE_POP/ODE_DIM/ODE_GEN; el warm start (las cinco semillas del
-    // prototipo) se activa con ODE_WARM_START=1 y por defecto la poblacion es
-    // aleatoria uniforme, como pide la ecuacion (6) del paper. En Python seria
+    // con ODE_POP/ODE_DIM/ODE_GEN; el warm start (el catalogo por caso) se
+    // activa con ODE_WARM_START=1 y por defecto la poblacion es aleatoria
+    // uniforme, como pide la ecuacion (6) del paper. En Python seria
     // `config = ConfigBusqueda.from_env()` leyendo os.environ.
     ConfigBusqueda config = resolver_config(getenv("ODE_POP"), getenv("ODE_DIM"),
                                             getenv("ODE_GEN"), getenv("ODE_WARM_START"),
@@ -1484,7 +1477,9 @@ int main() {
     // que se cruzaban entre si; DE/rand/1/bin (paper) evoluciona una unica
     // poblacion generacion a generacion.
     vector<FunbObj> Population;
-    createPopulation(Population, config, caso);
+    // createPopulation devuelve cuantas entradas del catalogo warm start se
+    // inyectaron de verdad; el resto de la poblacion es aleatoria.
+    const int semillas_warm = createPopulation(Population, config, caso);
 
     // Cr: probabilidad de heredar el gen del mutante en el cruce binomial
     // (eq. (8)). Antes era `int Cr = 85`, un umbral comparado contra el tamano
@@ -1524,6 +1519,7 @@ int main() {
                << " population=" << Population.size()
                << " dimension=" << config.dimension
                << " warm_start=" << (config.warm_start ? 1 : 0)
+               << " warm_seeds=" << semillas_warm
                << " cr=" << fmt_fijo(Cr, 2)
                << " fitness_target=" << fmt_ciencia(eps)
                << " max_generations=" << max_gen

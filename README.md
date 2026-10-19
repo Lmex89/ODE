@@ -89,26 +89,34 @@ flowchart LR
     ROOT --> LOCAL
 ```
 
-Each change travels through a short-lived branch tied to a GitHub issue
-(prefixes in use: `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`) and a pull
-request back to `master`; the shape of the history, with two worked examples:
+### Merging to master
 
-```mermaid
-%%{init: {'gitGraph': {'mainBranchName': 'master'}} }%%
-gitGraph
-    commit id: "issue 112: output to log file"
-    branch feat/112-output-log-file
-    commit id: "feat(output): write solver output to log file"
-    commit id: "test(salida): cover the output resolver"
-    checkout master
-    merge feat/112-output-log-file id: "merge PR 118"
-    commit id: "issue 114: checkers keep terminal mode"
-    branch fix/issue-114-log-checkers-terminal-mode
-    commit id: "fix(scripts): keep stdout log checkers in terminal mode"
-    checkout master
-    merge fix/issue-114-log-checkers-terminal-mode id: "merge PR 121"
-    commit id: "issue N: next change"
+`master` only receives changes through a pull request. Start from the current
+remote tip, keep the branch short-lived and tie it to the issue
+(`feat/`, `fix/`, `docs/`, `chore/`, `refactor/`):
+
+```bash
+git fetch origin
+git switch -c feat/issue-N-short-name origin/master
 ```
+
+Humans and agents follow the same path:
+
+| Step | Human | Agent |
+|------|-------|-------|
+| Commit | Conventional Commits, one logical change | Same |
+| Push | `git push -u origin HEAD` | Same; never commit or push directly to `master` |
+| Open the PR | `gh pr create --base master --fill` | `gh pr create --base master --title "type(scope): ..." --body-file <file>` |
+| Merge | GitHub **Merge pull request**, or `gh pr merge <n> --merge --delete-branch` | Same, once the evidence is in the PR body |
+
+Use the `.agents/skills/pr` template for the PR body (Summary, Evidence, Merge
+Danger) and link the issue with `Closes #<n>`. Under **Evidence**, include the
+commands and results that prove the change works; for solver changes that means
+at least `ctest --test-dir build` plus the affected `scripts/check_*.py`.
+
+GitHub supports merge commits, squash, and rebase; this repository uses merge
+commits (`gh pr merge --merge`) so the branch history stays visible. Delete the
+branch after merging.
 
 ## How it works
 

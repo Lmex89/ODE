@@ -615,7 +615,8 @@ const vector<vector<ldouble>>& catalogo_semillas(int caso){
     // familia de la serie truncada en el caso 1); las otras cuatro son bloques
     // cercanos de la misma familia. Los tickets #144 y #145 agregan despues las
     // semillas precargadas y los bloques genericos.
-    static const vector<vector<ldouble>> catalogo[8] = {
+    static constexpr int NUM_CASOS = 8;
+    static const vector<vector<vector<ldouble>>> catalogo = {
         // Caso 0: y'' + y = 0, y(0)=1, y'(0)=1 -> cos(x) + sin(x).
         {
             {TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_SIN, TOKEN_X},
@@ -717,7 +718,7 @@ const vector<vector<ldouble>>& catalogo_semillas(int caso){
     };
     static const vector<vector<ldouble>> sin_bases;
 
-    if (caso >= 0 && caso < 8) return catalogo[caso];
+    if (caso >= 0 && caso < NUM_CASOS) return catalogo[caso];
     return sin_bases;
 }
 

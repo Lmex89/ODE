@@ -17,6 +17,7 @@
 #include <vector>
 #include <string>
 #include <cstdlib>
+#include <array>
 
 #include "dualfunctions.h"  // ahora autocontenido: incluye <vector>/<string> por si mismo
 #include "token.h"          // expone el contrato publico del rango del alfabeto
@@ -193,45 +194,52 @@ static long double fitness_de_base(const vector<ldouble>& base, int caso) {
     return individuo.fitness();
 }
 
-static void test_catalogo_semillas_por_caso() {
-    const int casos[] = {0, 1, 2, 3, 4, 5, 6, 7};
+// validar_bases_catalogo: verifica que todas las bases de un caso rendericen
+// completas, dependan de x y tengan fitness finita. En Python seria una funcion
+// `assert all(valida(b) for b in catalogo)`.
+static void validar_bases_catalogo(const vector<vector<ldouble>>& catalogo, int caso) {
+    bool completas = true;
+    bool dependen_de_x = true;
+    bool finitas = true;
+    for (const auto& base : catalogo) {
+        FunbObj individuo(base, 0.0L, 1.0L, caso);
+        if (individuo.represant().find("()") != string::npos) {
+            completas = false;
+        }
+        bool tiene_x = false;
+        for (const auto& token : base) {
+            if (is_x_dependent(static_cast<int>(token))) {
+                tiene_x = true;
+            }
+        }
+        if (!tiene_x) dependen_de_x = false;
+        if (!std::isfinite(individuo.fitness())) finitas = false;
+    }
+    const string etiqueta = "caso " + std::to_string(caso) + ": ";
+    check_bool(etiqueta + "las cinco bases renderizan completas", completas);
+    check_bool(etiqueta + "las cinco bases dependen de x", dependen_de_x);
+    check_bool(etiqueta + "las cinco bases tienen fitness finita", finitas);
+}
 
-    for (size_t c = 0; c < sizeof(casos) / sizeof(casos[0]); c++) {
-        const int caso = casos[c];
+static void test_catalogo_semillas_por_caso() {
+    const std::array<int, 8> casos = {0, 1, 2, 3, 4, 5, 6, 7};
+
+    for (const int caso : casos) {
         const string etiqueta = "caso " + std::to_string(caso) + ": ";
         const vector<vector<ldouble>>& catalogo = catalogo_semillas(caso);
 
         check_int(etiqueta + "el catalogo tiene cinco bases",
                   static_cast<int>(catalogo.size()), 5);
 
-        bool completas = true;
-        bool dependen_de_x = true;
-        bool finitas = true;
-        for (size_t i = 0; i < catalogo.size(); i++) {
-            FunbObj individuo(catalogo[i], 0.0L, 1.0L, caso);
-            if (individuo.represant().find("()") != string::npos) {
-                completas = false;
-            }
-            bool tiene_x = false;
-            for (size_t j = 0; j < catalogo[i].size(); j++) {
-                if (is_x_dependent(static_cast<int>(catalogo[i][j]))) {
-                    tiene_x = true;
-                }
-            }
-            if (!tiene_x) dependen_de_x = false;
-            if (!std::isfinite(individuo.fitness())) finitas = false;
-        }
-        check_bool(etiqueta + "las cinco bases renderizan completas", completas);
-        check_bool(etiqueta + "las cinco bases dependen de x", dependen_de_x);
-        check_bool(etiqueta + "las cinco bases tienen fitness finita", finitas);
+        validar_bases_catalogo(catalogo, caso);
 
         if (caso == 1) {
             // Si(x) no esta en el alfabeto: la mejor base es la serie truncada
             // de tres terminos x - x^3/18 + x^5/600. El limite es holgado
             // porque la serie solo aproxima la integral exacta.
             long double mejor = INFINITY;
-            for (size_t i = 0; i < catalogo.size(); i++) {
-                const long double fit = fitness_de_base(catalogo[i], caso);
+            for (const auto& base : catalogo) {
+                const long double fit = fitness_de_base(base, caso);
                 if (fit < mejor) mejor = fit;
             }
             check_bool(etiqueta +
@@ -269,15 +277,13 @@ static void test_catalogo_semillas_por_caso() {
 // -------------------------------------------------------------------------
 
 static void test_warm_start_inyecta_el_catalogo_del_caso() {
-    const int casos[] = {0, 1, 2, 3, 4, 5, 6, 7};
-    const int dimensiones[] = {20, 25, 30};
+    const std::array<int, 8> casos = {0, 1, 2, 3, 4, 5, 6, 7};
+    const std::array<int, 3> dimensiones = {20, 25, 30};
 
-    for (size_t c = 0; c < sizeof(casos) / sizeof(casos[0]); c++) {
-        const int caso = casos[c];
+    for (const int caso : casos) {
         const vector<vector<ldouble>>& catalogo = catalogo_semillas(caso);
 
-        for (size_t d = 0; d < sizeof(dimensiones) / sizeof(dimensiones[0]); d++) {
-            const int dimension = dimensiones[d];
+        for (const int dimension : dimensiones) {
             // Semilla distinta por (caso, dimension): el test no depende de
             // que todos los sorteos aleatorios coincidan.
             srand(20261022 + caso * 100 + dimension);
@@ -299,19 +305,28 @@ static void test_warm_start_inyecta_el_catalogo_del_caso() {
             // Las bases ocupan los primeros indices, en el orden del catalogo
             // y rellenas con constantes 1 hasta la dimension configurada.
             bool bases_al_frente = true;
-            for (size_t i = 0; i < catalogo.size() && i < poblacion.size(); i++) {
-                vector<ldouble> esperada = catalogo[i];
+            size_t i = 0;
+            for (const auto& base : catalogo) {
+                if (i >= poblacion.size()) break;
+                vector<ldouble> esperada = base;
                 esperada.resize(dimension, TOKEN_CONST1);
                 if (poblacion[i].vecvalue() != esperada) bases_al_frente = false;
+                ++i;
             }
             check_bool(etiqueta + "las cinco bases ocupan los primeros indices",
                        bases_al_frente);
 
+            // Las bases inyectadas deben renderizar como expresiones prefijas
+            // completas (sin huecos de aridad). En Python seria
+            // `assert all("()" not in repr(p) for p in poblacion[:len(catalogo)])`.
             bool completas = true;
-            for (size_t i = 0; i < catalogo.size() && i < poblacion.size(); i++) {
-                if (poblacion[i].represant().find("()") != string::npos) {
+            size_t k = 0;
+            for (const auto& individuo : poblacion) {
+                if (k >= catalogo.size()) break;
+                if (individuo.represant().find("()") != string::npos) {
                     completas = false;
                 }
+                ++k;
             }
             check_bool(etiqueta + "las bases inyectadas renderizan completas",
                        completas);

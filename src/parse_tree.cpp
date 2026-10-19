@@ -812,22 +812,64 @@ class ControlReinicio {
     explicit ControlReinicio(const ConfigBusqueda& config) : config_(config) {}
 
     // decidir: recibe los hechos de una generacion y devuelve la decision.
-    // En esta primera rebanada (issue #138) el esqueleto aun no implementa
-    // las reglas: siempre devuelve "no reinicio". Las rebanadas siguientes
-    // consumen `nuevo_record` y `diversidad` y usan `escalador_`. En Python
-    // seria `return DecisionReinicio()`.
+    // En esta primera rebanada (issue #139) implementa el tracking de
+    // estancamiento: cuenta generaciones sin new_best y dispara reinicio stale
+    // cuando alcanza el stale_limit. En Python seria:
+    //   if nuevo_record: self.generaciones_sin_mejora = 0
+    //   else: self.generaciones_sin_mejora += 1
+    //   if self.generaciones_sin_mejora >= self.config.stale_limit:
+    //       self.generaciones_sin_mejora = 0
+    //       return DecisionReinicio(trigger=STALE, params=self.escalador.consumir_siguiente())
+    //   return DecisionReinicio()
     DecisionReinicio decidir(bool nuevo_record,
                              const ResumenDiversidad& diversidad) {
-        // Se marcan como no usados de forma explicita: la costura ya existe,
-        // pero el esqueleto todavia no la consume.
-        (void)nuevo_record;
-        (void)diversidad;
+        // new_best: actualiza el record y resetea ambas ventanas (estancamiento Y escalera).
+        // En Python: if nuevo_record: self.hay_record = True; self.generaciones_sin_mejora = 0; self.escalador.nuevo_record()
+        if (nuevo_record) {
+            hay_record_ = true;
+            generaciones_sin_mejora_ = 0;
+            escalador_.nuevo_record();
+        } else {
+            generaciones_sin_mejora_++;
+        }
+
+        // Disparar reinicio stale cuando el contador alcanza el limite. En
+        // Python: if self.generaciones_sin_mejora >= self.config.stale_limit
+        if (generaciones_sin_mejora_ >= config_.stale_limit) {
+            // Resetear el contador para el proximo ciclo de estancamiento
+            generaciones_sin_mejora_ = 0;
+
+            // Consumir parametros del escalador (avanza la escalera de fracciones)
+            DecisionReinicio decision;
+            decision.disparador = DisparadorReinicio::stale;
+            decision.parametros = escalador_.consumir_siguiente(config_);
+            return decision;
+        }
+
+        // En modo adaptive, evaluar diversidad (issue #139). En Python:
+        // if self.config.restart_mode == ADAPTIVE and dispara_reinicio_por_diversidad(...)
+        if (config_.restart_mode == ModoReinicio::adaptive) {
+            if (dispara_reinicio_por_diversidad(diversidad, hay_record_, config_.div_threshold)) {
+                // Resetear el contador de estancamiento (cualquier reinicio lo resetea)
+                generaciones_sin_mejora_ = 0;
+
+                // Consumir parametros del escalador
+                DecisionReinicio decision;
+                decision.disparador = DisparadorReinicio::diversity;
+                decision.parametros = escalador_.consumir_siguiente(config_);
+                return decision;
+            }
+        }
+
+        // Sin reinicio: estancamiento por debajo del limite y diversidad no colapso
         return DecisionReinicio{};
     }
 
     private:
     const ConfigBusqueda config_;
     EscaladorReinicio escalador_;
+    int generaciones_sin_mejora_ = 0;
+    bool hay_record_ = false;
 };
 
 // parte_entera: cuantos elementos representa la fraccion `fraccion` de un

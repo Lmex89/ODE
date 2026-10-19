@@ -99,8 +99,12 @@
   (variable coefficients: y'' - 2xy' + 4y = 0, ICs y(0)=-2, y'(0)=0,
   solution H₂(x) = 4x²-2), and unset/0 the toy ODE. `ODE_POP`, `ODE_DIM`,
   `ODE_GEN`, and `ODE_WARM_START=1` override the defaults (100 individuals,
-  dimension 20, 5,000 generations); warm start (20-token seeds) activates
-  only when the dimension is 20 (the default).
+  dimension 20, 5,000 generations). Warm start is opt-in and injects the
+  case's catalog at the front of the population, padding each entry with
+  constant-1 tokens up to the configured dimension (no longer limited to
+  dimension 20); the #142 tracer only defines case 6's Legendre exact
+  solution. The run header reports `warm_seeds=N`, the number of catalog
+  entries actually injected.
    `ODE_STALE_LIMIT` (default 500) and `ODE_RESTART_FRACTION` (default 0.8) control the restart mechanism: after `stale_limit` generations without improvement, `restart_fraction` of the population is replaced with fresh random individuals while preserving the best solution found.
    `ODE_RESTART_MODE` (`legacy`, the default, or `adaptive`) selects the restart mode and is reported in the `de_run_start` header. In `adaptive` mode the restart parameters escalate (issue #128): `ODE_RESTART_MIN_FRACTION` (0.4) grows by 0.2 per consecutive restart without a new best up to `ODE_RESTART_FRACTION` (0.8), and after `ODE_RESTART_CAP` (3) consecutive restarts the parameters become refinement-only (fraction 0.2, mutation share 1.0); a `new_best` resets the ladder. Each adaptive restart then keeps the fittest `100% − fraction` of the population (the all-time record always survives, re-injected among the replacements when absent) and replaces only the worst share: `ODE_RESTART_MUTATION_SHARE` (0.5) of the replacements are 1–2-token point mutations of elites and the rest fresh uniform individuals (issue #127). The `restart |` line reports `trigger=stale|diversity`, `fraction=`, `kept=` and `replaced=`, plus `mutation_share=` in adaptive mode. In adaptive mode the diversity trigger (issue #129) computes the coefficient of variation (population std / mean) over the finite fitnesses each generation; it fires through the same restart routine and escalation state when at least 25% of the population is finite, a finite record exists, and the CV is below `ODE_DIV_THRESHOLD` (0.05). A diversity restart logs `trigger=diversity`, and any restart resets the stale-generation window. `ODE_DIV_THRESHOLD` is ignored in legacy mode, which stays bit-reproducible.
 - There is no CI. For behaviorally neutral DE changes, compare fixed-seed runs

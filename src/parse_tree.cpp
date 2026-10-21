@@ -8,6 +8,7 @@
 #include <climits>
 #include <cstdlib>
 #include <algorithm>
+#include <functional>
 #include <utility>
 #include <sstream>
 #include <iomanip>
@@ -605,18 +606,118 @@ vector<long double> vector_population(int tam){
     return ans;
 }
 
+// Tamano de los tres tramos del catalogo warm start: cinco bases por caso
+// (issue #143), cinco semillas precargadas del prototipo (issue #144) y
+// quince bloques genericos compartidos (issue #145). Son `size_t` a proposito:
+// en los tests se comparan contra indices y tamanos de vector, y asi toda la
+// aritmetica de indices queda sin signo (ES.100). En Python serian constantes
+// de modulo `NUM_BASES_POR_CASO = 5`, `NUM_PRECARGADAS = 5` y
+// `NUM_BLOQUES_GENERICOS = 15`.
+constexpr size_t NUM_BASES_POR_CASO = 5;
+constexpr size_t NUM_PRECARGADAS = 5;
+constexpr size_t NUM_BLOQUES_GENERICOS = 15;
+
+// EntradaCatalogo: referencia no propietaria a una entrada del catalogo warm
+// start. `std::reference_wrapper` es el equivalente C++ de una referencia
+// Python a una lista: copiar la entrada copia la referencia, no la lista. En
+// Python el catalogo seria `{caso: [bases..., *PRECARGADAS, *GENERICOS]}`,
+// donde los tramos compartidos son las mismas listas en todos los casos.
+// No transfiere propiedad (I.11): el vector referenciado vive en un `static`
+// de `semillas_precargadas()`, `bloques_genericos()` o `bases_por_caso`.
+using EntradaCatalogo = std::reference_wrapper<const vector<ldouble>>;
+
+// semillas_precargadas: las cinco semillas trigonometricas escritas a mano del
+// prototipo (issue #144). Se conservan con sus 20 tokens originales en vez de
+// recortarlas a su expresion prefija minima: el contrato del issue es que su
+// contenido no cambie. createPopulation las rellena con constantes 1 solo si la
+// dimension configurada supera 20. En Python seria una constante de modulo
+// `PRECARGADAS = [[...], ..., [...]]`.
+const vector<vector<ldouble>>& semillas_precargadas(){
+    // `static const` se construye una sola vez, como una constante de modulo
+    // en Python, y vive mientras dure el proceso.
+    static const vector<vector<ldouble>> semillas = {
+        {TOKEN_ADD, TOKEN_SIN, TOKEN_SQRT, TOKEN_X, TOKEN_COS, TOKEN_COS,
+         TOKEN_X, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_SIN, TOKEN_COS,
+         TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS,
+         TOKEN_COS, TOKEN_X},                                             // uno
+        {TOKEN_ADD, TOKEN_COS, TOKEN_SIN, TOKEN_SQRT, TOKEN_X, TOKEN_COS,
+         TOKEN_DIV, TOKEN_CONST1, TOKEN_CONST5, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // dos
+        {TOKEN_ADD, TOKEN_SIN, TOKEN_X, TOKEN_SIN, TOKEN_SIN, TOKEN_COS,
+         TOKEN_COS, TOKEN_COS, TOKEN_X, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // tres
+        {TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_SIN, TOKEN_SIN, TOKEN_X,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // cuatro
+        {TOKEN_ADD, TOKEN_SIN, TOKEN_SIN, TOKEN_SIN, TOKEN_X, TOKEN_SIN,
+         TOKEN_X, TOKEN_X, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1}           // c5
+    };
+    // El tramo precargado mide exactamente NUM_PRECARGADAS (issue #144): si
+    // el contenido historico se alterara, este assert delata el drift antes
+    // que el oraculo de tests/precargadas_prototipo.h. En Python seria
+    // `assert len(PRECARGADAS) == NUM_PRECARGADAS`.
+    assert(semillas.size() == NUM_PRECARGADAS);
+    return semillas;
+}
+
+// bloques_genericos (issue #145): quince bloques de expresion bien formados
+// compartidos entre todos los casos. Ocupan los indices 10-24 del catalogo y
+// cada caso los referencia sin copiarlos: son las mismas instancias en los
+// ocho catalogos. Son expresiones prefijas minimas, todas dependen de x y
+// evaluan a fitness finita en cualquier caso. En Python seria una constante
+// de modulo `GENERIC_BLOCKS = [[...], ..., [...]]`.
+const vector<vector<ldouble>>& bloques_genericos(){
+    // `static const` se construye una sola vez, como una constante de modulo
+    // en Python, y vive mientras dure el proceso. Cada vector es la expresion
+    // prefija minima del bloque; createPopulation la rellena con constantes 1
+    // hasta la dimension configurada.
+    static const vector<vector<ldouble>> genericos = {
+        {TOKEN_X},                                              // x
+        {TOKEN_X2},                                             // x^2
+        {TOKEN_X3},                                             // x^3
+        {TOKEN_ADD, TOKEN_CONST1, TOKEN_X},                     // 1 + x
+        {TOKEN_ADD, TOKEN_ADD, TOKEN_CONST1, TOKEN_X,           // 1 + x + x^2/2
+         TOKEN_DIV, TOKEN_X2, TOKEN_CONST2},
+        {TOKEN_SIN, TOKEN_X},                                   // sin(x)
+        {TOKEN_COS, TOKEN_X},                                   // cos(x)
+        {TOKEN_ADD, TOKEN_SIN, TOKEN_X, TOKEN_COS, TOKEN_X},    // sin(x) + cos(x)
+        {TOKEN_EXP, TOKEN_X},                                   // e^x
+        {TOKEN_MUL, TOKEN_X, TOKEN_EXP, TOKEN_X},               // x * e^x
+        {TOKEN_SINH, TOKEN_X},                                  // sinh(x)
+        {TOKEN_COSH, TOKEN_X},                                  // cosh(x)
+        {TOKEN_ADD, TOKEN_X, TOKEN_NEG, TOKEN_DIV, TOKEN_X3,    // x - x^3/6
+         TOKEN_CONST6},
+        {TOKEN_ADD, TOKEN_CONST1, TOKEN_NEG, TOKEN_DIV, TOKEN_X2, TOKEN_CONST2},  // 1 - x^2/2
+        {TOKEN_EXP, TOKEN_NEG, TOKEN_X}                         // e^(-x)
+    };
+    // El tramo generico mide exactamente NUM_BLOQUES_GENERICOS (issue #145):
+    // si la lista se alterara, este assert delata el drift. En Python seria
+    // `assert len(GENERIC_BLOCKS) == NUM_BLOQUES_GENERICOS`.
+    assert(genericos.size() == NUM_BLOQUES_GENERICOS);
+    return genericos;
+}
+
 // catalogo_semillas: entradas warm start del caso, en el orden en que se
-// inyectan (bases del caso primero, luego el resto de niveles). Cada entrada es
-// una expresion prefija minima; createPopulation la rellena con constantes 1
-// hasta la dimension configurada. En Python seria un dict
-// `CATALOGO = {0: [...], ..., 7: [...]}` y `CATALOGO.get(caso, [])`.
-const vector<vector<ldouble>>& catalogo_semillas(int caso){
+// inyectan (bases del caso, luego las precargadas compartidas y, desde #145,
+// los bloques genericos). Las bases son expresiones prefijas minimas; las
+// precargadas conservan sus 20 tokens historicos. Cada entrada es una vista
+// (`EntradaCatalogo`), no una copia: los tramos compartidos son las mismas
+// instancias en todos los casos. createPopulation rellena cada entrada con
+// constantes 1 hasta la dimension configurada. En Python seria un dict
+// `CATALOGO = {0: [refs...], ..., 7: [refs...]}` y
+// `CATALOGO.get(caso, [])`.
+const vector<EntradaCatalogo>& catalogo_semillas(int caso){
     // Issue #143: cinco bases por caso. La primera es la solucion exacta (o la
     // familia de la serie truncada en el caso 1); las otras cuatro son bloques
-    // cercanos de la misma familia. Los tickets #144 y #145 agregan despues las
-    // semillas precargadas y los bloques genericos.
+    // cercanos de la misma familia. El ticket #144 agrega despues las semillas
+    // precargadas; #145 agrega los bloques genericos.
     static constexpr int NUM_CASOS = 8;
-    static const vector<vector<vector<ldouble>>> catalogo = {
+    static const vector<vector<vector<ldouble>>> bases_por_caso = {
         // Caso 0: y'' + y = 0, y(0)=1, y'(0)=1 -> cos(x) + sin(x).
         {
             {TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_SIN, TOKEN_X},
@@ -716,10 +817,55 @@ const vector<vector<ldouble>>& catalogo_semillas(int caso){
              TOKEN_CONST2, TOKEN_NEG, TOKEN_CONST2}
         }
     };
-    static const vector<vector<ldouble>> sin_bases;
+    // catalogo: une cada tramo de bases con el tramo precargado compartido y
+    // el tramo generico compartido. Las entradas son vistas no propietarias:
+    // las bases viven en bases_por_caso y los tramos compartidos en sus
+    // funciones estaticas, de modo que los quince genericos son las mismas
+    // instancias en los ocho casos (issue #145). El lambda invocado al momento
+    // (`[](){...}()`) es el idioma C++ para inicializar una constante con
+    // codigo; en Python seria una comprension de diccionario que guarda
+    // referencias a las mismas listas:
+    // `{caso: [*bases, *PRECARGADAS, *GENERICOS] for caso, bases in ...}`.
+    static const vector<vector<EntradaCatalogo>> catalogo = []{
+        vector<vector<EntradaCatalogo>> entradas_por_caso;
+        entradas_por_caso.reserve(bases_por_caso.size());
+        for (const auto& bases : bases_por_caso) {
+            // Cada caso aporta exactamente NUM_BASES_POR_CASO bases (#143):
+            // el catalogo se arma por yuxtaposicion de referencias y un caso
+            // con un tramo de distinto largo romperia los indices 0-4 que
+            // asumen los tests.
+            assert(bases.size() == NUM_BASES_POR_CASO);
+            vector<EntradaCatalogo> entradas;
+            entradas.reserve(NUM_BASES_POR_CASO + NUM_PRECARGADAS +
+                             NUM_BLOQUES_GENERICOS);
+            for (const auto& base : bases) entradas.emplace_back(base);
+            for (const auto& precargada : semillas_precargadas()) {
+                entradas.emplace_back(precargada);
+            }
+            for (const auto& generico : bloques_genericos()) {
+                entradas.emplace_back(generico);
+            }
+            entradas_por_caso.push_back(std::move(entradas));
+        }
+        return entradas_por_caso;
+    }();
+    static const vector<EntradaCatalogo> sin_entradas;
 
     if (caso >= 0 && caso < NUM_CASOS) return catalogo[caso];
-    return sin_bases;
+    return sin_entradas;
+}
+
+// cuota_semillas (issue #146): cuantas entradas del catalogo se inyectan en
+// una poblacion de `poblacion` individuos: min(ceil(0.05 * poblacion),
+// tamano_catalogo). `(poblacion + 19) / 20` es ceil(poblacion / 20) en
+// aritmetica entera (el +19 empuja el residuo al siguiente entero), sin
+// depender de <cmath>. Con el catalogo actual de 25 entradas: pop=100 -> 5,
+// pop=200 -> 10, pop=300 -> 15, pop=400 -> 20, pop=500 -> 25 y de pop=500
+// en adelante el tope es el catalogo completo.
+// En Python seria `min(math.ceil(0.05 * poblacion), len(catalogo))`.
+int cuota_semillas(int poblacion, int tamano_catalogo){
+    const int sin_tope = (poblacion + 19) / 20;
+    return std::min(sin_tope, tamano_catalogo);
 }
 
 // createPopulation: llena `Population` (que entra vacia) con exactamente
@@ -746,17 +892,26 @@ int createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config, 
     // relleno final no altera la evaluacion porque el interprete consume el
     // arbol desde el inicio y las hojas sobrantes no participan (mismo patron
     // que las semillas historicas). Una entrada mas larga que la dimension se
-    // omite: no se puede recortar sin romper el arbol.
+    // omite (no se puede recortar sin romper el arbol) y no consume cuota.
+    // La cuota del 5% (issue #146) topa la inyeccion en
+    // min(ceil(0.05 * poblacion), tamano del catalogo): con pop=100 entran
+    // las cinco bases, con pop=200 las diez primeras, con pop=300 las quince
+    // primeras y con pop=500 el catalogo completo de 25 entradas
+    // (warm_seeds=25).
     int semillas_inyectadas = 0;
     if (config.warm_start){
-        const vector<vector<ldouble>>& catalogo = catalogo_semillas(caso);
+        const vector<EntradaCatalogo>& catalogo = catalogo_semillas(caso);
+        const int cuota = cuota_semillas(config.poblacion,
+                                         static_cast<int>(catalogo.size()));
         for (size_t i = 0;
              i < catalogo.size() &&
-             static_cast<int>(Population.size()) < config.poblacion;
+             static_cast<int>(Population.size()) < config.poblacion &&
+             semillas_inyectadas < cuota;
              i++){
-            if (static_cast<int>(catalogo[i].size()) > config.dimension) continue;
+            const vector<ldouble>& entrada = catalogo[i].get();
+            if (static_cast<int>(entrada.size()) > config.dimension) continue;
 
-            vector<ldouble> semilla = catalogo[i];
+            vector<ldouble> semilla = entrada;
             semilla.resize(config.dimension, TOKEN_CONST1);
             // `caso` se propaga a cada FunbObj: los tokens no cambian entre
             // casos, solo la ODE que mide fitness(). En Python seria

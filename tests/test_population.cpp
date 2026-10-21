@@ -21,6 +21,7 @@
 
 #include "dualfunctions.h"  // ahora autocontenido: incluye <vector>/<string> por si mismo
 #include "token.h"          // expone el contrato publico del rango del alfabeto
+#include "precargadas_prototipo.h"  // oraculo independiente del tramo precargado (#144)
 
 // En vez de declarar prototipos sueltos, este test incluye parse_tree.cpp
 // entero: createPopulation y FunbObj viven ahi sin header. En Python seria
@@ -196,37 +197,10 @@ static long double fitness_de_base(const vector<ldouble>& base, int caso) {
     return individuo.fitness();
 }
 
-// precargadas_del_prototipo: las cinco semillas trigonometricas escritas a
-// mano que el prototipo inyectaba antes de existir el catalogo por caso
-// (issue #144). Los literales se copian de esa implementacion historica, no
-// del catalogo actual: son la fuente de verdad independiente para comprobar
-// que el tramo precargado conserva su contenido. En Python seria una lista de
-// listas de enteros.
-static const vector<vector<ldouble>>& precargadas_del_prototipo() {
-    static const vector<vector<ldouble>> semillas = {
-        {TOKEN_ADD, TOKEN_SIN, TOKEN_SQRT, TOKEN_X, TOKEN_COS, TOKEN_COS,
-         TOKEN_X, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_SIN, TOKEN_COS,
-         TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS,
-         TOKEN_COS, TOKEN_X},                                             // uno
-        {TOKEN_ADD, TOKEN_COS, TOKEN_SIN, TOKEN_SQRT, TOKEN_X, TOKEN_COS,
-         TOKEN_DIV, TOKEN_CONST1, TOKEN_CONST5, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // dos
-        {TOKEN_ADD, TOKEN_SIN, TOKEN_X, TOKEN_SIN, TOKEN_SIN, TOKEN_COS,
-         TOKEN_COS, TOKEN_COS, TOKEN_X, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // tres
-        {TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_SIN, TOKEN_SIN, TOKEN_X,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // cuatro
-        {TOKEN_ADD, TOKEN_SIN, TOKEN_SIN, TOKEN_SIN, TOKEN_X, TOKEN_SIN,
-         TOKEN_X, TOKEN_X, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
-         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1}           // c5
-    };
-    return semillas;
-}
+// Total del catalogo: bases del caso + precargadas del prototipo. Las
+// constantes llegan de parse_tree.cpp (incluido arriba), la misma fuente que
+// la produccion usa para armar el catalogo.
+constexpr size_t TOTAL_CATALOGO = NUM_BASES_POR_CASO + NUM_PRECARGADAS;
 
 // validar_bases_catalogo: verifica que todas las entradas de un caso (bases y
 // precargadas) rendericen completas y dependan de x; ademas, que las cinco
@@ -250,11 +224,11 @@ static void validar_bases_catalogo(const vector<vector<ldouble>>& catalogo, int 
             }
         }
         if (!tiene_x) dependen_de_x = false;
-        // Solo las cinco bases (#143) estan garantizadas finitas. Las cinco
-        // precargadas son el contenido historico intacto (#144); algunas usan
-        // SQRT(X) y pueden dar NaN fuera de x >= 0. El filtro de validez y el
-        // relleno aleatorio de esos huecos llegan en #147.
-        if (indice < 5 && !std::isfinite(individuo.fitness())) {
+        // Solo las bases (#143) estan garantizadas finitas. Las precargadas
+        // son el contenido historico intacto (#144); algunas usan SQRT(X) y
+        // pueden dar NaN fuera de x >= 0. El filtro de validez y el relleno
+        // aleatorio de esos huecos llegan en #147.
+        if (indice < NUM_BASES_POR_CASO && !std::isfinite(individuo.fitness())) {
             bases_finitas = false;
         }
         indice++;
@@ -262,7 +236,7 @@ static void validar_bases_catalogo(const vector<vector<ldouble>>& catalogo, int 
     const string etiqueta = "caso " + std::to_string(caso) + ": ";
     check_bool(etiqueta + "las diez entradas renderizan completas", completas);
     check_bool(etiqueta + "las diez entradas dependen de x", dependen_de_x);
-    check_bool(etiqueta + "las cinco bases tienen fitness finita", bases_finitas);
+    check_bool(etiqueta + "las bases tienen fitness finita", bases_finitas);
 }
 
 static void test_catalogo_semillas_por_caso() {
@@ -273,16 +247,22 @@ static void test_catalogo_semillas_por_caso() {
         const vector<vector<ldouble>>& catalogo = catalogo_semillas(caso);
 
         check_int(etiqueta + "el catalogo tiene diez entradas (5 bases + 5 precargadas)",
-                  static_cast<int>(catalogo.size()), 10);
+                  static_cast<int>(catalogo.size()),
+                  static_cast<int>(TOTAL_CATALOGO));
 
         validar_bases_catalogo(catalogo, caso);
 
         // El tramo precargado ocupa los indices 5-9 y conserva exactamente
         // los tokens del prototipo (issue #144).
         const vector<vector<ldouble>>& legado = precargadas_del_prototipo();
-        bool precargadas_intactas = catalogo.size() >= 5 + legado.size();
-        for (size_t i = 0; i < legado.size() && 5 + i < catalogo.size(); i++) {
-            if (catalogo[5 + i] != legado[i]) precargadas_intactas = false;
+        bool precargadas_intactas =
+            catalogo.size() >= NUM_BASES_POR_CASO + legado.size();
+        for (size_t i = 0;
+             i < legado.size() && NUM_BASES_POR_CASO + i < catalogo.size();
+             i++) {
+            if (catalogo[NUM_BASES_POR_CASO + i] != legado[i]) {
+                precargadas_intactas = false;
+            }
         }
         check_bool(etiqueta +
                        "las cinco precargadas (indices 5-9) conservan el contenido del prototipo",
@@ -325,11 +305,11 @@ static void test_catalogo_semillas_por_caso() {
 }
 
 // -------------------------------------------------------------------------
-// Slice 4c (issues #142-#144): createPopulation inyecta las entradas del
+// Slice 4c (issues #142-#146): createPopulation inyecta las entradas del
 // catalogo del caso al frente de la poblacion, rellenas con constantes 1 hasta
 // la dimension configurada. El orden es bases (0-4) y precargadas (5-9). La
-// inyeccion es determinista y no consume RNG: la cola aleatoria coincide con
-// la de una poblacion fria de la misma semilla.
+// inyeccion respeta la cuota del 5% (issue #146) y no consume RNG: la cola
+// aleatoria coincide con la de una poblacion fria de la misma semilla.
 // -------------------------------------------------------------------------
 
 static void test_warm_start_inyecta_el_catalogo_del_caso() {
@@ -358,15 +338,15 @@ static void test_warm_start_inyecta_el_catalogo_del_caso() {
 
             const string etiqueta = "caso " + std::to_string(caso) +
                                     " dim " + std::to_string(dimension) + ": ";
-            check_int(etiqueta + "inyecta la cuota de diez semillas",
-                      sembradas, 10);
+            check_int(etiqueta + "inyecta las diez semillas del catalogo completo",
+                      sembradas, static_cast<int>(TOTAL_CATALOGO));
             check_bool(etiqueta + "conserva el tamano de la poblacion",
                        poblacion.size() == POBLACION_CATALOGO_COMPLETO);
 
             // Las cinco bases ocupan los indices 0-4, en el orden del catalogo
             // y rellenas con constantes 1 hasta la dimension configurada.
             bool bases_al_frente = true;
-            for (size_t i = 0; i < 5 && i < catalogo.size(); i++) {
+            for (size_t i = 0; i < NUM_BASES_POR_CASO && i < catalogo.size(); i++) {
                 vector<ldouble> esperada = catalogo[i];
                 esperada.resize(dimension, TOKEN_CONST1);
                 if (poblacion[i].vecvalue() != esperada) bases_al_frente = false;
@@ -379,10 +359,12 @@ static void test_warm_start_inyecta_el_catalogo_del_caso() {
             // prototipo, no contra el catalogo, para detectar una alteracion
             // del tramo precargado.
             bool precargadas_despues = true;
-            for (size_t i = 0; i < legado.size() && 5 + i < poblacion.size(); i++) {
+            for (size_t i = 0;
+                 i < legado.size() && NUM_BASES_POR_CASO + i < poblacion.size();
+                 i++) {
                 vector<ldouble> esperada = legado[i];
                 esperada.resize(dimension, TOKEN_CONST1);
-                if (poblacion[5 + i].vecvalue() != esperada) {
+                if (poblacion[NUM_BASES_POR_CASO + i].vecvalue() != esperada) {
                     precargadas_despues = false;
                 }
             }
@@ -393,7 +375,7 @@ static void test_warm_start_inyecta_el_catalogo_del_caso() {
             // prefijas completas (sin huecos de aridad). En Python seria
             // `assert all("()" not in repr(p) for p in poblacion[:10])`.
             bool completas = true;
-            for (size_t i = 0; i < 10 && i < poblacion.size(); i++) {
+            for (size_t i = 0; i < TOTAL_CATALOGO && i < poblacion.size(); i++) {
                 if (poblacion[i].represant().find("()") != string::npos) {
                     completas = false;
                 }
@@ -406,15 +388,17 @@ static void test_warm_start_inyecta_el_catalogo_del_caso() {
 
     // Sin consumo de RNG: con la misma semilla, la cola aleatoria de una
     // corrida caliente es la poblacion fria desplazada por las semillas
-    // realmente inyectadas (una con poblacion 20). La cuota del 5% llega en
-    // #146; en #144 se inyecta el catalogo completo.
+    // realmente inyectadas. La cuota del 5% (issue #146) deja pasar una sola
+    // semilla con poblacion 20 (ceil(0.05*20)=1), asi que el desplazamiento
+    // es de uno.
     srand(20261023);
     ConfigBusqueda caliente;
     caliente.poblacion = 20;
     caliente.dimension = 20;
     caliente.warm_start = true;
     vector<FunbObj> con_semilla;
-    const int semillas = createPopulation(con_semilla, caliente, 6);
+    const size_t semillas =
+        static_cast<size_t>(createPopulation(con_semilla, caliente, 6));
 
     srand(20261023);
     ConfigBusqueda frio;
@@ -444,6 +428,61 @@ static void test_warm_start_inyecta_el_catalogo_del_caso() {
     check_int("un caso sin catalogo no inyecta semillas", sembradas_otro, 0);
     check_bool("un caso sin catalogo conserva el tamano de la poblacion",
                poblacion_otro.size() == 10);
+}
+
+// -------------------------------------------------------------------------
+// Slice 4d (issue #146): la cuota de inyeccion es
+// min(ceil(0.05 * poblacion), tamano del catalogo). Con el catalogo actual
+// de 10 entradas las poblaciones grandes se topan con el tamano del
+// catalogo; los ejemplos "pop=300 -> 15" del issue corresponden a la cuota
+// sin tope, el catalogo de 25 entradas que completa #145.
+// -------------------------------------------------------------------------
+
+static void test_cuota_semillas() {
+    // Poblaciones del issue #146 contra el catalogo actual de 10 entradas.
+    check_int("cuota pop=4: ceil(0.05*4)=1", cuota_semillas(4, 10), 1);
+    check_int("cuota pop=100: ceil(0.05*100)=5", cuota_semillas(100, 10), 5);
+    check_int("cuota pop=200: ceil(0.05*200)=10", cuota_semillas(200, 10), 10);
+    check_int("cuota pop=300 con catalogo de 10: tope 10",
+              cuota_semillas(300, 10), 10);
+    check_int("cuota pop=500 con catalogo de 10: tope 10",
+              cuota_semillas(500, 10), 10);
+    check_int("cuota pop=800 con catalogo de 10: tope 10",
+              cuota_semillas(800, 10), 10);
+
+    // Sin tope (catalogo de 25, el objetivo final tras #145) la cuota es el
+    // ceil puro, los ejemplos del issue: pop=300 -> 15 y pop>=500 -> 25.
+    check_int("cuota pop=300 sin tope: 15", cuota_semillas(300, 25), 15);
+    check_int("cuota pop=500 sin tope: 25", cuota_semillas(500, 25), 25);
+    check_int("cuota pop=800 con catalogo de 25: tope 25",
+              cuota_semillas(800, 25), 25);
+}
+
+static void test_warm_start_cuota_del_5_por_ciento() {
+    // Con pop=100 (el default del paper) la cuota es 5: entran solo las cinco
+    // bases y se restaura el warm_seeds=5 del comportamiento previo a #144.
+    // Con pop=4 entra una sola semilla (ceil(0.05*4)=1).
+    srand(20261025);
+    ConfigBusqueda config_100;
+    config_100.poblacion = 100;
+    config_100.dimension = 20;
+    config_100.warm_start = true;
+    vector<FunbObj> poblacion_100;
+    const int sembradas_100 = createPopulation(poblacion_100, config_100, 0);
+    check_int("pop=100: la cuota inyecta 5 semillas (warm_seeds=5 legacy)",
+              sembradas_100, 5);
+    check_bool("pop=100: la poblacion conserva su tamano",
+               poblacion_100.size() == 100);
+
+    srand(20261026);
+    ConfigBusqueda config_4;
+    config_4.poblacion = 4;
+    config_4.dimension = 20;
+    config_4.warm_start = true;
+    vector<FunbObj> poblacion_4;
+    const int sembradas_4 = createPopulation(poblacion_4, config_4, 0);
+    check_int("pop=4: la cuota inyecta 1 semilla", sembradas_4, 1);
+    check_bool("pop=4: la poblacion conserva su tamano", poblacion_4.size() == 4);
 }
 
 // -------------------------------------------------------------------------
@@ -961,6 +1000,8 @@ int main() {
     test_warm_start_opt_in();
     test_catalogo_semillas_por_caso();
     test_warm_start_inyecta_el_catalogo_del_caso();
+    test_cuota_semillas();
+    test_warm_start_cuota_del_5_por_ciento();
     test_createPopulation_reproducible();
     test_config_defaults();
     test_config_overrides();

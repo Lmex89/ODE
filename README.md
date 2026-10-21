@@ -239,7 +239,10 @@ preloaded prototype seeds. Each entry is a complete prefix expression that is
 padded with constant-1 tokens to `ODE_DIM`, so warm start works at any
 dimension; the startup line reports the effective configuration (`population=`,
 `dimension=`, `warm_start=`) plus `warm_seeds=`, the number of catalog entries
-injected.
+injected. Injection is capped at `min(ceil(0.05 × population), catalog size)`
+(issue #146): the default population of 100 admits the five bases
+(`warm_seeds=5`) and `ODE_POP=200` the full ten (`warm_seeds=10`); entries
+longer than the dimension are skipped and do not consume quota.
 
 Stagnation restarts are controlled by `ODE_STALE_LIMIT` (default 500
 generations without a new best) and `ODE_RESTART_FRACTION` (default 0.8, the

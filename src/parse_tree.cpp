@@ -605,18 +605,54 @@ vector<long double> vector_population(int tam){
     return ans;
 }
 
+// semillas_precargadas: las cinco semillas trigonometricas escritas a mano del
+// prototipo (issue #144). Se conservan con sus 20 tokens originales en vez de
+// recortarlas a su expresion prefija minima: el contrato del issue es que su
+// contenido no cambie. createPopulation las rellena con constantes 1 solo si la
+// dimension configurada supera 20. En Python seria una constante de modulo
+// `PRECARGADAS = [[...], ..., [...]]`.
+const vector<vector<ldouble>>& semillas_precargadas(){
+    // `static const` se construye una sola vez, como una constante de modulo
+    // en Python, y vive mientras dure el proceso.
+    static const vector<vector<ldouble>> semillas = {
+        {TOKEN_ADD, TOKEN_SIN, TOKEN_SQRT, TOKEN_X, TOKEN_COS, TOKEN_COS,
+         TOKEN_X, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_SIN, TOKEN_COS,
+         TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS, TOKEN_COS,
+         TOKEN_COS, TOKEN_X},                                             // uno
+        {TOKEN_ADD, TOKEN_COS, TOKEN_SIN, TOKEN_SQRT, TOKEN_X, TOKEN_COS,
+         TOKEN_DIV, TOKEN_CONST1, TOKEN_CONST5, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // dos
+        {TOKEN_ADD, TOKEN_SIN, TOKEN_X, TOKEN_SIN, TOKEN_SIN, TOKEN_COS,
+         TOKEN_COS, TOKEN_COS, TOKEN_X, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // tres
+        {TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_SIN, TOKEN_SIN, TOKEN_X,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1},          // cuatro
+        {TOKEN_ADD, TOKEN_SIN, TOKEN_SIN, TOKEN_SIN, TOKEN_X, TOKEN_SIN,
+         TOKEN_X, TOKEN_X, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1,
+         TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1, TOKEN_CONST1}           // c5
+    };
+    return semillas;
+}
+
 // catalogo_semillas: entradas warm start del caso, en el orden en que se
-// inyectan (bases del caso primero, luego el resto de niveles). Cada entrada es
-// una expresion prefija minima; createPopulation la rellena con constantes 1
-// hasta la dimension configurada. En Python seria un dict
-// `CATALOGO = {0: [...], ..., 7: [...]}` y `CATALOGO.get(caso, [])`.
+// inyectan (bases del caso, luego las precargadas compartidas y, desde #145,
+// los bloques genericos). Las bases son expresiones prefijas minimas; las
+// precargadas conservan sus 20 tokens historicos. createPopulation rellena
+// cada entrada con constantes 1 hasta la dimension configurada. En Python
+// seria un dict `CATALOGO = {0: [...], ..., 7: [...]}` y
+// `CATALOGO.get(caso, [])`.
 const vector<vector<ldouble>>& catalogo_semillas(int caso){
     // Issue #143: cinco bases por caso. La primera es la solucion exacta (o la
     // familia de la serie truncada en el caso 1); las otras cuatro son bloques
-    // cercanos de la misma familia. Los tickets #144 y #145 agregan despues las
-    // semillas precargadas y los bloques genericos.
+    // cercanos de la misma familia. El ticket #144 agrega despues las semillas
+    // precargadas; #145 agrega los bloques genericos.
     static constexpr int NUM_CASOS = 8;
-    static const vector<vector<vector<ldouble>>> catalogo = {
+    static const vector<vector<vector<ldouble>>> bases_por_caso = {
         // Caso 0: y'' + y = 0, y(0)=1, y'(0)=1 -> cos(x) + sin(x).
         {
             {TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_SIN, TOKEN_X},
@@ -716,6 +752,21 @@ const vector<vector<ldouble>>& catalogo_semillas(int caso){
              TOKEN_CONST2, TOKEN_NEG, TOKEN_CONST2}
         }
     };
+    // catalogo: une cada tramo de bases con el tramo precargado compartido.
+    // El lambda invocado al momento (`[](){...}()`) es el idioma C++ para
+    // inicializar una constante con codigo; en Python seria una comprension
+    // de diccionario: `{caso: bases + PRECARGADAS for caso, bases in ...}`.
+    static const vector<vector<vector<ldouble>>> catalogo = []{
+        vector<vector<vector<ldouble>>> entradas_por_caso;
+        entradas_por_caso.reserve(bases_por_caso.size());
+        for (const auto& bases : bases_por_caso) {
+            vector<vector<ldouble>> entradas = bases;
+            const vector<vector<ldouble>>& precargadas = semillas_precargadas();
+            entradas.insert(entradas.end(), precargadas.begin(), precargadas.end());
+            entradas_por_caso.push_back(std::move(entradas));
+        }
+        return entradas_por_caso;
+    }();
     static const vector<vector<ldouble>> sin_bases;
 
     if (caso >= 0 && caso < NUM_CASOS) return catalogo[caso];
@@ -746,7 +797,8 @@ int createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config, 
     // relleno final no altera la evaluacion porque el interprete consume el
     // arbol desde el inicio y las hojas sobrantes no participan (mismo patron
     // que las semillas historicas). Una entrada mas larga que la dimension se
-    // omite: no se puede recortar sin romper el arbol.
+    // omite: no se puede recortar sin romper el arbol. La cuota del 5% llega en
+    // #146; en #144 se inyecta el catalogo completo (5 bases + 5 precargadas).
     int semillas_inyectadas = 0;
     if (config.warm_start){
         const vector<vector<ldouble>>& catalogo = catalogo_semillas(caso);

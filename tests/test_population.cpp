@@ -197,16 +197,15 @@ static long double fitness_de_base(const vector<ldouble>& base, int caso) {
     return individuo.fitness();
 }
 
-// Total del catalogo: bases del caso + precargadas del prototipo. Las
-// constantes llegan de parse_tree.cpp (incluido arriba), la misma fuente que
-// la produccion usa para armar el catalogo.
-constexpr size_t TOTAL_CATALOGO = NUM_BASES_POR_CASO + NUM_PRECARGADAS;
+// Total del catalogo: bases del caso + precargadas del prototipo + genericos
+// compartidos. Las constantes llegan de parse_tree.cpp (incluido arriba), la
+// misma fuente que la produccion usa para armar el catalogo.
+constexpr size_t TOTAL_CATALOGO = NUM_BASES_POR_CASO + NUM_PRECARGADAS + NUM_GENERIC;
 
-// validar_bases_catalogo: verifica que todas las entradas de un caso (bases y
-// precargadas) rendericen completas y dependan de x; ademas, que las cinco
-// bases tengan fitness finita. En Python seria
-// `assert all(valida(b) for b in bases)` mas las comprobaciones de forma sobre
-// el catalogo completo.
+// validar_bases_catalogo: verifica que todas las entradas de un caso (bases,
+// precargadas y genericos) rendericen completas y dependan de x; ademas, que
+// las cinco bases tengan fitness finita. En Python seria
+// `assert all(valida(b) for b in catalogo)` mas las comprobaciones de forma.
 static void validar_bases_catalogo(const vector<vector<ldouble>>& catalogo, int caso) {
     bool completas = true;
     bool dependen_de_x = true;
@@ -234,8 +233,8 @@ static void validar_bases_catalogo(const vector<vector<ldouble>>& catalogo, int 
         indice++;
     }
     const string etiqueta = "caso " + std::to_string(caso) + ": ";
-    check_bool(etiqueta + "las diez entradas renderizan completas", completas);
-    check_bool(etiqueta + "las diez entradas dependen de x", dependen_de_x);
+    check_bool(etiqueta + "las veinticinco entradas renderizan completas", completas);
+    check_bool(etiqueta + "las veinticinco entradas dependen de x", dependen_de_x);
     check_bool(etiqueta + "las bases tienen fitness finita", bases_finitas);
 }
 
@@ -246,7 +245,7 @@ static void test_catalogo_semillas_por_caso() {
         const string etiqueta = "caso " + std::to_string(caso) + ": ";
         const vector<vector<ldouble>>& catalogo = catalogo_semillas(caso);
 
-        check_int(etiqueta + "el catalogo tiene diez entradas (5 bases + 5 precargadas)",
+        check_int(etiqueta + "el catalogo tiene 25 entradas (5 bases + 5 precargadas + 15 genericos)",
                   static_cast<int>(catalogo.size()),
                   static_cast<int>(TOTAL_CATALOGO));
 
@@ -267,6 +266,21 @@ static void test_catalogo_semillas_por_caso() {
         check_bool(etiqueta +
                        "las cinco precargadas (indices 5-9) conservan el contenido del prototipo",
                    precargadas_intactas);
+
+        // El tramo generico ocupa los indices 10-24 y es compartido entre todos los casos (issue #145).
+        const vector<vector<ldouble>>& genericos = bloques_genericos();
+        bool genericos_intactos =
+            catalogo.size() >= NUM_BASES_POR_CASO + NUM_PRECARGADAS + genericos.size();
+        for (size_t i = 0;
+             i < genericos.size() && NUM_BASES_POR_CASO + NUM_PRECARGADAS + i < catalogo.size();
+             i++) {
+            if (catalogo[NUM_BASES_POR_CASO + NUM_PRECARGADAS + i] != genericos[i]) {
+                genericos_intactos = false;
+            }
+        }
+        check_bool(etiqueta +
+                       "los quince genericos (indices 10-24) coinciden con los bloques compartidos",
+                   genericos_intactos);
 
         if (caso == 1) {
             // Si(x) no esta en el alfabeto: la mejor entrada es la serie
@@ -304,6 +318,72 @@ static void test_catalogo_semillas_por_caso() {
                catalogo_semillas(8).empty());
 }
 
+// Issue #145: el tier generico (indices 10-24) es compartido entre todos los
+// casos. Verificamos que los 15 bloques sean identicos en todos los casos.
+static void test_genericos_compartidos_entre_casos() {
+    const std::array<int, 8> casos = {0, 1, 2, 3, 4, 5, 6, 7};
+    const vector<vector<ldouble>>& primer_catalogo = catalogo_semillas(0);
+    
+    // Verificar que el catalogo tiene al menos 25 entradas
+    if (primer_catalogo.size() < TOTAL_CATALOGO) {
+        check_bool("el catalogo del caso 0 tiene 25 entradas", false);
+        return;
+    }
+    
+    // Comparar el tier generico (indices 10-24) de todos los casos contra el caso 0
+    for (size_t i = 1; i < casos.size(); i++) {
+        const vector<vector<ldouble>>& catalogo = catalogo_semillas(casos[i]);
+        if (catalogo.size() < TOTAL_CATALOGO) {
+            check_bool("caso " + std::to_string(casos[i]) + " tiene 25 entradas", false);
+            continue;
+        }
+        
+        bool genericos_iguales = true;
+        for (size_t j = 0; j < NUM_GENERIC; j++) {
+            const size_t indice = NUM_BASES_POR_CASO + NUM_PRECARGADAS + j;
+            if (catalogo[indice] != primer_catalogo[indice]) {
+                genericos_iguales = false;
+                break;
+            }
+        }
+        check_bool("caso " + std::to_string(casos[i]) + 
+                   ": los 15 genericos son identicos al caso 0",
+                   genericos_iguales);
+    }
+    
+    // Verificar que los genericos tienen el contenido esperado
+    const vector<vector<ldouble>>& genericos = bloques_genericos();
+    bool contenido_correcto = genericos.size() == NUM_GENERIC;
+    
+    // Verificar algunas expresiones clave del tier generico
+    // x, x², x³, 1+x, 1+x+x²/2, sin x, cos x, sin x + cos x, eˣ, x·eˣ,
+    // sinh x, cosh x, x−x³/6, 1−x²/2, e⁻ˣ
+    if (contenido_correcto) {
+        // Verificar que cada generico dependa de x y sea una expresion completa
+        for (size_t i = 0; i < genericos.size(); i++) {
+            FunbObj individuo(genericos[i], 0.0L, 1.0L, 0);
+            string repre = individuo.represant();
+            if (repre.find("()") != string::npos) {
+                contenido_correcto = false;
+                break;
+            }
+            bool tiene_x = false;
+            for (const auto& token : genericos[i]) {
+                if (is_x_dependent(static_cast<int>(token))) {
+                    tiene_x = true;
+                    break;
+                }
+            }
+            if (!tiene_x) {
+                contenido_correcto = false;
+                break;
+            }
+        }
+    }
+    check_bool("los 15 genericos tienen contenido valido (completos y dependen de x)",
+               contenido_correcto);
+}
+
 // -------------------------------------------------------------------------
 // Slice 4c (issues #142-#146): createPopulation inyecta las entradas del
 // catalogo del caso al frente de la poblacion, rellenas con constantes 1 hasta
@@ -315,13 +395,16 @@ static void test_catalogo_semillas_por_caso() {
 static void test_warm_start_inyecta_el_catalogo_del_caso() {
     const std::array<int, 8> casos = {0, 1, 2, 3, 4, 5, 6, 7};
     const std::array<int, 3> dimensiones = {20, 25, 30};
-    // El issue #144 fija pop=200 como escenario: el catalogo completo (5 bases
-    // + 5 precargadas) entra y la cabecera debe reportar warm_seeds=10.
-    constexpr int POBLACION_CATALOGO_COMPLETO = 200;
+    // El issue #145 completa el catalogo a 25 entradas (5 bases + 5 precargadas
+    // + 15 genericos). Con pop=500, la cuota del 5% es ceil(0.05*500)=25, lo
+    // que permite inyectar el catalogo completo y la cabecera debe reportar
+    // warm_seeds=25.
+    constexpr int POBLACION_CATALOGO_COMPLETO = 500;
 
     for (const int caso : casos) {
         const vector<vector<ldouble>>& catalogo = catalogo_semillas(caso);
         const vector<vector<ldouble>>& legado = precargadas_del_prototipo();
+        const vector<vector<ldouble>>& genericos = bloques_genericos();
 
         for (const int dimension : dimensiones) {
             // Semilla distinta por (caso, dimension): el test no depende de
@@ -338,7 +421,7 @@ static void test_warm_start_inyecta_el_catalogo_del_caso() {
 
             const string etiqueta = "caso " + std::to_string(caso) +
                                     " dim " + std::to_string(dimension) + ": ";
-            check_int(etiqueta + "inyecta las diez semillas del catalogo completo",
+            check_int(etiqueta + "inyecta las veinticinco semillas del catalogo completo",
                       sembradas, static_cast<int>(TOTAL_CATALOGO));
             check_bool(etiqueta + "conserva el tamano de la poblacion",
                        poblacion.size() == POBLACION_CATALOGO_COMPLETO);
@@ -371,16 +454,32 @@ static void test_warm_start_inyecta_el_catalogo_del_caso() {
             check_bool(etiqueta + "las cinco precargadas ocupan los indices 5-9",
                        precargadas_despues);
 
+            // Los genericos ocupan los indices 10-24, tambien en orden y con
+            // el mismo relleno. Se comparan contra los bloques genericos
+            // compartidos para verificar que el tramo generico sea correcto.
+            bool genericos_despues = true;
+            for (size_t i = 0;
+                 i < genericos.size() && NUM_BASES_POR_CASO + NUM_PRECARGADAS + i < poblacion.size();
+                 i++) {
+                vector<ldouble> esperada = genericos[i];
+                esperada.resize(dimension, TOKEN_CONST1);
+                if (poblacion[NUM_BASES_POR_CASO + NUM_PRECARGADAS + i].vecvalue() != esperada) {
+                    genericos_despues = false;
+                }
+            }
+            check_bool(etiqueta + "los quince genericos ocupan los indices 10-24",
+                       genericos_despues);
+
             // Las semillas inyectadas deben renderizar como expresiones
             // prefijas completas (sin huecos de aridad). En Python seria
-            // `assert all("()" not in repr(p) for p in poblacion[:10])`.
+            // `assert all("()" not in repr(p) for p in poblacion[:25])`.
             bool completas = true;
             for (size_t i = 0; i < TOTAL_CATALOGO && i < poblacion.size(); i++) {
                 if (poblacion[i].represant().find("()") != string::npos) {
                     completas = false;
                 }
             }
-            check_bool(etiqueta + "las diez semillas inyectadas renderizan completas",
+            check_bool(etiqueta + "las veinticinco semillas inyectadas renderizan completas",
                        completas);
         }
 
@@ -999,6 +1098,7 @@ int main() {
     test_createPopulation_respeta_la_dimension();
     test_warm_start_opt_in();
     test_catalogo_semillas_por_caso();
+    test_genericos_compartidos_entre_casos();
     test_warm_start_inyecta_el_catalogo_del_caso();
     test_cuota_semillas();
     test_warm_start_cuota_del_5_por_ciento();

@@ -605,14 +605,15 @@ vector<long double> vector_population(int tam){
     return ans;
 }
 
-// Tamano de los dos tramos del catalogo warm start: cinco bases por caso
-// (issue #143) y cinco semillas precargadas del prototipo (issue #144). Son
-// `size_t` a proposito: en los tests se comparan contra indices y tamanos de
-// vector, y asi toda la aritmetica de indices queda sin signo (ES.100). En
-// Python serian dos constantes de modulo `NUM_BASES_POR_CASO = 5` y
-// `NUM_PRECARGADAS = 5`.
+// Tamano de los tres tramos del catalogo warm start: cinco bases por caso
+// (issue #143), cinco semillas precargadas del prototipo (issue #144) y
+// quince bloques genericos compartidos (issue #145). Son `size_t` a proposito:
+// en los tests se comparan contra indices y tamanos de vector, y asi toda la
+// aritmetica de indices queda sin signo (ES.100). En Python serian constantes
+// de modulo `NUM_BASES_POR_CASO = 5`, `NUM_PRECARGADAS = 5`, `NUM_GENERIC = 15`.
 constexpr size_t NUM_BASES_POR_CASO = 5;
 constexpr size_t NUM_PRECARGADAS = 5;
+constexpr size_t NUM_GENERIC = 15;
 
 // semillas_precargadas: las cinco semillas trigonometricas escritas a mano del
 // prototipo (issue #144). Se conservan con sus 20 tokens originales en vez de
@@ -651,6 +652,43 @@ const vector<vector<ldouble>>& semillas_precargadas(){
     // `assert len(PRECARGADAS) == NUM_PRECARGADAS`.
     assert(semillas.size() == NUM_PRECARGADAS);
     return semillas;
+}
+
+// bloques_genericos (issue #145): quince bloques de expresion bien formados
+// compartidos entre todos los casos. Ocupan los indices 10-24 del catalogo y
+// aparecen tal cual (sin copias por caso) en el tramo final de cada caso.
+// Son expresiones prefijas minimas, todas dependen de x y evaluan a fitness
+// finita en cualquier caso. En Python seria una constante de modulo
+// `GENERIC_BLOCKS = [[...], ..., [...]]`.
+const vector<vector<ldouble>>& bloques_genericos(){
+    // `static const` se construye una sola vez, como una constante de modulo
+    // en Python, y vive mientras dure el proceso. Cada vector es la expresion
+    // prefija minima del bloque; createPopulation la rellena con constantes 1
+    // hasta la dimension configurada.
+    static const vector<vector<ldouble>> genericos = {
+        {TOKEN_X},                                              // x
+        {TOKEN_X2},                                             // x^2
+        {TOKEN_X3},                                             // x^3
+        {TOKEN_ADD, TOKEN_CONST1, TOKEN_X},                     // 1 + x
+        {TOKEN_ADD, TOKEN_ADD, TOKEN_CONST1, TOKEN_X,           // 1 + x + x^2/2
+         TOKEN_DIV, TOKEN_X2, TOKEN_CONST2},
+        {TOKEN_SIN, TOKEN_X},                                   // sin(x)
+        {TOKEN_COS, TOKEN_X},                                   // cos(x)
+        {TOKEN_ADD, TOKEN_SIN, TOKEN_X, TOKEN_COS, TOKEN_X},    // sin(x) + cos(x)
+        {TOKEN_EXP, TOKEN_X},                                   // e^x
+        {TOKEN_MUL, TOKEN_X, TOKEN_EXP, TOKEN_X},               // x * e^x
+        {TOKEN_SINH, TOKEN_X},                                  // sinh(x)
+        {TOKEN_COSH, TOKEN_X},                                  // cosh(x)
+        {TOKEN_ADD, TOKEN_X, TOKEN_NEG, TOKEN_DIV, TOKEN_X3,    // x - x^3/6
+         TOKEN_CONST6},
+        {TOKEN_ADD, TOKEN_CONST1, TOKEN_NEG, TOKEN_DIV, TOKEN_X2, TOKEN_CONST2},  // 1 - x^2/2
+        {TOKEN_EXP, TOKEN_NEG, TOKEN_X}                         // e^(-x)
+    };
+    // El tramo generico mide exactamente NUM_GENERIC (issue #145): si la lista
+    // se alterara, este assert delata el drift. En Python seria
+    // `assert len(GENERIC_BLOCKS) == NUM_GENERIC`.
+    assert(genericos.size() == NUM_GENERIC);
+    return genericos;
 }
 
 // catalogo_semillas: entradas warm start del caso, en el orden en que se
@@ -766,10 +804,11 @@ const vector<vector<ldouble>>& catalogo_semillas(int caso){
              TOKEN_CONST2, TOKEN_NEG, TOKEN_CONST2}
         }
     };
-    // catalogo: une cada tramo de bases con el tramo precargado compartido.
-    // El lambda invocado al momento (`[](){...}()`) es el idioma C++ para
-    // inicializar una constante con codigo; en Python seria una comprension
-    // de diccionario: `{caso: bases + PRECARGADAS for caso, bases in ...}`.
+    // catalogo: une cada tramo de bases con el tramo precargado compartido y
+    // el tramo generico compartido. El lambda invocado al momento
+    // (`[](){...}()`) es el idioma C++ para inicializar una constante con
+    // codigo; en Python seria una comprension de diccionario:
+    // `{caso: bases + PRECARGADAS + GENERIC for caso, bases in ...}`.
     static const vector<vector<vector<ldouble>>> catalogo = []{
         vector<vector<vector<ldouble>>> entradas_por_caso;
         entradas_por_caso.reserve(bases_por_caso.size());
@@ -781,6 +820,8 @@ const vector<vector<ldouble>>& catalogo_semillas(int caso){
             vector<vector<ldouble>> entradas = bases;
             const vector<vector<ldouble>>& precargadas = semillas_precargadas();
             entradas.insert(entradas.end(), precargadas.begin(), precargadas.end());
+            const vector<vector<ldouble>>& genericos = bloques_genericos();
+            entradas.insert(entradas.end(), genericos.begin(), genericos.end());
             entradas_por_caso.push_back(std::move(entradas));
         }
         return entradas_por_caso;
@@ -795,8 +836,9 @@ const vector<vector<ldouble>>& catalogo_semillas(int caso){
 // una poblacion de `poblacion` individuos: min(ceil(0.05 * poblacion),
 // tamano_catalogo). `(poblacion + 19) / 20` es ceil(poblacion / 20) en
 // aritmetica entera (el +19 empuja el residuo al siguiente entero), sin
-// depender de <cmath>. Con el catalogo actual de 10 entradas: pop=100 -> 5,
-// pop=200 -> 10 y de pop=300 en adelante el tope es el catalogo completo.
+// depender de <cmath>. Con el catalogo actual de 25 entradas: pop=100 -> 5,
+// pop=200 -> 10, pop=300 -> 15, pop=400 -> 20, pop=500 -> 25 y de pop=500
+// en adelante el tope es el catalogo completo.
 // En Python seria `min(math.ceil(0.05 * poblacion), len(catalogo))`.
 int cuota_semillas(int poblacion, int tamano_catalogo){
     const int sin_tope = (poblacion + 19) / 20;

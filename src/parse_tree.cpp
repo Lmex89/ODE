@@ -609,18 +609,116 @@ vector<long double> vector_population(int tam){
 // inyectan (bases del caso primero, luego el resto de niveles). Cada entrada es
 // una expresion prefija minima; createPopulation la rellena con constantes 1
 // hasta la dimension configurada. En Python seria un dict
-// `CATALOGO = {6: [ ... ]}` y `CATALOGO.get(caso, [])`.
+// `CATALOGO = {0: [...], ..., 7: [...]}` y `CATALOGO.get(caso, [])`.
 const vector<vector<ldouble>>& catalogo_semillas(int caso){
-    // Tracer del issue #142: solo el caso 6 (Legendre) define su base exacta.
-    // Los otros casos devuelven la lista vacia hasta que #143 añada sus bases.
-    static const vector<vector<ldouble>> catalogo_legendre = {
-        // (3*x^2 - 1) / 2, la solucion P2(x) del caso 6.
-        {TOKEN_DIV, TOKEN_ADD, TOKEN_MUL, TOKEN_CONST3,
-         TOKEN_X2, TOKEN_NEG, TOKEN_CONST1, TOKEN_CONST2}
+    // Issue #143: cinco bases por caso. La primera es la solucion exacta (o la
+    // familia de la serie truncada en el caso 1); las otras cuatro son bloques
+    // cercanos de la misma familia. Los tickets #144 y #145 agregan despues las
+    // semillas precargadas y los bloques genericos.
+    static constexpr int NUM_CASOS = 8;
+    static const vector<vector<vector<ldouble>>> catalogo = {
+        // Caso 0: y'' + y = 0, y(0)=1, y'(0)=1 -> cos(x) + sin(x).
+        {
+            {TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_SIN, TOKEN_X},
+            {TOKEN_COS, TOKEN_X},
+            {TOKEN_SIN, TOKEN_X},
+            {TOKEN_ADD, TOKEN_CONST1, TOKEN_X},
+            {TOKEN_ADD, TOKEN_ADD, TOKEN_CONST1, TOKEN_X,
+             TOKEN_NEG, TOKEN_DIV, TOKEN_X2, TOKEN_CONST2}
+        },
+        // Caso 1: x*y'' + y' - cos(x) = 0, y(0)=0, y'(0)=1 -> Si(x). El
+        // alfabeto no tiene integral, asi que las bases son la serie truncada
+        // x - x^3/18 + x^5/600 y variantes equivalentes.
+        {
+            {TOKEN_X},
+            {TOKEN_ADD, TOKEN_X, TOKEN_NEG, TOKEN_DIV, TOKEN_X3,
+             TOKEN_MUL, TOKEN_CONST3, TOKEN_CONST6},
+            {TOKEN_ADD, TOKEN_ADD, TOKEN_X, TOKEN_NEG, TOKEN_DIV, TOKEN_X3,
+             TOKEN_MUL, TOKEN_CONST3, TOKEN_CONST6,
+             TOKEN_DIV, TOKEN_MUL, TOKEN_X3, TOKEN_X2,
+             TOKEN_MUL, TOKEN_MUL, TOKEN_CONST6, TOKEN_CONST10, TOKEN_CONST10},
+            {TOKEN_MUL, TOKEN_X, TOKEN_ADD, TOKEN_CONST1, TOKEN_NEG,
+             TOKEN_DIV, TOKEN_X2, TOKEN_MUL, TOKEN_CONST3, TOKEN_CONST6},
+            {TOKEN_ADD, TOKEN_X, TOKEN_NEG, TOKEN_DIV, TOKEN_POW, TOKEN_X,
+             TOKEN_CONST3, TOKEN_MUL, TOKEN_CONST3, TOKEN_CONST6}
+        },
+        // Caso 2: y'' - y = 0, y(0)=1, y'(0)=0 -> cosh(x).
+        {
+            {TOKEN_COSH, TOKEN_X},
+            {TOKEN_DIV, TOKEN_ADD, TOKEN_EXP, TOKEN_X,
+             TOKEN_EXP, TOKEN_NEG, TOKEN_X, TOKEN_CONST2},
+            {TOKEN_ADD, TOKEN_CONST1, TOKEN_DIV, TOKEN_X2, TOKEN_CONST2},
+            {TOKEN_EXP, TOKEN_X},
+            {TOKEN_ADD, TOKEN_ADD, TOKEN_CONST1, TOKEN_DIV, TOKEN_X2,
+             TOKEN_CONST2, TOKEN_DIV, TOKEN_MUL, TOKEN_X2, TOKEN_X2,
+             TOKEN_MUL, TOKEN_CONST4, TOKEN_CONST6}
+        },
+        // Caso 3: y'' + 2y' + 2y = 0, y(0)=1, y'(0)=-1 -> e^(-x)*cos(x).
+        {
+            {TOKEN_MUL, TOKEN_EXP, TOKEN_NEG, TOKEN_X, TOKEN_COS, TOKEN_X},
+            {TOKEN_MUL, TOKEN_EXP, TOKEN_NEG, TOKEN_X, TOKEN_SIN, TOKEN_X},
+            {TOKEN_EXP, TOKEN_NEG, TOKEN_X},
+            {TOKEN_MUL, TOKEN_EXP, TOKEN_NEG, TOKEN_X,
+             TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_NEG, TOKEN_SIN, TOKEN_X},
+            {TOKEN_COS, TOKEN_X}
+        },
+        // Caso 4: y'' + y = e^x, y(0)=y'(0)=0
+        // -> (e^x - cos(x) - sin(x)) / 2.
+        {
+            {TOKEN_DIV, TOKEN_ADD, TOKEN_EXP, TOKEN_X, TOKEN_NEG,
+             TOKEN_ADD, TOKEN_COS, TOKEN_X, TOKEN_SIN, TOKEN_X,
+             TOKEN_CONST2},
+            {TOKEN_DIV, TOKEN_EXP, TOKEN_X, TOKEN_CONST2},
+            {TOKEN_DIV, TOKEN_ADD, TOKEN_EXP, TOKEN_X, TOKEN_NEG,
+             TOKEN_CONST1, TOKEN_CONST2},
+            {TOKEN_DIV, TOKEN_NEG, TOKEN_ADD, TOKEN_COS, TOKEN_X,
+             TOKEN_SIN, TOKEN_X, TOKEN_CONST2},
+            {TOKEN_ADD, TOKEN_EXP, TOKEN_X, TOKEN_NEG, TOKEN_COS, TOKEN_X}
+        },
+        // Caso 5: y'' - y = e^x, y(0)=y'(0)=0
+        // -> (2*x*e^x - e^x + e^(-x)) / 4.
+        {
+            {TOKEN_DIV, TOKEN_ADD, TOKEN_MUL, TOKEN_EXP, TOKEN_X,
+             TOKEN_ADD, TOKEN_MUL, TOKEN_CONST2, TOKEN_X,
+             TOKEN_NEG, TOKEN_CONST1,
+             TOKEN_EXP, TOKEN_NEG, TOKEN_X, TOKEN_CONST4},
+            {TOKEN_DIV, TOKEN_MUL, TOKEN_X, TOKEN_EXP, TOKEN_X,
+             TOKEN_CONST2},
+            {TOKEN_MUL, TOKEN_X, TOKEN_EXP, TOKEN_X},
+            {TOKEN_SINH, TOKEN_X},
+            {TOKEN_ADD, TOKEN_DIV, TOKEN_MUL, TOKEN_X, TOKEN_EXP, TOKEN_X,
+             TOKEN_CONST2, TOKEN_NEG, TOKEN_DIV, TOKEN_EXP, TOKEN_X,
+             TOKEN_CONST4}
+        },
+        // Caso 6: (1-x^2)*y'' - 2x*y' + 6y = 0, y(0)=-1/2, y'(0)=0
+        // -> P2(x) = (3*x^2-1)/2.
+        {
+            {TOKEN_DIV, TOKEN_ADD, TOKEN_MUL, TOKEN_CONST3,
+             TOKEN_X2, TOKEN_NEG, TOKEN_CONST1, TOKEN_CONST2},
+            {TOKEN_DIV, TOKEN_MUL, TOKEN_CONST3, TOKEN_X2, TOKEN_CONST2},
+            {TOKEN_ADD, TOKEN_MUL, TOKEN_CONST3, TOKEN_X2,
+             TOKEN_NEG, TOKEN_CONST1},
+            {TOKEN_ADD, TOKEN_X2, TOKEN_NEG, TOKEN_DIV,
+             TOKEN_CONST1, TOKEN_CONST2},
+            {TOKEN_X2}
+        },
+        // Caso 7: y'' - 2x*y' + 4y = 0, y(0)=-2, y'(0)=0
+        // -> H2(x) = 4*x^2-2.
+        {
+            {TOKEN_ADD, TOKEN_MUL, TOKEN_CONST4, TOKEN_X2,
+             TOKEN_NEG, TOKEN_CONST2},
+            {TOKEN_MUL, TOKEN_CONST2, TOKEN_ADD, TOKEN_MUL, TOKEN_CONST2,
+             TOKEN_X2, TOKEN_NEG, TOKEN_CONST1},
+            {TOKEN_MUL, TOKEN_CONST4, TOKEN_X2},
+            {TOKEN_ADD, TOKEN_MUL, TOKEN_CONST2, TOKEN_X2,
+             TOKEN_NEG, TOKEN_CONST2},
+            {TOKEN_ADD, TOKEN_MUL, TOKEN_CONST4, TOKEN_POW, TOKEN_X,
+             TOKEN_CONST2, TOKEN_NEG, TOKEN_CONST2}
+        }
     };
     static const vector<vector<ldouble>> sin_bases;
 
-    if (caso == 6) return catalogo_legendre;
+    if (caso >= 0 && caso < NUM_CASOS) return catalogo[caso];
     return sin_bases;
 }
 
@@ -1508,7 +1606,7 @@ int main() {
     // Cabecera de la corrida (reemplaza el banner de ASCII art): una sola
     // linea con toda la configuracion en clave=valor. `population=` informa el
     // tamano real de la poblacion ya creada; `warm_start=` es el valor efectivo
-    // (con ODE_DIM distinto de 20 la bandera se ignora, ver resolver_config).
+    // y `warm_seeds=` cuantas entradas del catalogo se inyectaron de verdad.
     // `stale_limit` y `restart_fraction` son los parametros de reinicio
     // (issue #108), configurables via ODE_STALE_LIMIT y ODE_RESTART_FRACTION.
     // `restart_mode` es el modo efectivo resuelto por resolver_config

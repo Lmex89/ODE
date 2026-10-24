@@ -45,7 +45,10 @@
   `python3 scripts/check_diversity_trigger.py` (forces the diversity channel
   with `ODE_DIV_THRESHOLD=1000000000` and validates `trigger=diversity`, the
   stale-window reset, the shared escalation ladder, `trigger=stale` with the
-  channel off, and the untouched legacy restart parameters), and
+  channel off, the untouched legacy restart parameters, and the warm-start
+  boundary (issue #148): with `ODE_WARM_START=1` at case 1 and pop=4 the
+  header reports `warm_seeds=1` and the channel stays evaluable at the
+  inclusive 25% finite fraction), and
   `python3 scripts/check_restart_ab.py` (runs `scripts/restart_ab.sh` in its
   short mode and validates the legacy-vs-adaptive comparison table, the
   per-mode `restart_mode=` wiring and the identical budgets).

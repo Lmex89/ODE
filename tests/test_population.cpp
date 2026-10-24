@@ -565,31 +565,55 @@ static void test_cuota_semillas() {
               cuota_semillas(800, CATALOGO_ACTUAL), CATALOGO_ACTUAL);
 }
 
-static void test_warm_start_cuota_del_5_por_ciento() {
-    // Con pop=100 (el default del paper) la cuota es 5: entran solo las cinco
-    // bases y se restaura el warm_seeds=5 del comportamiento previo a #144.
-    // Con pop=4 entra una sola semilla (ceil(0.05*4)=1).
-    srand(20261025);
-    ConfigBusqueda config_100;
-    config_100.poblacion = 100;
-    config_100.dimension = 20;
-    config_100.warm_start = true;
-    vector<FunbObj> poblacion_100;
-    const int sembradas_100 = createPopulation(poblacion_100, config_100, 0);
-    check_int("pop=100: la cuota inyecta 5 semillas (warm_seeds=5 legacy)",
-              sembradas_100, 5);
-    check_bool("pop=100: la poblacion conserva su tamano",
-               poblacion_100.size() == 100);
+static void test_warm_start_cuota_por_poblacion() {
+    // La cuota del 5% se aplica en createPopulation (el seam de integracion),
+    // no solo en cuota_semillas: la tabla cubre los seis tamanos del issue
+    // #146. Los valores esperados son literales independientes, no el
+    // resultado de volver a llamar a cuota_semillas. En Python seria
+    // `for pop, esperadas in {4: 1, 100: 5, 200: 10, 300: 15, 500: 25,
+    // 800: 25}.items(): ...`.
+    const std::array<int, 6> poblaciones = {4, 100, 200, 300, 500, 800};
+    const std::array<int, 6> semillas_esperadas = {1, 5, 10, 15, 25, 25};
+    const vector<EntradaCatalogo>& catalogo = catalogo_semillas(0);
 
-    srand(20261026);
-    ConfigBusqueda config_4;
-    config_4.poblacion = 4;
-    config_4.dimension = 20;
-    config_4.warm_start = true;
-    vector<FunbObj> poblacion_4;
-    const int sembradas_4 = createPopulation(poblacion_4, config_4, 0);
-    check_int("pop=4: la cuota inyecta 1 semilla", sembradas_4, 1);
-    check_bool("pop=4: la poblacion conserva su tamano", poblacion_4.size() == 4);
+    for (size_t i = 0; i < poblaciones.size(); i++) {
+        const int poblacion = poblaciones[i];
+        const int esperadas = semillas_esperadas[i];
+
+        // Semilla distinta por poblacion: el test no depende de que los
+        // sorteos aleatorios de la cola coincidan entre corridas.
+        srand(20261025 + poblacion);
+        ConfigBusqueda config;
+        config.poblacion = poblacion;
+        config.dimension = 20;
+        config.warm_start = true;
+
+        vector<FunbObj> individuos;
+        const int sembradas = createPopulation(individuos, config, 0);
+
+        const string etiqueta = "pop=" + std::to_string(poblacion) + ": ";
+        check_int(etiqueta + "la cuota inyecta " + std::to_string(esperadas) +
+                      " semillas",
+                  sembradas, esperadas);
+        check_bool(etiqueta + "la poblacion conserva su tamano",
+                   individuos.size() == static_cast<size_t>(poblacion));
+
+        // Las semillas son el prefijo exacto del catalogo, rellenado con
+        // constantes 1: no hay mutaciones ni variantes. En Python seria
+        // `assert individuos[:n] == [c + [1] * (20 - len(c))
+        //                            for c in catalogo[:n]]`.
+        bool prefijo_sin_mutar = true;
+        for (int j = 0; j < sembradas && j < static_cast<int>(catalogo.size());
+             j++) {
+            vector<ldouble> esperada = catalogo[static_cast<size_t>(j)].get();
+            esperada.resize(20, TOKEN_CONST1);
+            if (individuos[static_cast<size_t>(j)].vecvalue() != esperada) {
+                prefijo_sin_mutar = false;
+            }
+        }
+        check_bool(etiqueta + "las semillas son el prefijo del catalogo sin mutar",
+                   prefijo_sin_mutar);
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -1109,7 +1133,7 @@ int main() {
     test_genericos_compartidos_entre_casos();
     test_warm_start_inyecta_el_catalogo_del_caso();
     test_cuota_semillas();
-    test_warm_start_cuota_del_5_por_ciento();
+    test_warm_start_cuota_por_poblacion();
     test_createPopulation_reproducible();
     test_config_defaults();
     test_config_overrides();

@@ -239,12 +239,16 @@ prototype seeds and 15 shared generic blocks. Each entry is a complete prefix
 expression that is padded with constant-1 tokens to `ODE_DIM`, so warm start
 works at any dimension; the startup line reports the effective configuration
 (`population=`, `dimension=`, `warm_start=`) plus `warm_seeds=`, the number of
-catalog entries injected. Injection is capped at
+valid catalog entries injected. Injection is capped at
 `min(ceil(0.05 × population), catalog size)` (issue #146): the default
-population of 100 admits the five bases (`warm_seeds=5`), `ODE_POP=200` the
-first ten (`warm_seeds=10`), `ODE_POP=300` the first fifteen
-(`warm_seeds=15`), and `ODE_POP=500` the full twenty-five (`warm_seeds=25`);
-entries longer than the dimension are skipped and do not consume quota.
+population of 100 considers the five bases (`warm_seeds=5`), `ODE_POP=200` the
+first ten (eight valid, `warm_seeds=8`), `ODE_POP=300` the first fifteen
+(thirteen valid, `warm_seeds=13`), and `ODE_POP=500` all twenty-five
+(twenty-three valid, `warm_seeds=23`, because the two preloaded seeds that use
+`SQRT(X)` are rejected). Every quota attempt is validated at injection time
+(issue #147): it must fit in `ODE_DIM`, render hole-free, depend on x, and have
+finite fitness for the active case; a rejected or oversized entry leaves a
+uniform random individual in its slot, so the population size is always exact.
 
 Stagnation restarts are controlled by `ODE_STALE_LIMIT` (default 500
 generations without a new best) and `ODE_RESTART_FRACTION` (default 0.8, the

@@ -868,14 +868,47 @@ int cuota_semillas(int poblacion, int tamano_catalogo){
     return std::min(sin_tope, tamano_catalogo);
 }
 
+// semilla_valida (issue #147): predicado que decide si una entrada del
+// catalogo puede inyectarse como individuo. Debe caber en la dimension (si no,
+// no se puede rellenar sin truncar el arbol), renderizar sin huecos, contener
+// al menos una hoja x-dependiente y tener fitness finita para el caso activo.
+// En Python seria:
+//     def semilla_valida(entrada, dimension, caso):
+//         if len(entrada) > dimension: return False
+//         semilla = entrada + [TOKEN_CONST1] * (dimension - len(entrada))
+//         individuo = FunbObj(semilla, 0, 1, caso)
+//         return ("()" not in individuo.represant()
+//                 and any(is_x_dependent(t) for t in semilla)
+//                 and math.isfinite(individuo.fitness()))
+bool semilla_valida(const vector<ldouble>& entrada, int dimension, int caso){
+    if (static_cast<int>(entrada.size()) > dimension) return false;
+
+    vector<ldouble> semilla = entrada;
+    semilla.resize(dimension, TOKEN_CONST1);
+
+    const bool depende_de_x = std::any_of(
+        semilla.begin(), semilla.end(),
+        [](ldouble token){ return is_x_dependent(static_cast<int>(token)); });
+    if (!depende_de_x) return false;
+
+    FunbObj individuo(std::move(semilla), 0, 1, caso);
+    return individuo.represant().find("()") == string::npos &&
+           std::isfinite(individuo.fitness());
+}
+
 // createPopulation: llena `Population` (que entra vacia) con exactamente
 // config.poblacion individuos de config.dimension tokens. Es la inicializacion
 // del paper: aleatoria uniforme (ecuacion (6)) salvo las entradas del catalogo
 // warm start, que solo entran con la bandera activa. Devuelve cuantas entradas
-// del catalogo se inyectaron de verdad (el `warm_seeds=` del log). En Python
-// seria `poblacion += [FunbObj(vector_population(dim), 0, 1, caso) for _ in
-// range(n)]` mas el tramo de semillas.
-int createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config, int caso){
+// del catalogo se inyectaron de verdad (el `warm_seeds=` del log).
+//
+// La variante con catalogo explicito permite probar la garantia de runtime con
+// entradas sinteticas (issue #147) sin tocar el catalogo real; main() usa la
+// sobrecarga de tres argumentos, que pasa `catalogo_semillas(caso)`. En Python
+// seria `createPopulation(poblacion, config, caso, CATALOGO.get(caso, []))`
+// con un parametro opcional.
+int createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config,
+                     int caso, const vector<EntradaCatalogo>& catalogo){
 
     // Precondiciones del inicializador de poblacion:
     // 1. La poblacion entra vacia y se llena con push_back (en Python seria
@@ -891,33 +924,39 @@ int createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config, 
     // minima; se rellena con constantes 1 hasta la dimension configurada. El
     // relleno final no altera la evaluacion porque el interprete consume el
     // arbol desde el inicio y las hojas sobrantes no participan (mismo patron
-    // que las semillas historicas). Una entrada mas larga que la dimension se
-    // omite (no se puede recortar sin romper el arbol) y no consume cuota.
-    // La cuota del 5% (issue #146) topa la inyeccion en
-    // min(ceil(0.05 * poblacion), tamano del catalogo): con pop=100 entran
-    // las cinco bases, con pop=200 las diez primeras, con pop=300 las quince
-    // primeras y con pop=500 el catalogo completo de 25 entradas
-    // (warm_seeds=25).
+    // que las semillas historicas).
+    //
+    // La garantia de runtime (issue #147) valida cada intento antes de
+    // conservarlo: `semilla_valida` exige que la entrada quepa en la dimension,
+    // renderice sin huecos, dependa de x y tenga fitness finita para el caso.
+    // Un intento rechazado no se inyecta: su lugar lo ocupa un individuo
+    // uniforme para que la poblacion conserve exactamente config.poblacion.
+    // La cuota del 5% (issue #146) cuenta INTENTOS, no semillas aceptadas:
+    // min(ceil(0.05 * poblacion), tamano del catalogo). Asi una entrada rota
+    // no permite que una entrada posterior fuera de la cuota se cuele en el
+    // censo; `semillas_inyectadas` solo cuenta las validas.
     int semillas_inyectadas = 0;
     if (config.warm_start){
-        const vector<EntradaCatalogo>& catalogo = catalogo_semillas(caso);
         const int cuota = cuota_semillas(config.poblacion,
                                          static_cast<int>(catalogo.size()));
         for (size_t i = 0;
              i < catalogo.size() &&
-             static_cast<int>(Population.size()) < config.poblacion &&
-             semillas_inyectadas < cuota;
+             static_cast<int>(i) < cuota &&
+             static_cast<int>(Population.size()) < config.poblacion;
              i++){
             const vector<ldouble>& entrada = catalogo[i].get();
-            if (static_cast<int>(entrada.size()) > config.dimension) continue;
-
-            vector<ldouble> semilla = entrada;
-            semilla.resize(config.dimension, TOKEN_CONST1);
-            // `caso` se propaga a cada FunbObj: los tokens no cambian entre
-            // casos, solo la ODE que mide fitness(). En Python seria
-            // `FunbObj(semilla, 0, 1, caso)`.
-            Population.push_back(FunbObj(std::move(semilla), 0, 1, caso));
-            semillas_inyectadas++;
+            if (semilla_valida(entrada, config.dimension, caso)){
+                vector<ldouble> semilla = entrada;
+                semilla.resize(config.dimension, TOKEN_CONST1);
+                // `caso` se propaga a cada FunbObj: los tokens no cambian
+                // entre casos, solo la ODE que mide fitness(). En Python seria
+                // `FunbObj(semilla, 0, 1, caso)`.
+                Population.push_back(FunbObj(std::move(semilla), 0, 1, caso));
+                semillas_inyectadas++;
+            } else {
+                Population.push_back(
+                    FunbObj(vector_population(config.dimension), 0, 1, caso));
+            }
         }
     }
 
@@ -929,6 +968,12 @@ int createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config, 
     }
 
     return semillas_inyectadas;
+}
+
+// Sobrecarga de produccion: inyecta el catalogo del caso. En Python seria el
+// valor por defecto `catalogo=None` resuelto a `CATALOGO.get(caso, [])`.
+int createPopulation(vector<FunbObj>& Population, const ConfigBusqueda& config, int caso){
+    return createPopulation(Population, config, caso, catalogo_semillas(caso));
 }
 
 // ResumenDiversidad: resultado puro de mirar las fitness de una generacion.
